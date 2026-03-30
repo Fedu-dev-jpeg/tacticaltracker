@@ -49,17 +49,6 @@ const CODEWORDS = [
   { word: "Deathmatch", desc: "Round suelto sin estructura — cada uno busca su duelo, usado en ecos o últimas rondas" },
 ];
 
-const STORAGE_KEY = "hambrientos_playbook";
-
-function loadStrategies(): Strategy[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : getDefaultStrategies();
-  } catch {
-    return getDefaultStrategies();
-  }
-}
-
 function getDefaultStrategies(): Strategy[] {
   return [
     { id: "def-1", map: "Nuke", side: "TR", type: "Default", name: "Lobby Split", description: "Default con control de lobby. Hanzo lobby, Froud AWP outside, Diuva door/silo, Gyer rotador, Fedu soporte.", playerRoles: { Hanzo: "Lobby", Froud: "AWP", Diuva: "Outside", Gyer: "Door/Silo", Fedu: "Rotador" }, notes: "Ganar info de ramp antes de commitear", link: "", status: "Ready" },
@@ -73,6 +62,21 @@ function getDefaultStrategies(): Strategy[] {
   ];
 }
 
+function dbRowToStrategy(row: any): Strategy {
+  return {
+    id: row.id,
+    map: row.map as MapName,
+    side: row.side as "CT" | "TR",
+    type: row.type,
+    name: row.name,
+    description: row.description || "",
+    playerRoles: (row.player_roles as Record<string, string>) || {},
+    notes: row.notes || "",
+    link: row.link || "",
+    status: row.status as Strategy["status"],
+  };
+}
+
 function sortByType(strats: Strategy[]): Strategy[] {
   return [...strats].sort((a, b) => {
     const ai = STRAT_TYPE_ORDER.indexOf(a.type);
@@ -82,7 +86,8 @@ function sortByType(strats: Strategy[]): Strategy[] {
 }
 
 export default function Playbook() {
-  const [strategies, setStrategies] = useState<Strategy[]>(loadStrategies);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedMap, setSelectedMap] = useState<MapName>("Nuke");
   const [selectedSide, setSelectedSide] = useState<"CT" | "TR" | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -93,9 +98,50 @@ export default function Playbook() {
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
-  const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>(loadPlayerDescriptions);
+  const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
+
+  // Load strategies from Supabase on mount
+  const fetchStrategies = useCallback(async () => {
+    const { data, error } = await supabase.from("strategies").select("*");
+    if (error) {
+      console.error("Error loading strategies:", error);
+      // Fallback to localStorage if DB is empty or errors
+      const local = localStorage.getItem(STORAGE_KEY);
+      setStrategies(local ? JSON.parse(local) : getDefaultStrategies());
+    } else if (data.length === 0) {
+      // Seed defaults into DB
+      const defaults = getDefaultStrategies();
+      const rows = defaults.map((s) => ({
+        id: crypto.randomUUID(),
+        map: s.map, side: s.side, type: s.type, name: s.name,
+        description: s.description, player_roles: s.playerRoles as any,
+        notes: s.notes, link: s.link, status: s.status,
+      }));
+      await supabase.from("strategies").insert(rows);
+      const { data: seeded } = await supabase.from("strategies").select("*");
+      setStrategies((seeded || []).map(dbRowToStrategy));
+    } else {
+      setStrategies(data.map(dbRowToStrategy));
+    }
+    setLoading(false);
+  }, []);
+
+  // Load player descriptions from Supabase
+  const fetchPlayerDescriptions = useCallback(async () => {
+    const { data } = await supabase.from("player_descriptions").select("*");
+    if (data && data.length > 0) {
+      const descs: Record<string, string> = { ...DEFAULT_PLAYER_DESCRIPTIONS };
+      data.forEach((row) => { descs[row.player] = row.description; });
+      setPlayerDescriptions(descs);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStrategies();
+    fetchPlayerDescriptions();
+  }, [fetchStrategies, fetchPlayerDescriptions]);
 
   const ensureProtocol = (url: string) => {
     if (!url) return url;
@@ -103,17 +149,10 @@ export default function Playbook() {
     return `https://${url}`;
   };
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
-  }, [strategies]);
-
-  useEffect(() => {
-    localStorage.setItem(PLAYER_DESC_KEY, JSON.stringify(playerDescriptions));
-  }, [playerDescriptions]);
-
-  const savePlayerDesc = (player: string) => {
+  const savePlayerDesc = async (player: string) => {
     setPlayerDescriptions((prev) => ({ ...prev, [player]: tempPlayerDesc }));
     setEditingPlayerDesc(null);
+    await supabase.from("player_descriptions").upsert({ player, description: tempPlayerDesc });
     toast.success(`Descripción de ${player} actualizada`);
   };
 
