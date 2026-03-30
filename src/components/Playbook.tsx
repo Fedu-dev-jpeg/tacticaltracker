@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check } from "lucide-react";
+import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 export interface Strategy {
@@ -23,9 +23,18 @@ export interface Strategy {
   status: "Draft" | "Ready" | "Probado";
 }
 
-// Order for auto-sorting strategies in gameplan
 const STRAT_TYPE_ORDER = ["Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Dominio", "Retake", "Postplant", "Calls de base", "Sorpresa"];
 const STRAT_TYPES = [...STRAT_TYPE_ORDER];
+
+const CODEWORDS = [
+  { word: "Contacto", desc: "Buscar contacto con el enemigo para obtener info y abrir el round" },
+  { word: "Pop", desc: "Flash pop coordinada para entrar a un site o tomar control de zona" },
+  { word: "Hero", desc: "Jugada individual agresiva — un jugador busca hacer una play de impacto" },
+  { word: "Sólidos", desc: "Jugar posiciones default seguras, no peekear innecesariamente, ganar por economía" },
+  { word: "Pausa / Freeze", desc: "Frenar la ejecución, esperar info, no commitear hasta nuevo call" },
+  { word: "Marotei", desc: "Rotación rápida al otro site, fakeando presencia en el actual" },
+  { word: "Deathmatch", desc: "Round suelto sin estructura — cada uno busca su duelo, usado en ecos o últimas rondas" },
+];
 
 const STORAGE_KEY = "hambrientos_playbook";
 
@@ -65,9 +74,11 @@ export default function Playbook() {
   const [selectedSide, setSelectedSide] = useState<"CT" | "TR" | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingStrat, setEditingStrat] = useState<Strategy | null>(null);
   const [gameplanMode, setGameplanMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
+  const [showCodewords, setShowCodewords] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
@@ -90,6 +101,24 @@ export default function Playbook() {
     toast.success("Estrategia eliminada");
   };
 
+  const duplicateStrat = (strat: Strategy) => {
+    const dup: Strategy = { ...strat, id: crypto.randomUUID(), name: `${strat.name} (copia)`, status: "Draft", playerRoles: { ...strat.playerRoles } };
+    setStrategies((prev) => [dup, ...prev]);
+    toast.success("Estrategia duplicada");
+  };
+
+  const startEdit = (strat: Strategy) => {
+    setEditingStrat({ ...strat, playerRoles: { ...strat.playerRoles } });
+    setShowForm(false);
+    setExpandedId(null);
+  };
+
+  const saveEdit = (updated: Strategy) => {
+    setStrategies((prev) => prev.map((s) => s.id === updated.id ? updated : s));
+    setEditingStrat(null);
+    toast.success("Estrategia actualizada");
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -106,19 +135,12 @@ export default function Playbook() {
 
   const handleExportPDF = async () => {
     if (selectedIds.size === 0) { toast.error("Seleccioná al menos una estrategia"); return; }
-
-    // Group by map, then by side, then sort by type
     const byMap: Record<string, Strategy[]> = {};
-    selectedStrats.forEach((s) => {
-      if (!byMap[s.map]) byMap[s.map] = [];
-      byMap[s.map].push(s);
-    });
+    selectedStrats.forEach((s) => { if (!byMap[s.map]) byMap[s.map] = []; byMap[s.map].push(s); });
 
-    // Build printable HTML
     const mapSections = Object.entries(byMap).map(([map, strats]) => {
       const ctS = sortByType(strats.filter((s) => s.side === "CT"));
       const trS = sortByType(strats.filter((s) => s.side === "TR"));
-
       const renderStrat = (s: Strategy) => `
         <div style="margin-bottom:14px;page-break-inside:avoid;border:1px solid #333;border-radius:6px;padding:12px;background:#1a1a2e;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -128,116 +150,81 @@ export default function Playbook() {
             <span style="margin-left:auto;font-size:9px;color:${s.status === 'Ready' ? '#70AD47' : s.status === 'Probado' ? '#4a9eff' : '#888'};text-transform:uppercase;">${s.status}</span>
           </div>
           <p style="color:#ccc;font-size:11px;margin:0 0 8px;">${s.description}</p>
-          ${Object.keys(s.playerRoles).length > 0 ? `
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
-              ${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}
-            </div>
-          ` : ''}
+          ${Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}</div>` : ''}
           ${s.notes ? `<p style="font-size:10px;color:#999;border-left:2px solid #ED7D31;padding-left:8px;margin:4px 0;">${s.notes}</p>` : ''}
-        </div>
-      `;
-
+        </div>`;
       return `
         <div style="page-break-before:${map === Object.keys(byMap)[0] ? 'auto' : 'always'};">
           <h2 style="color:#ED7D31;font-size:22px;margin:0 0 16px;border-bottom:2px solid #ED7D31;padding-bottom:8px;">📋 ${map}</h2>
           ${ctS.length > 0 ? `<h3 style="color:#1F4E79;font-size:14px;margin:12px 0 8px;">🛡️ CT SIDE</h3>${ctS.map(renderStrat).join('')}` : ''}
           ${trS.length > 0 ? `<h3 style="color:#ED7D31;font-size:14px;margin:12px 0 8px;">⚔️ TR SIDE</h3>${trS.map(renderStrat).join('')}` : ''}
-        </div>
-      `;
+        </div>`;
     }).join('');
 
-    const html = `
-      <html>
-      <head>
-        <style>
-          @page { size: A4; margin: 20mm; }
-          body { font-family: Arial, sans-serif; background: #0f0f23; color: #e8e8e8; margin: 0; padding: 20px; }
-          @media print { body { background: #0f0f23; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-        </style>
-      </head>
-      <body>
-        <div style="text-align:center;margin-bottom:24px;">
-          <h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1>
-          <p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p>
-        </div>
-        ${mapSections}
-        <div style="text-align:center;margin-top:24px;color:#555;font-size:10px;">
-          HAMBRIENTOS CS2 Team · Generado automáticamente
-        </div>
-      </body>
-      </html>
-    `;
+    const html = `<html><head><style>@page{size:A4;margin:20mm;}body{font-family:Arial,sans-serif;background:#0f0f23;color:#e8e8e8;margin:0;padding:20px;}@media print{body{background:#0f0f23;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
+      <div style="text-align:center;margin-bottom:24px;"><h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1><p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p></div>
+      ${mapSections}
+      <div style="text-align:center;margin-top:24px;color:#555;font-size:10px;">HAMBRIENTOS CS2 Team · Generado automáticamente</div>
+    </body></html>`;
 
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    if (printWindow) { printWindow.document.write(html); printWindow.document.close(); setTimeout(() => printWindow.print(), 500); }
     toast.success("Gameplan listo para imprimir");
   };
 
   return (
     <div className="space-y-6 animate-slide-up">
+      {/* Codewords Reference */}
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
+        <button onClick={() => setShowCodewords(!showCodewords)} className="w-full flex items-center gap-2 p-3 hover:bg-secondary/30 transition-colors text-left">
+          <MessageSquare className="h-4 w-4 text-accent" />
+          <span className="font-heading font-bold text-sm flex-1">Codewords / Callouts</span>
+          <span className="text-[10px] text-muted-foreground mr-2">{CODEWORDS.length} calls</span>
+          {showCodewords ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        {showCodewords && (
+          <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 border-t border-border pt-3">
+            {CODEWORDS.map((cw) => (
+              <div key={cw.word} className="flex items-start gap-2 bg-secondary/40 rounded-md p-2">
+                <span className="text-xs font-heading font-bold text-accent bg-accent/10 px-2 py-0.5 rounded shrink-0">{cw.word}</span>
+                <span className="text-[11px] text-muted-foreground leading-tight">{cw.desc}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Map + Side selector */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex gap-2">
           {MAPS.map((map) => {
             const count = strategies.filter((s) => s.map === map).length;
             return (
-              <button
-                key={map}
-                onClick={() => setSelectedMap(map)}
-                className={cn(
-                  "px-4 py-2 rounded-lg font-heading font-bold text-sm transition-all border",
-                  selectedMap === map
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-card text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {map}
-                <span className="block text-xs font-body font-normal">{count} strats</span>
+              <button key={map} onClick={() => setSelectedMap(map)} className={cn("px-4 py-2 rounded-lg font-heading font-bold text-sm transition-all border", selectedMap === map ? "border-accent bg-accent/10 text-accent" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+                {map}<span className="block text-xs font-body font-normal">{count} strats</span>
               </button>
             );
           })}
         </div>
         <div className="flex gap-1 ml-auto">
           {(["all", "CT", "TR"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setSelectedSide(s)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                selectedSide === s
-                  ? s === "CT" ? "bg-primary text-primary-foreground" : s === "TR" ? "bg-accent text-accent-foreground" : "bg-secondary text-foreground"
-                  : "bg-secondary/50 text-muted-foreground"
-              )}
-            >
+            <button key={s} onClick={() => setSelectedSide(s)} className={cn("px-3 py-1.5 rounded-md text-xs font-semibold transition-all", selectedSide === s ? s === "CT" ? "bg-primary text-primary-foreground" : s === "TR" ? "bg-accent text-accent-foreground" : "bg-secondary text-foreground" : "bg-secondary/50 text-muted-foreground")}>
               {s === "all" ? "Todos" : s}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Gameplan mode toggle */}
+      {/* Gameplan mode */}
       <div className="flex flex-wrap gap-2 items-center">
-        <Button
-          variant={gameplanMode ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setGameplanMode(!gameplanMode); if (gameplanMode) setSelectedIds(new Set()); }}
-          className={gameplanMode ? "gradient-accent text-accent-foreground" : ""}
-        >
-          <FileDown className="h-4 w-4 mr-1" />
-          {gameplanMode ? `Gameplan (${selectedIds.size})` : "Armar Gameplan"}
+        <Button variant={gameplanMode ? "default" : "outline"} size="sm" onClick={() => { setGameplanMode(!gameplanMode); if (gameplanMode) setSelectedIds(new Set()); }} className={gameplanMode ? "gradient-accent text-accent-foreground" : ""}>
+          <FileDown className="h-4 w-4 mr-1" />{gameplanMode ? `Gameplan (${selectedIds.size})` : "Armar Gameplan"}
         </Button>
         {gameplanMode && (
           <>
             <Select value={gameplanMap} onValueChange={(v) => setGameplanMap(v as MapName | "all")}>
               <SelectTrigger className="w-32 h-8"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los mapas</SelectItem>
-                {MAPS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-              </SelectContent>
+              <SelectContent><SelectItem value="all">Todos los mapas</SelectItem>{MAPS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
             </Select>
             <Button size="sm" onClick={() => { const all = new Set(filtered.map((s) => s.id)); setSelectedIds((prev) => { const merged = new Set(prev); all.forEach((id) => merged.add(id)); return merged; }); }} variant="outline" className="h-8 text-xs">
               <Check className="h-3 w-3 mr-1" /> Seleccionar vista
@@ -249,54 +236,65 @@ export default function Playbook() {
         )}
       </div>
 
-      {/* Strategies grouped by side */}
-      {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
-        <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
-      )}
-      {(selectedSide === "all" || selectedSide === "TR") && trStrats.length > 0 && (
-        <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
-      )}
-
-      {filtered.length === 0 && !showForm && (
-        <div className="text-center py-12 text-muted-foreground">
-          <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-40" />
-          <p className="font-heading">Sin estrategias en {selectedMap}</p>
-          <p className="text-sm">Agregá la primera estrategia para este mapa</p>
-        </div>
-      )}
-
-      {/* Add form */}
-      {showForm ? (
-        <AddStrategyForm
-          defaultMap={selectedMap}
-          onAdd={(s) => { setStrategies((prev) => [s, ...prev]); setShowForm(false); toast.success("Estrategia agregada"); }}
-          onCancel={() => setShowForm(false)}
+      {/* Edit form */}
+      {editingStrat && (
+        <StrategyForm
+          initialData={editingStrat}
+          title="Editar Estrategia"
+          submitLabel="Guardar Cambios"
+          onSubmit={saveEdit}
+          onCancel={() => setEditingStrat(null)}
         />
-      ) : (
-        <Button onClick={() => setShowForm(true)} className="gradient-accent text-accent-foreground w-full">
-          <Plus className="h-4 w-4 mr-2" /> Agregar Estrategia
-        </Button>
+      )}
+
+      {/* Strategies grouped by side */}
+      {!editingStrat && (
+        <>
+          {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
+            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+          )}
+          {(selectedSide === "all" || selectedSide === "TR") && trStrats.length > 0 && (
+            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+          )}
+
+          {filtered.length === 0 && !showForm && (
+            <div className="text-center py-12 text-muted-foreground">
+              <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-40" />
+              <p className="font-heading">Sin estrategias en {selectedMap}</p>
+              <p className="text-sm">Agregá la primera estrategia para este mapa</p>
+            </div>
+          )}
+
+          {showForm ? (
+            <StrategyForm
+              initialData={{ id: "", map: selectedMap, side: "TR", type: STRAT_TYPES[0], name: "", description: "", playerRoles: {}, notes: "", link: "", status: "Draft" }}
+              title="Nueva Estrategia"
+              submitLabel="Guardar"
+              onSubmit={(s) => { setStrategies((prev) => [{ ...s, id: crypto.randomUUID() }, ...prev]); setShowForm(false); toast.success("Estrategia agregada"); }}
+              onCancel={() => setShowForm(false)}
+            />
+          ) : (
+            <Button onClick={() => setShowForm(true)} className="gradient-accent text-accent-foreground w-full">
+              <Plus className="h-4 w-4 mr-2" /> Agregar Estrategia
+            </Button>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, gameplanMode, selectedIds, onToggleSelect }: {
-  title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void; onDelete: (id: string) => void;
+function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect }: {
+  title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
+  onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
 }) {
-  // Group by type for visual organization
   const grouped: Record<string, Strategy[]> = {};
-  strats.forEach((s) => {
-    if (!grouped[s.type]) grouped[s.type] = [];
-    grouped[s.type].push(s);
-  });
+  strats.forEach((s) => { if (!grouped[s.type]) grouped[s.type] = []; grouped[s.type].push(s); });
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-heading font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-        {icon} {title}
-      </h3>
+      <h3 className="text-sm font-heading font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">{icon} {title}</h3>
       {Object.entries(grouped).map(([type, typeStrats]) => (
         <div key={type} className="space-y-1.5">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">{type}</p>
@@ -307,13 +305,8 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
             return (
               <div key={s.id} className={cn("bg-card rounded-lg border card-glow overflow-hidden transition-all", isSelected ? "border-accent/50 bg-accent/5" : "border-border")}>
                 <div className="flex items-center gap-2 p-4">
-                  {gameplanMode && (
-                    <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelect(s.id)} className="shrink-0" />
-                  )}
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                    className="flex items-center gap-3 flex-1 text-left hover:bg-secondary/30 transition-colors rounded"
-                  >
+                  {gameplanMode && <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelect(s.id)} className="shrink-0" />}
+                  <button onClick={() => setExpandedId(isExpanded ? null : s.id)} className="flex items-center gap-3 flex-1 text-left hover:bg-secondary/30 transition-colors rounded">
                     <span className={cn("text-[10px] px-2 py-0.5 rounded font-semibold uppercase", statusColors[s.status])}>{s.status}</span>
                     <span className="font-heading font-semibold text-sm flex-1">{s.name}</span>
                     {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -325,9 +318,7 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
                     {Object.keys(s.playerRoles).length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(s.playerRoles).map(([player, role]) => (
-                          <span key={player} className="text-xs bg-secondary rounded-md px-2 py-1">
-                            <strong className="text-accent">{player}</strong>: {role}
-                          </span>
+                          <span key={player} className="text-xs bg-secondary rounded-md px-2 py-1"><strong className="text-accent">{player}</strong>: {role}</span>
                         ))}
                       </div>
                     )}
@@ -337,9 +328,17 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
                         <LinkIcon className="h-3 w-3" /> Ver referencia
                       </a>
                     )}
-                    <button onClick={() => onDelete(s.id)} className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors">
-                      <Trash2 className="h-3 w-3" /> Eliminar
-                    </button>
+                    <div className="flex gap-3 pt-1">
+                      <button onClick={() => onEdit(s)} className="text-xs text-muted-foreground hover:text-accent flex items-center gap-1 transition-colors">
+                        <Pencil className="h-3 w-3" /> Editar
+                      </button>
+                      <button onClick={() => onDuplicate(s)} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors">
+                        <Copy className="h-3 w-3" /> Duplicar
+                      </button>
+                      <button onClick={() => onDelete(s.id)} className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors">
+                        <Trash2 className="h-3 w-3" /> Eliminar
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -351,22 +350,25 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
   );
 }
 
-function AddStrategyForm({ defaultMap, onAdd, onCancel }: { defaultMap: MapName; onAdd: (s: Strategy) => void; onCancel: () => void }) {
-  const [map, setMap] = useState<MapName>(defaultMap);
-  const [side, setSide] = useState<"CT" | "TR">("TR");
-  const [type, setType] = useState(STRAT_TYPES[0]);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [notes, setNotes] = useState("");
-  const [link, setLink] = useState("");
-  const [status, setStatus] = useState<Strategy["status"]>("Draft");
-  const [playerRoles, setPlayerRoles] = useState<Record<string, string>>({});
+function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel }: {
+  initialData: Strategy; title: string; submitLabel: string;
+  onSubmit: (s: Strategy) => void; onCancel: () => void;
+}) {
+  const [map, setMap] = useState<MapName>(initialData.map);
+  const [side, setSide] = useState<"CT" | "TR">(initialData.side);
+  const [type, setType] = useState(initialData.type);
+  const [name, setName] = useState(initialData.name);
+  const [description, setDescription] = useState(initialData.description);
+  const [notes, setNotes] = useState(initialData.notes);
+  const [link, setLink] = useState(initialData.link);
+  const [status, setStatus] = useState<Strategy["status"]>(initialData.status);
+  const [playerRoles, setPlayerRoles] = useState<Record<string, string>>({ ...initialData.playerRoles });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) { toast.error("Nombre requerido"); return; }
-    onAdd({
-      id: crypto.randomUUID(),
+    onSubmit({
+      id: initialData.id,
       map, side, type, name, description,
       playerRoles: Object.fromEntries(Object.entries(playerRoles).filter(([, v]) => v)),
       notes, link, status,
@@ -376,7 +378,7 @@ function AddStrategyForm({ defaultMap, onAdd, onCancel }: { defaultMap: MapName;
   return (
     <form onSubmit={handleSubmit} className="bg-card rounded-lg border border-accent/30 p-6 space-y-4 card-glow">
       <h3 className="font-heading font-bold text-lg flex items-center gap-2">
-        <Plus className="h-5 w-5 text-accent" /> Nueva Estrategia
+        {initialData.id ? <Pencil className="h-5 w-5 text-accent" /> : <Plus className="h-5 w-5 text-accent" />} {title}
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="space-y-1">
@@ -443,7 +445,7 @@ function AddStrategyForm({ defaultMap, onAdd, onCancel }: { defaultMap: MapName;
         </div>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" className="gradient-accent text-accent-foreground flex-1">Guardar</Button>
+        <Button type="submit" className="gradient-accent text-accent-foreground flex-1">{submitLabel}</Button>
         <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
       </div>
     </form>
