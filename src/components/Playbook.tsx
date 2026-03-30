@@ -87,6 +87,13 @@ export default function Playbook() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
+
+  const ensureProtocol = (url: string) => {
+    if (!url) return url;
+    if (url.match(/^https?:\/\//i)) return url;
+    return `https://${url}`;
+  };
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
