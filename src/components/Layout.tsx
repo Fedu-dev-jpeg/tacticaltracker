@@ -1,5 +1,5 @@
-import { ReactNode, useState } from "react";
-import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy } from "lucide-react";
+import { ReactNode } from "react";
+import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -9,6 +9,7 @@ const tabs = [
   { id: "history", label: "Historial", icon: History },
   { id: "maps", label: "Mapas", icon: Map },
   { id: "tournament", label: "Torneo", icon: Trophy },
+  { id: "playbook", label: "Playbook", icon: BookOpen },
 ] as const;
 
 export type TabId = (typeof tabs)[number]["id"];
@@ -57,7 +58,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
       </nav>
 
       {/* Content */}
-      <main className="flex-1 container py-6">{children}</main>
+      <main className="flex-1 container py-6 pb-24 md:pb-6">{children}</main>
 
       {/* Mobile Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md">
@@ -67,11 +68,11 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-medium transition-colors",
+                "flex flex-col items-center gap-0.5 px-1.5 py-1 text-[9px] font-medium transition-colors",
                 activeTab === tab.id ? "text-accent" : "text-muted-foreground"
               )}
             >
-              <tab.icon className="h-5 w-5" />
+              <tab.icon className="h-4 w-4" />
               {tab.label.split(" ").pop()}
             </button>
           ))}
