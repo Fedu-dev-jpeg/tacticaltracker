@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { MAPS, MapName, PLAYERS } from "@/types/match";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,16 +19,9 @@ const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Gyer: "Ancla",
 };
 
+// Legacy localStorage keys for migration
+const STORAGE_KEY = "hambrientos_playbook";
 const PLAYER_DESC_KEY = "hambrientos_player_descriptions";
-
-function loadPlayerDescriptions(): Record<string, string> {
-  try {
-    const data = localStorage.getItem(PLAYER_DESC_KEY);
-    return data ? { ...DEFAULT_PLAYER_DESCRIPTIONS, ...JSON.parse(data) } : { ...DEFAULT_PLAYER_DESCRIPTIONS };
-  } catch {
-    return { ...DEFAULT_PLAYER_DESCRIPTIONS };
-  }
-}
 
 export interface Strategy {
   id: string;
@@ -55,17 +49,6 @@ const CODEWORDS = [
   { word: "Deathmatch", desc: "Round suelto sin estructura — cada uno busca su duelo, usado en ecos o últimas rondas" },
 ];
 
-const STORAGE_KEY = "hambrientos_playbook";
-
-function loadStrategies(): Strategy[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : getDefaultStrategies();
-  } catch {
-    return getDefaultStrategies();
-  }
-}
-
 function getDefaultStrategies(): Strategy[] {
   return [
     { id: "def-1", map: "Nuke", side: "TR", type: "Default", name: "Lobby Split", description: "Default con control de lobby. Hanzo lobby, Froud AWP outside, Diuva door/silo, Gyer rotador, Fedu soporte.", playerRoles: { Hanzo: "Lobby", Froud: "AWP", Diuva: "Outside", Gyer: "Door/Silo", Fedu: "Rotador" }, notes: "Ganar info de ramp antes de commitear", link: "", status: "Ready" },
@@ -79,6 +62,21 @@ function getDefaultStrategies(): Strategy[] {
   ];
 }
 
+function dbRowToStrategy(row: any): Strategy {
+  return {
+    id: row.id,
+    map: row.map as MapName,
+    side: row.side as "CT" | "TR",
+    type: row.type,
+    name: row.name,
+    description: row.description || "",
+    playerRoles: (row.player_roles as Record<string, string>) || {},
+    notes: row.notes || "",
+    link: row.link || "",
+    status: row.status as Strategy["status"],
+  };
+}
+
 function sortByType(strats: Strategy[]): Strategy[] {
   return [...strats].sort((a, b) => {
     const ai = STRAT_TYPE_ORDER.indexOf(a.type);
@@ -88,7 +86,8 @@ function sortByType(strats: Strategy[]): Strategy[] {
 }
 
 export default function Playbook() {
-  const [strategies, setStrategies] = useState<Strategy[]>(loadStrategies);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedMap, setSelectedMap] = useState<MapName>("Nuke");
   const [selectedSide, setSelectedSide] = useState<"CT" | "TR" | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -99,9 +98,50 @@ export default function Playbook() {
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
-  const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>(loadPlayerDescriptions);
+  const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
+
+  // Load strategies from Supabase on mount
+  const fetchStrategies = useCallback(async () => {
+    const { data, error } = await supabase.from("strategies").select("*");
+    if (error) {
+      console.error("Error loading strategies:", error);
+      // Fallback to localStorage if DB is empty or errors
+      const local = localStorage.getItem(STORAGE_KEY);
+      setStrategies(local ? JSON.parse(local) : getDefaultStrategies());
+    } else if (data.length === 0) {
+      // Seed defaults into DB
+      const defaults = getDefaultStrategies();
+      const rows = defaults.map((s) => ({
+        id: crypto.randomUUID(),
+        map: s.map, side: s.side, type: s.type, name: s.name,
+        description: s.description, player_roles: s.playerRoles as any,
+        notes: s.notes, link: s.link, status: s.status,
+      }));
+      await supabase.from("strategies").insert(rows);
+      const { data: seeded } = await supabase.from("strategies").select("*");
+      setStrategies((seeded || []).map(dbRowToStrategy));
+    } else {
+      setStrategies(data.map(dbRowToStrategy));
+    }
+    setLoading(false);
+  }, []);
+
+  // Load player descriptions from Supabase
+  const fetchPlayerDescriptions = useCallback(async () => {
+    const { data } = await supabase.from("player_descriptions").select("*");
+    if (data && data.length > 0) {
+      const descs: Record<string, string> = { ...DEFAULT_PLAYER_DESCRIPTIONS };
+      data.forEach((row) => { descs[row.player] = row.description; });
+      setPlayerDescriptions(descs);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStrategies();
+    fetchPlayerDescriptions();
+  }, [fetchStrategies, fetchPlayerDescriptions]);
 
   const ensureProtocol = (url: string) => {
     if (!url) return url;
@@ -109,17 +149,10 @@ export default function Playbook() {
     return `https://${url}`;
   };
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
-  }, [strategies]);
-
-  useEffect(() => {
-    localStorage.setItem(PLAYER_DESC_KEY, JSON.stringify(playerDescriptions));
-  }, [playerDescriptions]);
-
-  const savePlayerDesc = (player: string) => {
+  const savePlayerDesc = async (player: string) => {
     setPlayerDescriptions((prev) => ({ ...prev, [player]: tempPlayerDesc }));
     setEditingPlayerDesc(null);
+    await supabase.from("player_descriptions").upsert({ player, description: tempPlayerDesc });
     toast.success(`Descripción de ${player} actualizada`);
   };
 
@@ -136,14 +169,21 @@ export default function Playbook() {
   const ctStrats = filtered.filter((s) => s.side === "CT");
   const trStrats = filtered.filter((s) => s.side === "TR");
 
-  const deleteStrat = (id: string) => {
+  const deleteStrat = async (id: string) => {
     setStrategies((prev) => prev.filter((s) => s.id !== id));
+    await supabase.from("strategies").delete().eq("id", id);
     toast.success("Estrategia eliminada");
   };
 
-  const duplicateStrat = (strat: Strategy) => {
-    const dup: Strategy = { ...strat, id: crypto.randomUUID(), name: `${strat.name} (copia)`, status: "Draft", playerRoles: { ...strat.playerRoles } };
+  const duplicateStrat = async (strat: Strategy) => {
+    const newId = crypto.randomUUID();
+    const dup: Strategy = { ...strat, id: newId, name: `${strat.name} (copia)`, status: "Draft", playerRoles: { ...strat.playerRoles } };
     setStrategies((prev) => [dup, ...prev]);
+    await supabase.from("strategies").insert({
+      id: newId, map: dup.map, side: dup.side, type: dup.type, name: dup.name,
+      description: dup.description, player_roles: dup.playerRoles as any,
+      notes: dup.notes, link: dup.link, status: dup.status,
+    });
     toast.success("Estrategia duplicada");
   };
 
@@ -153,9 +193,14 @@ export default function Playbook() {
     setExpandedId(null);
   };
 
-  const saveEdit = (updated: Strategy) => {
+  const saveEdit = async (updated: Strategy) => {
     setStrategies((prev) => prev.map((s) => s.id === updated.id ? updated : s));
     setEditingStrat(null);
+    await supabase.from("strategies").update({
+      map: updated.map, side: updated.side, type: updated.type, name: updated.name,
+      description: updated.description, player_roles: updated.playerRoles as any,
+      notes: updated.notes, link: updated.link, status: updated.status,
+    }).eq("id", updated.id);
     toast.success("Estrategia actualizada");
   };
 
@@ -211,6 +256,17 @@ export default function Playbook() {
     if (printWindow) { printWindow.document.write(html); printWindow.document.close(); setTimeout(() => printWindow.print(), 500); }
     toast.success("Gameplan listo para imprimir");
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center space-y-2">
+          <BookOpen className="h-10 w-10 mx-auto text-accent animate-pulse" />
+          <p className="text-muted-foreground text-sm">Cargando playbook...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -356,7 +412,7 @@ export default function Playbook() {
               initialData={{ id: "", map: selectedMap, side: "TR", type: STRAT_TYPES[0], name: "", description: "", playerRoles: {}, notes: "", link: "", status: "Draft" }}
               title="Nueva Estrategia"
               submitLabel="Guardar"
-              onSubmit={(s) => { setStrategies((prev) => [{ ...s, id: crypto.randomUUID() }, ...prev]); setShowForm(false); toast.success("Estrategia agregada"); }}
+              onSubmit={async (s) => { const newId = crypto.randomUUID(); const newStrat = { ...s, id: newId }; setStrategies((prev) => [newStrat, ...prev]); setShowForm(false); await supabase.from("strategies").insert({ id: newId, map: s.map, side: s.side, type: s.type, name: s.name, description: s.description, player_roles: s.playerRoles as any, notes: s.notes, link: s.link, status: s.status }); toast.success("Estrategia agregada"); }}
               onCancel={() => setShowForm(false)}
             />
           ) : (
