@@ -410,7 +410,7 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
                         <div className="bg-accent/10 border border-accent/20 rounded-md p-3">
                           <span className="text-xs font-heading font-bold text-accent">{selectedPlayer}</span>
                           <p className="text-sm text-foreground mt-1">{s.playerRoles[selectedPlayer]}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{PLAYER_DESCRIPTIONS[selectedPlayer]}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{playerDescriptions[selectedPlayer]}</p>
                         </div>
                       )
                     ) : (
