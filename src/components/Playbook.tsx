@@ -257,6 +257,17 @@ export default function Playbook() {
     toast.success("Gameplan listo para imprimir");
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center space-y-2">
+          <BookOpen className="h-10 w-10 mx-auto text-accent animate-pulse" />
+          <p className="text-muted-foreground text-sm">Cargando playbook...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-slide-up">
       {/* Codewords Reference */}
