@@ -1,6 +1,8 @@
 import { ReactNode } from "react";
-import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy, BookOpen } from "lucide-react";
+import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy, BookOpen, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 const tabs = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -21,6 +23,9 @@ interface LayoutProps {
 }
 
 export default function Layout({ activeTab, onTabChange, children }: LayoutProps) {
+  const { user, signOut } = useAuth();
+  const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Usuario";
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -32,6 +37,14 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
               <span className="text-accent">HAMBRIENTOS</span>
               <span className="text-muted-foreground text-sm ml-2 font-body font-normal hidden sm:inline">CS2 Team Tracker</span>
             </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground hidden sm:inline">
+              Hola, <span className="text-accent font-medium">{playerName}</span>
+            </span>
+            <Button variant="ghost" size="icon" onClick={signOut} title="Cerrar sesión">
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </header>
