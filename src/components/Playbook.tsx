@@ -10,13 +10,24 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X } from "lucide-react";
 import { toast } from "sonner";
 
-const PLAYER_DESCRIPTIONS: Record<string, string> = {
+const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Froud: "AWPer principal · Líder táctico",
   Fedu: "Soporte · Utility master",
   Hanzo: "Entry fragger · Agresivo",
   Diuva: "Anchor / Site player · Clutch",
   Gyer: "Flex / Rotador · Segundo entry",
 };
+
+const PLAYER_DESC_KEY = "hambrientos_player_descriptions";
+
+function loadPlayerDescriptions(): Record<string, string> {
+  try {
+    const data = localStorage.getItem(PLAYER_DESC_KEY);
+    return data ? { ...DEFAULT_PLAYER_DESCRIPTIONS, ...JSON.parse(data) } : { ...DEFAULT_PLAYER_DESCRIPTIONS };
+  } catch {
+    return { ...DEFAULT_PLAYER_DESCRIPTIONS };
+  }
+}
 
 export interface Strategy {
   id: string;
@@ -88,6 +99,9 @@ export default function Playbook() {
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
+  const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>(loadPlayerDescriptions);
+  const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
+  const [tempPlayerDesc, setTempPlayerDesc] = useState("");
 
   const ensureProtocol = (url: string) => {
     if (!url) return url;
@@ -98,6 +112,16 @@ export default function Playbook() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
   }, [strategies]);
+
+  useEffect(() => {
+    localStorage.setItem(PLAYER_DESC_KEY, JSON.stringify(playerDescriptions));
+  }, [playerDescriptions]);
+
+  const savePlayerDesc = (player: string) => {
+    setPlayerDescriptions((prev) => ({ ...prev, [player]: tempPlayerDesc }));
+    setEditingPlayerDesc(null);
+    toast.success(`Descripción de ${player} actualizada`);
+  };
 
   const filtered = useMemo(() => {
     const f = strategies.filter((s) => {
@@ -166,7 +190,7 @@ export default function Playbook() {
             <span style="margin-left:auto;font-size:9px;color:${s.status === 'Ready' ? '#70AD47' : s.status === 'Probado' ? '#4a9eff' : '#888'};text-transform:uppercase;">${s.status}</span>
           </div>
           <p style="color:#ccc;font-size:11px;margin:0 0 8px;">${s.description}</p>
-          ${Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}</div>` : ''}
+          ${selectedPlayer && s.playerRoles[selectedPlayer] ? `<div style="background:#2a1f00;border:1px solid #ED7D31;border-radius:4px;padding:6px 10px;margin-bottom:6px;"><strong style="color:#ED7D31;font-size:11px;">${selectedPlayer}</strong><span style="color:#ddd;font-size:11px;margin-left:8px;">${s.playerRoles[selectedPlayer]}</span><span style="color:#888;font-size:9px;margin-left:8px;">${playerDescriptions[selectedPlayer] || ''}</span></div>` : (Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}</div>` : '')}
           ${s.notes ? `<p style="font-size:10px;color:#999;border-left:2px solid #ED7D31;padding-left:8px;margin:4px 0;">${s.notes}</p>` : ''}
         </div>`;
       return `
@@ -178,7 +202,7 @@ export default function Playbook() {
     }).join('');
 
     const html = `<html><head><style>@page{size:A4;margin:20mm;}body{font-family:Arial,sans-serif;background:#0f0f23;color:#e8e8e8;margin:0;padding:20px;}@media print{body{background:#0f0f23;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
-      <div style="text-align:center;margin-bottom:24px;"><h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1><p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p></div>
+      <div style="text-align:center;margin-bottom:24px;"><h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1><p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN${selectedPlayer ? ` · ${selectedPlayer} (${playerDescriptions[selectedPlayer] || ''})` : ''} · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p></div>
       ${mapSections}
       <div style="text-align:center;margin-top:24px;color:#555;font-size:10px;">HAMBRIENTOS CS2 Team · Generado automáticamente</div>
     </body></html>`;
@@ -224,20 +248,33 @@ export default function Playbook() {
         <div className="flex flex-wrap gap-2">
           {PLAYERS.map((p) => {
             const isActive = selectedPlayer === p;
+            const isEditing = editingPlayerDesc === p;
             const playerStratCount = strategies.filter((s) => s.playerRoles[p]).length;
             return (
-              <button
-                key={p}
-                onClick={() => setSelectedPlayer(isActive ? null : p)}
-                className={cn(
-                  "flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left",
-                  isActive ? "border-accent bg-accent/10 text-accent" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground hover:border-foreground/20"
-                )}
-              >
-                <span className="text-xs font-heading font-bold">{p}</span>
-                <span className="text-[10px] opacity-70">{PLAYER_DESCRIPTIONS[p]}</span>
-                <span className="text-[9px] mt-0.5 opacity-50">{playerStratCount} strats</span>
-              </button>
+              <div key={p} className="flex flex-col">
+                <button
+                  onClick={() => setSelectedPlayer(isActive ? null : p)}
+                  className={cn(
+                    "flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left",
+                    isActive ? "border-accent bg-accent/10 text-accent" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground hover:border-foreground/20"
+                  )}
+                >
+                  <span className="text-xs font-heading font-bold">{p}</span>
+                  {isEditing ? (
+                    <div className="flex gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                      <Input value={tempPlayerDesc} onChange={(e) => setTempPlayerDesc(e.target.value)} className="h-6 text-[10px] w-36" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); savePlayerDesc(p); } }} autoFocus />
+                      <button type="button" onClick={(e) => { e.stopPropagation(); savePlayerDesc(p); }} className="text-success"><Check className="h-3 w-3" /></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingPlayerDesc(null); }} className="text-muted-foreground"><X className="h-3 w-3" /></button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] opacity-70 group flex items-center gap-1">
+                      {playerDescriptions[p]}
+                      <button onClick={(e) => { e.stopPropagation(); setEditingPlayerDesc(p); setTempPlayerDesc(playerDescriptions[p] || ""); }} className="opacity-0 group-hover:opacity-100 transition-opacity"><Pencil className="h-2.5 w-2.5" /></button>
+                    </span>
+                  )}
+                  <span className="text-[9px] mt-0.5 opacity-50">{playerStratCount} strats</span>
+                </button>
+              </div>
             );
           })}
         </div>
@@ -300,10 +337,10 @@ export default function Playbook() {
       {!editingStrat && (
         <>
           {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
-            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} />
+            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
           )}
           {(selectedSide === "all" || selectedSide === "TR") && trStrats.length > 0 && (
-            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} />
+            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
           )}
 
           {filtered.length === 0 && !showForm && (
@@ -333,11 +370,11 @@ export default function Playbook() {
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol }: {
+function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol, playerDescriptions }: {
   title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
   onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
-  selectedPlayer: string | null; ensureProtocol: (url: string) => string;
+  selectedPlayer: string | null; ensureProtocol: (url: string) => string; playerDescriptions: Record<string, string>;
 }) {
   const grouped: Record<string, Strategy[]> = {};
   strats.forEach((s) => { if (!grouped[s.type]) grouped[s.type] = []; grouped[s.type].push(s); });
@@ -373,7 +410,7 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
                         <div className="bg-accent/10 border border-accent/20 rounded-md p-3">
                           <span className="text-xs font-heading font-bold text-accent">{selectedPlayer}</span>
                           <p className="text-sm text-foreground mt-1">{s.playerRoles[selectedPlayer]}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{PLAYER_DESCRIPTIONS[selectedPlayer]}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{playerDescriptions[selectedPlayer]}</p>
                         </div>
                       )
                     ) : (
