@@ -7,8 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare } from "lucide-react";
+import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X } from "lucide-react";
 import { toast } from "sonner";
+
+const PLAYER_DESCRIPTIONS: Record<string, string> = {
+  Froud: "AWPer principal · Líder táctico",
+  Fedu: "Soporte · Utility master",
+  Hanzo: "Entry fragger · Agresivo",
+  Diuva: "Anchor / Site player · Clutch",
+  Gyer: "Flex / Rotador · Segundo entry",
+};
 
 export interface Strategy {
   id: string;
@@ -79,6 +87,13 @@ export default function Playbook() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
+
+  const ensureProtocol = (url: string) => {
+    if (!url) return url;
+    if (url.match(/^https?:\/\//i)) return url;
+    return `https://${url}`;
+  };
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
@@ -88,10 +103,11 @@ export default function Playbook() {
     const f = strategies.filter((s) => {
       if (s.map !== selectedMap) return false;
       if (selectedSide !== "all" && s.side !== selectedSide) return false;
+      if (selectedPlayer && !s.playerRoles[selectedPlayer]) return false;
       return true;
     });
     return sortByType(f);
-  }, [strategies, selectedMap, selectedSide]);
+  }, [strategies, selectedMap, selectedSide, selectedPlayer]);
 
   const ctStrats = filtered.filter((s) => s.side === "CT");
   const trStrats = filtered.filter((s) => s.side === "TR");
@@ -194,6 +210,39 @@ export default function Playbook() {
         )}
       </div>
 
+      {/* Player filter */}
+      <div className="bg-card rounded-lg border border-border p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <User className="h-4 w-4 text-accent" />
+          <span className="font-heading font-bold text-sm">Playbook Individual</span>
+          {selectedPlayer && (
+            <button onClick={() => setSelectedPlayer(null)} className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <X className="h-3 w-3" /> Ver todos
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {PLAYERS.map((p) => {
+            const isActive = selectedPlayer === p;
+            const playerStratCount = strategies.filter((s) => s.playerRoles[p]).length;
+            return (
+              <button
+                key={p}
+                onClick={() => setSelectedPlayer(isActive ? null : p)}
+                className={cn(
+                  "flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left",
+                  isActive ? "border-accent bg-accent/10 text-accent" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground hover:border-foreground/20"
+                )}
+              >
+                <span className="text-xs font-heading font-bold">{p}</span>
+                <span className="text-[10px] opacity-70">{PLAYER_DESCRIPTIONS[p]}</span>
+                <span className="text-[9px] mt-0.5 opacity-50">{playerStratCount} strats</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Map + Side selector */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex gap-2">
@@ -251,10 +300,10 @@ export default function Playbook() {
       {!editingStrat && (
         <>
           {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
-            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} />
           )}
           {(selectedSide === "all" || selectedSide === "TR") && trStrats.length > 0 && (
-            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} />
           )}
 
           {filtered.length === 0 && !showForm && (
@@ -284,10 +333,11 @@ export default function Playbook() {
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect }: {
+function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol }: {
   title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
   onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
+  selectedPlayer: string | null; ensureProtocol: (url: string) => string;
 }) {
   const grouped: Record<string, Strategy[]> = {};
   strats.forEach((s) => { if (!grouped[s.type]) grouped[s.type] = []; grouped[s.type].push(s); });
@@ -309,22 +359,35 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
                   <button onClick={() => setExpandedId(isExpanded ? null : s.id)} className="flex items-center gap-3 flex-1 text-left hover:bg-secondary/30 transition-colors rounded">
                     <span className={cn("text-[10px] px-2 py-0.5 rounded font-semibold uppercase", statusColors[s.status])}>{s.status}</span>
                     <span className="font-heading font-semibold text-sm flex-1">{s.name}</span>
+                    {selectedPlayer && s.playerRoles[selectedPlayer] && (
+                      <span className="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded">{selectedPlayer}: {s.playerRoles[selectedPlayer]}</span>
+                    )}
                     {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                   </button>
                 </div>
                 {isExpanded && (
                   <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
                     <p className="text-sm text-foreground/90">{s.description}</p>
-                    {Object.keys(s.playerRoles).length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(s.playerRoles).map(([player, role]) => (
-                          <span key={player} className="text-xs bg-secondary rounded-md px-2 py-1"><strong className="text-accent">{player}</strong>: {role}</span>
-                        ))}
-                      </div>
+                    {selectedPlayer ? (
+                      s.playerRoles[selectedPlayer] && (
+                        <div className="bg-accent/10 border border-accent/20 rounded-md p-3">
+                          <span className="text-xs font-heading font-bold text-accent">{selectedPlayer}</span>
+                          <p className="text-sm text-foreground mt-1">{s.playerRoles[selectedPlayer]}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{PLAYER_DESCRIPTIONS[selectedPlayer]}</p>
+                        </div>
+                      )
+                    ) : (
+                      Object.keys(s.playerRoles).length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(s.playerRoles).map(([player, role]) => (
+                            <span key={player} className="text-xs bg-secondary rounded-md px-2 py-1"><strong className="text-accent">{player}</strong>: {role}</span>
+                          ))}
+                        </div>
+                      )
                     )}
                     {s.notes && <p className="text-xs text-muted-foreground border-l-2 border-accent/50 pl-2">{s.notes}</p>}
                     {s.link && (
-                      <a href={s.link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                      <a href={ensureProtocol(s.link)} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
                         <LinkIcon className="h-3 w-3" /> Ver referencia
                       </a>
                     )}
