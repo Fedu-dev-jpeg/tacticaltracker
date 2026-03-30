@@ -401,7 +401,7 @@ export default function Playbook() {
               initialData={{ id: "", map: selectedMap, side: "TR", type: STRAT_TYPES[0], name: "", description: "", playerRoles: {}, notes: "", link: "", status: "Draft" }}
               title="Nueva Estrategia"
               submitLabel="Guardar"
-              onSubmit={(s) => { setStrategies((prev) => [{ ...s, id: crypto.randomUUID() }, ...prev]); setShowForm(false); toast.success("Estrategia agregada"); }}
+              onSubmit={async (s) => { const newId = crypto.randomUUID(); const newStrat = { ...s, id: newId }; setStrategies((prev) => [newStrat, ...prev]); setShowForm(false); await supabase.from("strategies").insert({ id: newId, map: s.map, side: s.side, type: s.type, name: s.name, description: s.description, player_roles: s.playerRoles as any, notes: s.notes, link: s.link, status: s.status }); toast.success("Estrategia agregada"); }}
               onCancel={() => setShowForm(false)}
             />
           ) : (
