@@ -333,10 +333,11 @@ export default function Playbook() {
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect }: {
+function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol }: {
   title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
   onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
+  selectedPlayer: string | null; ensureProtocol: (url: string) => string;
 }) {
   const grouped: Record<string, Strategy[]> = {};
   strats.forEach((s) => { if (!grouped[s.type]) grouped[s.type] = []; grouped[s.type].push(s); });
@@ -358,22 +359,35 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
                   <button onClick={() => setExpandedId(isExpanded ? null : s.id)} className="flex items-center gap-3 flex-1 text-left hover:bg-secondary/30 transition-colors rounded">
                     <span className={cn("text-[10px] px-2 py-0.5 rounded font-semibold uppercase", statusColors[s.status])}>{s.status}</span>
                     <span className="font-heading font-semibold text-sm flex-1">{s.name}</span>
+                    {selectedPlayer && s.playerRoles[selectedPlayer] && (
+                      <span className="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded">{selectedPlayer}: {s.playerRoles[selectedPlayer]}</span>
+                    )}
                     {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                   </button>
                 </div>
                 {isExpanded && (
                   <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
                     <p className="text-sm text-foreground/90">{s.description}</p>
-                    {Object.keys(s.playerRoles).length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(s.playerRoles).map(([player, role]) => (
-                          <span key={player} className="text-xs bg-secondary rounded-md px-2 py-1"><strong className="text-accent">{player}</strong>: {role}</span>
-                        ))}
-                      </div>
+                    {selectedPlayer ? (
+                      s.playerRoles[selectedPlayer] && (
+                        <div className="bg-accent/10 border border-accent/20 rounded-md p-3">
+                          <span className="text-xs font-heading font-bold text-accent">{selectedPlayer}</span>
+                          <p className="text-sm text-foreground mt-1">{s.playerRoles[selectedPlayer]}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{PLAYER_DESCRIPTIONS[selectedPlayer]}</p>
+                        </div>
+                      )
+                    ) : (
+                      Object.keys(s.playerRoles).length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(s.playerRoles).map(([player, role]) => (
+                            <span key={player} className="text-xs bg-secondary rounded-md px-2 py-1"><strong className="text-accent">{player}</strong>: {role}</span>
+                          ))}
+                        </div>
+                      )
                     )}
                     {s.notes && <p className="text-xs text-muted-foreground border-l-2 border-accent/50 pl-2">{s.notes}</p>}
                     {s.link && (
-                      <a href={s.link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                      <a href={ensureProtocol(s.link)} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
                         <LinkIcon className="h-3 w-3" /> Ver referencia
                       </a>
                     )}
