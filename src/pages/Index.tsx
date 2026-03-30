@@ -15,7 +15,6 @@ export default function Index() {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const { matches, addMatch, updateMatch, deleteMatch, importData, exportData } = useMatches();
 
-  // Load demo data if empty
   useEffect(() => {
     if (matches.length === 0) {
       const hasDismissed = localStorage.getItem("hambrientos_demo_dismissed");
@@ -31,12 +30,6 @@ export default function Index() {
     setActiveTab("dashboard");
   };
 
-  const handleClearDemo = () => {
-    importData([]);
-    localStorage.setItem("hambrientos_demo_dismissed", "true");
-    toast.success("Datos de ejemplo eliminados");
-  };
-
   return (
     <Layout activeTab={activeTab} onTabChange={setActiveTab}>
       {activeTab === "dashboard" && <Dashboard matches={matches} />}
@@ -46,6 +39,7 @@ export default function Index() {
         <HistoryView
           matches={matches}
           onDelete={deleteMatch}
+          onUpdate={updateMatch}
           onExport={exportData}
           onImport={importData}
         />
