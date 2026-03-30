@@ -190,7 +190,7 @@ export default function Playbook() {
             <span style="margin-left:auto;font-size:9px;color:${s.status === 'Ready' ? '#70AD47' : s.status === 'Probado' ? '#4a9eff' : '#888'};text-transform:uppercase;">${s.status}</span>
           </div>
           <p style="color:#ccc;font-size:11px;margin:0 0 8px;">${s.description}</p>
-          ${Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}</div>` : ''}
+          ${selectedPlayer && s.playerRoles[selectedPlayer] ? `<div style="background:#2a1f00;border:1px solid #ED7D31;border-radius:4px;padding:6px 10px;margin-bottom:6px;"><strong style="color:#ED7D31;font-size:11px;">${selectedPlayer}</strong><span style="color:#ddd;font-size:11px;margin-left:8px;">${s.playerRoles[selectedPlayer]}</span><span style="color:#888;font-size:9px;margin-left:8px;">${playerDescriptions[selectedPlayer] || ''}</span></div>` : (Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}</div>` : '')}
           ${s.notes ? `<p style="font-size:10px;color:#999;border-left:2px solid #ED7D31;padding-left:8px;margin:4px 0;">${s.notes}</p>` : ''}
         </div>`;
       return `
