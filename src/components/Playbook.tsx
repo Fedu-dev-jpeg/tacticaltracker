@@ -370,11 +370,11 @@ export default function Playbook() {
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol }: {
+function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol, playerDescriptions }: {
   title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
   onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
-  selectedPlayer: string | null; ensureProtocol: (url: string) => string;
+  selectedPlayer: string | null; ensureProtocol: (url: string) => string; playerDescriptions: Record<string, string>;
 }) {
   const grouped: Record<string, Strategy[]> = {};
   strats.forEach((s) => { if (!grouped[s.type]) grouped[s.type] = []; grouped[s.type].push(s); });
