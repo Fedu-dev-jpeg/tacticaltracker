@@ -209,6 +209,39 @@ export default function Playbook() {
         )}
       </div>
 
+      {/* Player filter */}
+      <div className="bg-card rounded-lg border border-border p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <User className="h-4 w-4 text-accent" />
+          <span className="font-heading font-bold text-sm">Playbook Individual</span>
+          {selectedPlayer && (
+            <button onClick={() => setSelectedPlayer(null)} className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <X className="h-3 w-3" /> Ver todos
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {PLAYERS.map((p) => {
+            const isActive = selectedPlayer === p;
+            const playerStratCount = strategies.filter((s) => s.playerRoles[p]).length;
+            return (
+              <button
+                key={p}
+                onClick={() => setSelectedPlayer(isActive ? null : p)}
+                className={cn(
+                  "flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left",
+                  isActive ? "border-accent bg-accent/10 text-accent" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground hover:border-foreground/20"
+                )}
+              >
+                <span className="text-xs font-heading font-bold">{p}</span>
+                <span className="text-[10px] opacity-70">{PLAYER_DESCRIPTIONS[p]}</span>
+                <span className="text-[9px] mt-0.5 opacity-50">{playerStratCount} strats</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Map + Side selector */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex gap-2">
