@@ -145,8 +145,11 @@ export default function Playbook() {
 
   const ensureProtocol = (url: string) => {
     if (!url) return url;
-    if (url.match(/^https?:\/\//i)) return url;
-    return `https://${url}`;
+    const trimmed = url.trim();
+    if (trimmed.match(/^https?:\/\//i)) return trimmed;
+    // Remove any accidental leading slashes or colons
+    const cleaned = trimmed.replace(/^[:/]+/, '');
+    return `https://${cleaned}`;
   };
 
   const savePlayerDesc = async (player: string) => {
