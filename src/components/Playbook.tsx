@@ -248,20 +248,33 @@ export default function Playbook() {
         <div className="flex flex-wrap gap-2">
           {PLAYERS.map((p) => {
             const isActive = selectedPlayer === p;
+            const isEditing = editingPlayerDesc === p;
             const playerStratCount = strategies.filter((s) => s.playerRoles[p]).length;
             return (
-              <button
-                key={p}
-                onClick={() => setSelectedPlayer(isActive ? null : p)}
-                className={cn(
-                  "flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left",
-                  isActive ? "border-accent bg-accent/10 text-accent" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground hover:border-foreground/20"
-                )}
-              >
-                <span className="text-xs font-heading font-bold">{p}</span>
-                <span className="text-[10px] opacity-70">{PLAYER_DESCRIPTIONS[p]}</span>
-                <span className="text-[9px] mt-0.5 opacity-50">{playerStratCount} strats</span>
-              </button>
+              <div key={p} className="flex flex-col">
+                <button
+                  onClick={() => setSelectedPlayer(isActive ? null : p)}
+                  className={cn(
+                    "flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left",
+                    isActive ? "border-accent bg-accent/10 text-accent" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground hover:border-foreground/20"
+                  )}
+                >
+                  <span className="text-xs font-heading font-bold">{p}</span>
+                  {isEditing ? (
+                    <div className="flex gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                      <Input value={tempPlayerDesc} onChange={(e) => setTempPlayerDesc(e.target.value)} className="h-6 text-[10px] w-36" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); savePlayerDesc(p); } }} autoFocus />
+                      <button type="button" onClick={(e) => { e.stopPropagation(); savePlayerDesc(p); }} className="text-success"><Check className="h-3 w-3" /></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingPlayerDesc(null); }} className="text-muted-foreground"><X className="h-3 w-3" /></button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] opacity-70 group flex items-center gap-1">
+                      {playerDescriptions[p]}
+                      <button onClick={(e) => { e.stopPropagation(); setEditingPlayerDesc(p); setTempPlayerDesc(playerDescriptions[p] || ""); }} className="opacity-0 group-hover:opacity-100 transition-opacity"><Pencil className="h-2.5 w-2.5" /></button>
+                    </span>
+                  )}
+                  <span className="text-[9px] mt-0.5 opacity-50">{playerStratCount} strats</span>
+                </button>
+              </div>
             );
           })}
         </div>
