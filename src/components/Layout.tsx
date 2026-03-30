@@ -1,6 +1,8 @@
 import { ReactNode } from "react";
-import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy, BookOpen } from "lucide-react";
+import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy, BookOpen, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 const tabs = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
