@@ -103,10 +103,11 @@ export default function Playbook() {
     const f = strategies.filter((s) => {
       if (s.map !== selectedMap) return false;
       if (selectedSide !== "all" && s.side !== selectedSide) return false;
+      if (selectedPlayer && !s.playerRoles[selectedPlayer]) return false;
       return true;
     });
     return sortByType(f);
-  }, [strategies, selectedMap, selectedSide]);
+  }, [strategies, selectedMap, selectedSide, selectedPlayer]);
 
   const ctStrats = filtered.filter((s) => s.side === "CT");
   const trStrats = filtered.filter((s) => s.side === "TR");
