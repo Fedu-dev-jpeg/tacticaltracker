@@ -99,6 +99,9 @@ export default function Playbook() {
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
+  const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>(loadPlayerDescriptions);
+  const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
+  const [tempPlayerDesc, setTempPlayerDesc] = useState("");
 
   const ensureProtocol = (url: string) => {
     if (!url) return url;
@@ -109,6 +112,16 @@ export default function Playbook() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies));
   }, [strategies]);
+
+  useEffect(() => {
+    localStorage.setItem(PLAYER_DESC_KEY, JSON.stringify(playerDescriptions));
+  }, [playerDescriptions]);
+
+  const savePlayerDesc = (player: string) => {
+    setPlayerDescriptions((prev) => ({ ...prev, [player]: tempPlayerDesc }));
+    setEditingPlayerDesc(null);
+    toast.success(`Descripción de ${player} actualizada`);
+  };
 
   const filtered = useMemo(() => {
     const f = strategies.filter((s) => {
