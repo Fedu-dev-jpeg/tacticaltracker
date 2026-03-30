@@ -202,7 +202,7 @@ export default function Playbook() {
     }).join('');
 
     const html = `<html><head><style>@page{size:A4;margin:20mm;}body{font-family:Arial,sans-serif;background:#0f0f23;color:#e8e8e8;margin:0;padding:20px;}@media print{body{background:#0f0f23;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
-      <div style="text-align:center;margin-bottom:24px;"><h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1><p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p></div>
+      <div style="text-align:center;margin-bottom:24px;"><h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1><p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN${selectedPlayer ? ` · ${selectedPlayer} (${playerDescriptions[selectedPlayer] || ''})` : ''} · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p></div>
       ${mapSections}
       <div style="text-align:center;margin-top:24px;color:#555;font-size:10px;">HAMBRIENTOS CS2 Team · Generado automáticamente</div>
     </body></html>`;
