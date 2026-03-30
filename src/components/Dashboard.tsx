@@ -63,6 +63,17 @@ export default function Dashboard({ matches }: DashboardProps) {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      {/* Welcome */}
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg gradient-accent">
+          <User className="h-5 w-5 text-accent-foreground" />
+        </div>
+        <div>
+          <h2 className="text-xl font-heading font-bold">Qué onda, <span className="text-accent">{playerName}</span> 🔥</h2>
+          <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
+        </div>
+      </div>
+
       {/* Section A: Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Trophy} label="Partidos" value={matches.length} />
