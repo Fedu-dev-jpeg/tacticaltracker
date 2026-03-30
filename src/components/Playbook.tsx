@@ -11,11 +11,11 @@ import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as 
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
-  Froud: "AWPer principal · Líder táctico",
-  Fedu: "Soporte · Utility master",
-  Hanzo: "Entry fragger · Agresivo",
-  Diuva: "Anchor / Site player · Clutch",
-  Gyer: "Flex / Rotador · Segundo entry",
+  Froud: "Lurker · DTT y ST",
+  Fedu: "Soporte · IGL",
+  Hanzo: "AWPer principal",
+  Diuva: "Star Player",
+  Gyer: "Ancla",
 };
 
 const PLAYER_DESC_KEY = "hambrientos_player_descriptions";
