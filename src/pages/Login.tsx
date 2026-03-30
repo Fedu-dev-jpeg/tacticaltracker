@@ -17,7 +17,8 @@ export default function Login() {
     setLoading(true);
 
     // Allow login with just the player name (e.g. "froud" → "froud@hambrientos.com")
-    const finalEmail = email.includes("@") ? email : `${email.toLowerCase()}@hambrientos.com`;
+    const trimmed = email.trim().toLowerCase();
+    const finalEmail = trimmed.includes("@") ? trimmed : `${trimmed}@hambrientos.com`;
 
     const { error } = await signIn(finalEmail, password);
     if (error) {
