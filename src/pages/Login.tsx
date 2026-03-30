@@ -1,0 +1,74 @@
+import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Crosshair } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { toast } from "sonner";
+
+export default function Login() {
+  const { signIn } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    // Allow login with just the player name (e.g. "froud" → "froud@hambrientos.com")
+    const finalEmail = email.includes("@") ? email : `${email.toLowerCase()}@hambrientos.com`;
+
+    const { error } = await signIn(finalEmail, password);
+    if (error) {
+      toast.error("Credenciales incorrectas. Intentá de nuevo.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm border-border">
+        <CardHeader className="text-center space-y-4 pb-2">
+          <div className="flex justify-center">
+            <Crosshair className="h-12 w-12 text-accent" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-heading font-bold tracking-wide text-accent">
+              HAMBRIENTOS
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">CS2 Team Tracker</p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Usuario</label>
+              <Input
+                placeholder="ej: Froud, Fedu, Hanzo..."
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="username"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Contraseña</label>
+              <Input
+                type="password"
+                placeholder="••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Entrando..." : "Entrar"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
