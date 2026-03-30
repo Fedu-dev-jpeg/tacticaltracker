@@ -14,7 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      player_descriptions: {
+        Row: {
+          description: string
+          player: string
+        }
+        Insert: {
+          description?: string
+          player: string
+        }
+        Update: {
+          description?: string
+          player?: string
+        }
+        Relationships: []
+      }
+      strategies: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          link: string
+          map: string
+          name: string
+          notes: string
+          player_roles: Json
+          side: string
+          status: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          id?: string
+          link?: string
+          map: string
+          name: string
+          notes?: string
+          player_roles?: Json
+          side: string
+          status?: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          link?: string
+          map?: string
+          name?: string
+          notes?: string
+          player_roles?: Json
+          side?: string
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
