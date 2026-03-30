@@ -2,9 +2,10 @@ import { Match, MAPS, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
 import { differenceInDays, differenceInHours, startOfWeek, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Trophy, Target, TrendingUp, Timer, Flame } from "lucide-react";
+import { Trophy, Target, TrendingUp, Timer, Flame, User } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DashboardProps {
   matches: Match[];
@@ -28,6 +29,8 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
 }
 
 export default function Dashboard({ matches }: DashboardProps) {
+  const { user } = useAuth();
+  const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Jugador";
   const winRate = getWinRate(matches);
   const streak = getStreak(matches);
   const daysLeft = Math.max(0, differenceInDays(TOURNAMENT_DATE, new Date()));
@@ -60,6 +63,17 @@ export default function Dashboard({ matches }: DashboardProps) {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      {/* Welcome */}
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg gradient-accent">
+          <User className="h-5 w-5 text-accent-foreground" />
+        </div>
+        <div>
+          <h2 className="text-xl font-heading font-bold">Qué onda, <span className="text-accent">{playerName}</span> 🔥</h2>
+          <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
+        </div>
+      </div>
+
       {/* Section A: Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Trophy} label="Partidos" value={matches.length} />
