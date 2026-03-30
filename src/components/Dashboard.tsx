@@ -2,9 +2,10 @@ import { Match, MAPS, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
 import { differenceInDays, differenceInHours, startOfWeek, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Trophy, Target, TrendingUp, Timer, Flame } from "lucide-react";
+import { Trophy, Target, TrendingUp, Timer, Flame, User } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DashboardProps {
   matches: Match[];
