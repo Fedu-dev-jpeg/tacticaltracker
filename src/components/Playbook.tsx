@@ -19,16 +19,9 @@ const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Gyer: "Ancla",
 };
 
+// Legacy localStorage keys for migration
+const STORAGE_KEY = "hambrientos_playbook";
 const PLAYER_DESC_KEY = "hambrientos_player_descriptions";
-
-function loadPlayerDescriptions(): Record<string, string> {
-  try {
-    const data = localStorage.getItem(PLAYER_DESC_KEY);
-    return data ? { ...DEFAULT_PLAYER_DESCRIPTIONS, ...JSON.parse(data) } : { ...DEFAULT_PLAYER_DESCRIPTIONS };
-  } catch {
-    return { ...DEFAULT_PLAYER_DESCRIPTIONS };
-  }
-}
 
 export interface Strategy {
   id: string;
