@@ -1,16 +1,37 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import Layout, { TabId } from "@/components/Layout";
+import TrainingForm from "@/components/TrainingForm";
+import Dashboard from "@/components/Dashboard";
+import Analysis from "@/components/Analysis";
+import HistoryView from "@/components/HistoryView";
+import MapView from "@/components/MapView";
+import TournamentProgress from "@/components/TournamentProgress";
+import { useMatches } from "@/hooks/useMatches";
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
+export default function Index() {
+  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
+  const { matches, addMatch, updateMatch, deleteMatch, importData, exportData } = useMatches();
+
+  const handleAddMatch = (match: Parameters<typeof addMatch>[0]) => {
+    addMatch(match);
+    setActiveTab("dashboard");
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
-    </div>
+    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+      {activeTab === "dashboard" && <Dashboard matches={matches} />}
+      {activeTab === "add" && <TrainingForm onSubmit={handleAddMatch} />}
+      {activeTab === "analysis" && <Analysis matches={matches} />}
+      {activeTab === "history" && (
+        <HistoryView
+          matches={matches}
+          onDelete={deleteMatch}
+          onExport={exportData}
+          onImport={importData}
+        />
+      )}
+      {activeTab === "maps" && <MapView matches={matches} />}
+      {activeTab === "tournament" && <TournamentProgress matches={matches} />}
+    </Layout>
   );
-};
-
-const Index = PlaceholderIndex;
-
-export default Index;
+}
