@@ -29,6 +29,8 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
 }
 
 export default function Dashboard({ matches }: DashboardProps) {
+  const { user } = useAuth();
+  const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Jugador";
   const winRate = getWinRate(matches);
   const streak = getStreak(matches);
   const daysLeft = Math.max(0, differenceInDays(TOURNAMENT_DATE, new Date()));
