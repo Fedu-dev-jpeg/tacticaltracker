@@ -169,14 +169,21 @@ export default function Playbook() {
   const ctStrats = filtered.filter((s) => s.side === "CT");
   const trStrats = filtered.filter((s) => s.side === "TR");
 
-  const deleteStrat = (id: string) => {
+  const deleteStrat = async (id: string) => {
     setStrategies((prev) => prev.filter((s) => s.id !== id));
+    await supabase.from("strategies").delete().eq("id", id);
     toast.success("Estrategia eliminada");
   };
 
-  const duplicateStrat = (strat: Strategy) => {
-    const dup: Strategy = { ...strat, id: crypto.randomUUID(), name: `${strat.name} (copia)`, status: "Draft", playerRoles: { ...strat.playerRoles } };
+  const duplicateStrat = async (strat: Strategy) => {
+    const newId = crypto.randomUUID();
+    const dup: Strategy = { ...strat, id: newId, name: `${strat.name} (copia)`, status: "Draft", playerRoles: { ...strat.playerRoles } };
     setStrategies((prev) => [dup, ...prev]);
+    await supabase.from("strategies").insert({
+      id: newId, map: dup.map, side: dup.side, type: dup.type, name: dup.name,
+      description: dup.description, player_roles: dup.playerRoles as any,
+      notes: dup.notes, link: dup.link, status: dup.status,
+    });
     toast.success("Estrategia duplicada");
   };
 
@@ -186,9 +193,14 @@ export default function Playbook() {
     setExpandedId(null);
   };
 
-  const saveEdit = (updated: Strategy) => {
+  const saveEdit = async (updated: Strategy) => {
     setStrategies((prev) => prev.map((s) => s.id === updated.id ? updated : s));
     setEditingStrat(null);
+    await supabase.from("strategies").update({
+      map: updated.map, side: updated.side, type: updated.type, name: updated.name,
+      description: updated.description, player_roles: updated.playerRoles as any,
+      notes: updated.notes, link: updated.link, status: updated.status,
+    }).eq("id", updated.id);
     toast.success("Estrategia actualizada");
   };
 
