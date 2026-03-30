@@ -4,21 +4,28 @@ import { Crosshair } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
 export default function Login() {
   const { signIn } = useAuth();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => localStorage.getItem("hambrientos_saved_user") || "");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem("hambrientos_saved_user"));
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Allow login with just the player name (e.g. "froud" → "froud@hambrientos.com")
     const trimmed = email.trim().toLowerCase();
     const finalEmail = trimmed.includes("@") ? trimmed : `${trimmed}@hambrientos.com`;
+
+    if (rememberMe) {
+      localStorage.setItem("hambrientos_saved_user", email.trim());
+    } else {
+      localStorage.removeItem("hambrientos_saved_user");
+    }
 
     const { error } = await signIn(finalEmail, password);
     if (error) {
@@ -63,6 +70,16 @@ export default function Login() {
                 required
                 autoComplete="current-password"
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="remember"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked === true)}
+              />
+              <label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer">
+                Recordar mi usuario
+              </label>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Entrando..." : "Entrar"}
