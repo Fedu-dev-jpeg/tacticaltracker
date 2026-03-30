@@ -2,27 +2,30 @@ import { useState, useMemo } from "react";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType } from "@/types/match";
 import { isWin } from "@/hooks/useMatches";
 import { format } from "date-fns";
-import { Download, Trash2, Search } from "lucide-react";
+import { Download, Trash2, Search, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import TrainingForm from "@/components/TrainingForm";
 
 interface HistoryProps {
   matches: Match[];
   onDelete: (id: string) => void;
+  onUpdate: (id: string, data: Partial<Match>) => void;
   onExport: () => string;
   onImport: (data: Match[]) => void;
 }
 
-export default function HistoryView({ matches, onDelete, onExport, onImport }: HistoryProps) {
+export default function HistoryView({ matches, onDelete, onUpdate, onExport, onImport }: HistoryProps) {
   const [filterMap, setFilterMap] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterResult, setFilterResult] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<"date" | "map" | "score">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
   const filtered = useMemo(() => {
     let result = [...matches];
@@ -96,6 +99,30 @@ export default function HistoryView({ matches, onDelete, onExport, onImport }: H
     else { setSortCol(col); setSortDir("desc"); }
   };
 
+  const handleEditSubmit = (data: Omit<Match, "id">) => {
+    if (!editingMatch) return;
+    onUpdate(editingMatch.id, data);
+    setEditingMatch(null);
+    toast.success("Partido actualizado");
+  };
+
+  // Show edit form
+  if (editingMatch) {
+    return (
+      <div className="space-y-4 animate-slide-up">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-heading font-bold flex items-center gap-2">
+            <Pencil className="h-5 w-5 text-accent" /> Editar Partido
+          </h2>
+          <Button variant="ghost" size="sm" onClick={() => setEditingMatch(null)}>
+            <X className="h-4 w-4 mr-1" /> Cancelar
+          </Button>
+        </div>
+        <TrainingForm onSubmit={handleEditSubmit} initialData={editingMatch} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 animate-slide-up">
       {/* Filters */}
@@ -148,7 +175,7 @@ export default function HistoryView({ matches, onDelete, onExport, onImport }: H
               <th className="text-center py-3 px-3">W/L</th>
               <th className="text-center py-3 px-3">CT P</th>
               <th className="text-center py-3 px-3">TR P</th>
-              <th className="py-3 px-3"></th>
+              <th className="py-3 px-3 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -167,9 +194,14 @@ export default function HistoryView({ matches, onDelete, onExport, onImport }: H
                   <td className={cn("text-center py-2.5 px-3 text-xs", m.ctPistol === "WIN" ? "text-success" : "text-destructive")}>{m.ctPistol === "WIN" ? "✓" : "✗"}</td>
                   <td className={cn("text-center py-2.5 px-3 text-xs", m.trPistol === "WIN" ? "text-success" : "text-destructive")}>{m.trPistol === "WIN" ? "✓" : "✗"}</td>
                   <td className="py-2.5 px-3">
-                    <button onClick={() => { onDelete(m.id); toast.success("Registro eliminado"); }} className="text-muted-foreground hover:text-destructive transition-colors">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => setEditingMatch(m)} className="text-muted-foreground hover:text-accent transition-colors" title="Editar">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => { onDelete(m.id); toast.success("Registro eliminado"); }} className="text-muted-foreground hover:text-destructive transition-colors" title="Eliminar">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
