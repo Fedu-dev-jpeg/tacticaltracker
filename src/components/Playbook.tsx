@@ -10,13 +10,24 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X } from "lucide-react";
 import { toast } from "sonner";
 
-const PLAYER_DESCRIPTIONS: Record<string, string> = {
+const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Froud: "AWPer principal · Líder táctico",
   Fedu: "Soporte · Utility master",
   Hanzo: "Entry fragger · Agresivo",
   Diuva: "Anchor / Site player · Clutch",
   Gyer: "Flex / Rotador · Segundo entry",
 };
+
+const PLAYER_DESC_KEY = "hambrientos_player_descriptions";
+
+function loadPlayerDescriptions(): Record<string, string> {
+  try {
+    const data = localStorage.getItem(PLAYER_DESC_KEY);
+    return data ? { ...DEFAULT_PLAYER_DESCRIPTIONS, ...JSON.parse(data) } : { ...DEFAULT_PLAYER_DESCRIPTIONS };
+  } catch {
+    return { ...DEFAULT_PLAYER_DESCRIPTIONS };
+  }
+}
 
 export interface Strategy {
   id: string;
