@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  const players = ["froud", "fedu", "hanzo", "diuva", "gyer"];
+  const players = ["froud", "fedu", "hanzo", "diuva", "gyer", "pank", "ian"];
   const results: Record<string, string> = {};
 
   for (const player of players) {

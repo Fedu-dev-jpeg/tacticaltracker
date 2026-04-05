@@ -1,44 +1,75 @@
 import { useState, useEffect, useCallback } from "react";
 import { Match, MapName } from "@/types/match";
-
-const STORAGE_KEY = "hambrientos_matches";
-
-function loadMatches(): Match[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveMatches(matches: Match[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(matches));
-}
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function useMatches() {
-  const [matches, setMatches] = useState<Match[]>(loadMatches);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  const fetchMatches = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("matches")
+      .select("*")
+      .order("date", { ascending: false });
+    if (!error && data) {
+      setMatches(data.map(dbToMatch));
+    }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    saveMatches(matches);
-  }, [matches]);
+    if (user) fetchMatches();
+  }, [user, fetchMatches]);
 
-  const addMatch = useCallback((match: Omit<Match, "id">) => {
-    const newMatch: Match = { ...match, id: crypto.randomUUID() };
-    setMatches((prev) => [newMatch, ...prev]);
-  }, []);
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel("matches-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => {
+        fetchMatches();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchMatches]);
 
-  const updateMatch = useCallback((id: string, data: Partial<Match>) => {
-    setMatches((prev) => prev.map((m) => (m.id === id ? { ...m, ...data } : m)));
-  }, []);
+  const addMatch = useCallback(async (match: Omit<Match, "id">) => {
+    const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Desconocido";
+    const row = matchToDb({ ...match, recorded_by: playerName });
+    await supabase.from("matches").insert(row);
+    fetchMatches();
+  }, [user, fetchMatches]);
 
-  const deleteMatch = useCallback((id: string) => {
-    setMatches((prev) => prev.filter((m) => m.id !== id));
-  }, []);
+  const updateMatch = useCallback(async (id: string, data: Partial<Match>) => {
+    const updates: Record<string, unknown> = {};
+    if (data.date !== undefined) updates.date = data.date;
+    if (data.type !== undefined) updates.type = data.type;
+    if (data.map !== undefined) updates.map = data.map;
+    if (data.rival !== undefined) updates.rival = data.rival;
+    if (data.scoreUs !== undefined) updates.score_us = data.scoreUs;
+    if (data.scoreThem !== undefined) updates.score_them = data.scoreThem;
+    if (data.ctPistol !== undefined) updates.ct_pistol = data.ctPistol;
+    if (data.ctSecondRound !== undefined) updates.ct_second_round = data.ctSecondRound;
+    if (data.trPistol !== undefined) updates.tr_pistol = data.trPistol;
+    if (data.trSecondRound !== undefined) updates.tr_second_round = data.trSecondRound;
+    if (data.startingSide !== undefined) updates.starting_side = data.startingSide;
+    if (data.notes !== undefined) updates.notes = data.notes;
+    await supabase.from("matches").update(updates).eq("id", id);
+    fetchMatches();
+  }, [fetchMatches]);
 
-  const importData = useCallback((data: Match[]) => {
-    setMatches(data);
-  }, []);
+  const deleteMatch = useCallback(async (id: string) => {
+    await supabase.from("matches").delete().eq("id", id);
+    fetchMatches();
+  }, [fetchMatches]);
+
+  const importData = useCallback(async (data: Match[]) => {
+    const rows = data.map((m) => matchToDb(m));
+    await supabase.from("matches").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (rows.length > 0) await supabase.from("matches").insert(rows);
+    fetchMatches();
+  }, [fetchMatches]);
 
   const exportData = useCallback(() => {
     return JSON.stringify(matches, null, 2);
@@ -49,7 +80,44 @@ export function useMatches() {
     [matches]
   );
 
-  return { matches, addMatch, updateMatch, deleteMatch, importData, exportData, getMapMatches };
+  return { matches, addMatch, updateMatch, deleteMatch, importData, exportData, getMapMatches, loading };
+}
+
+function dbToMatch(row: Record<string, unknown>): Match {
+  return {
+    id: row.id as string,
+    date: row.date as string,
+    type: row.type as Match["type"],
+    map: row.map as Match["map"],
+    rival: row.rival as string,
+    scoreUs: row.score_us as number,
+    scoreThem: row.score_them as number,
+    ctPistol: row.ct_pistol as Match["ctPistol"],
+    ctSecondRound: row.ct_second_round as Match["ctSecondRound"],
+    trPistol: row.tr_pistol as Match["trPistol"],
+    trSecondRound: row.tr_second_round as Match["trSecondRound"],
+    startingSide: row.starting_side as Match["startingSide"],
+    notes: row.notes as string,
+    recorded_by: (row.recorded_by as string) || "",
+  };
+}
+
+function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
+  return {
+    date: match.date,
+    type: match.type,
+    map: match.map,
+    rival: match.rival || "",
+    score_us: match.scoreUs,
+    score_them: match.scoreThem,
+    ct_pistol: match.ctPistol,
+    ct_second_round: match.ctSecondRound,
+    tr_pistol: match.trPistol,
+    tr_second_round: match.trSecondRound,
+    starting_side: match.startingSide,
+    notes: match.notes || "",
+    recorded_by: match.recorded_by || "",
+  };
 }
 
 // Stats helpers

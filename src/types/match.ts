@@ -17,9 +17,10 @@ export interface Match {
   trSecondRound: WinLoss;
   startingSide: Side;
   notes: string;
+  recorded_by?: string;
 }
 
 export const MAPS: MapName[] = ["Nuke", "Ancient", "Anubis", "Inferno"];
 export const MATCH_TYPES: MatchType[] = ["Treino", "Scrim", "Oficial"];
-export const PLAYERS = ["Froud", "Fedu", "Hanzo", "Diuva", "Gyer"];
+export const PLAYERS = ["Froud", "Fedu", "Hanzo", "Diuva", "Gyer", "Pank", "Ian"];
 export const TOURNAMENT_DATE = new Date("2026-04-25T15:00:00");
