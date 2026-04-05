@@ -1,14 +1,28 @@
+import { useState, useEffect } from "react";
 import { Match, MAPS, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
-import { differenceInDays, differenceInHours, startOfWeek, format } from "date-fns";
-import { es } from "date-fns/locale";
-import { Trophy, Target, TrendingUp, Timer, Flame, User } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from "recharts";
+import { differenceInDays, startOfWeek, format } from "date-fns";
+import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface DashboardProps {
   matches: Match[];
+}
+
+interface TeamObjective {
+  id: string;
+  title: string;
+  target_value: number;
+  current_value: number;
+  week_start: string;
+  created_by: string;
+  completed: boolean;
 }
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color?: string }) {
@@ -35,6 +49,48 @@ export default function Dashboard({ matches }: DashboardProps) {
   const streak = getStreak(matches);
   const daysLeft = Math.max(0, differenceInDays(TOURNAMENT_DATE, new Date()));
 
+  // Objectives state
+  const [objectives, setObjectives] = useState<TeamObjective[]>([]);
+  const [newObjective, setNewObjective] = useState("");
+
+  useEffect(() => {
+    fetchObjectives();
+  }, []);
+
+  const fetchObjectives = async () => {
+    const { data } = await supabase
+      .from("team_objectives")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (data) setObjectives(data as TeamObjective[]);
+  };
+
+  const addObjective = async () => {
+    if (!newObjective.trim()) return;
+    await supabase.from("team_objectives").insert({
+      title: newObjective.trim(),
+      created_by: playerName,
+      target_value: 1,
+      current_value: 0,
+    });
+    setNewObjective("");
+    fetchObjectives();
+    toast.success("Objetivo agregado");
+  };
+
+  const toggleObjective = async (obj: TeamObjective) => {
+    await supabase
+      .from("team_objectives")
+      .update({ completed: !obj.completed, current_value: obj.completed ? 0 : obj.target_value })
+      .eq("id", obj.id);
+    fetchObjectives();
+  };
+
+  const deleteObjective = async (id: string) => {
+    await supabase.from("team_objectives").delete().eq("id", id);
+    fetchObjectives();
+  };
+
   // Map stats
   const mapData = MAPS.map((map) => {
     const mapMatches = matches.filter((m) => m.map === map);
@@ -45,7 +101,6 @@ export default function Dashboard({ matches }: DashboardProps) {
   const bestMap = [...mapData].filter((m) => m.played > 0).sort((a, b) => b.winRate - a.winRate)[0];
   const worstMap = [...mapData].filter((m) => m.played > 0).sort((a, b) => a.winRate - b.winRate)[0];
 
-  // Pistol data
   const pistolData = [
     { name: "CT Pistol", value: getPistolRate(matches, "CT") },
     { name: "TR Pistol", value: getPistolRate(matches, "TR") },
@@ -53,10 +108,8 @@ export default function Dashboard({ matches }: DashboardProps) {
     { name: "TR 2nd Rnd", value: getConversionRate(matches, "TR") },
   ];
 
-  // Weekly trend
   const weeklyData = getWeeklyTrend(matches);
 
-  // Last 10
   const last10 = [...matches].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
 
   const COLORS = { win: "#70AD47", loss: "#e74c3c", primary: "#1F4E79", accent: "#ED7D31" };
@@ -74,7 +127,7 @@ export default function Dashboard({ matches }: DashboardProps) {
         </div>
       </div>
 
-      {/* Section A: Summary */}
+      {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Trophy} label="Partidos" value={matches.length} />
         <StatCard icon={Target} label="Win Rate" value={`${winRate}%`} color="gradient-accent" />
@@ -82,7 +135,45 @@ export default function Dashboard({ matches }: DashboardProps) {
         <StatCard icon={Timer} label="Días al Torneo" value={daysLeft} sub="25/04/2026 15:00" />
       </div>
 
-      {/* Section B: Map Win Rate */}
+      {/* Team Objectives */}
+      <div className="bg-card rounded-lg border border-accent/30 p-6 card-glow">
+        <h3 className="text-lg font-heading font-bold flex items-center gap-2 mb-4">
+          <Target className="h-5 w-5 text-accent" />
+          Objetivos del Equipo
+        </h3>
+        <div className="flex gap-2 mb-4">
+          <Input
+            value={newObjective}
+            onChange={(e) => setNewObjective(e.target.value)}
+            placeholder="Nuevo objetivo (ej: Ganar 3 pistols CT en Nuke)"
+            onKeyDown={(e) => e.key === "Enter" && addObjective()}
+            className="flex-1"
+          />
+          <Button onClick={addObjective} size="sm" className="gradient-accent text-accent-foreground">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+        {objectives.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">Sin objetivos. ¡Agregá uno!</p>
+        ) : (
+          <ul className="space-y-2">
+            {objectives.map((obj) => (
+              <li key={obj.id} className={cn("flex items-center gap-3 p-2 rounded-md border border-border/50 transition-all", obj.completed && "opacity-60")}>
+                <button onClick={() => toggleObjective(obj)} className={cn("h-5 w-5 rounded border flex items-center justify-center shrink-0", obj.completed ? "bg-success border-success" : "border-muted-foreground")}>
+                  {obj.completed && <Check className="h-3 w-3 text-success-foreground" />}
+                </button>
+                <span className={cn("flex-1 text-sm", obj.completed && "line-through")}>{obj.title}</span>
+                <span className="text-xs text-muted-foreground">{obj.created_by}</span>
+                <button onClick={() => deleteObjective(obj.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Map Win Rate */}
       <div className="bg-card rounded-lg border border-border p-6 card-glow">
         <h3 className="text-lg font-heading font-bold mb-4">Win Rate por Mapa</h3>
         {matches.length === 0 ? (
@@ -112,7 +203,7 @@ export default function Dashboard({ matches }: DashboardProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Section C: Pistol */}
+        {/* Pistol */}
         <div className="bg-card rounded-lg border border-border p-6 card-glow">
           <h3 className="text-lg font-heading font-bold mb-4">Pistol & Conversión</h3>
           {matches.length === 0 ? (
@@ -135,7 +226,7 @@ export default function Dashboard({ matches }: DashboardProps) {
           )}
         </div>
 
-        {/* Section D: Weekly Trend */}
+        {/* Weekly Trend */}
         <div className="bg-card rounded-lg border border-border p-6 card-glow">
           <h3 className="text-lg font-heading font-bold mb-4">Tendencia Semanal</h3>
           {weeklyData.length === 0 ? (
@@ -156,7 +247,7 @@ export default function Dashboard({ matches }: DashboardProps) {
         </div>
       </div>
 
-      {/* Section E: Last 10 */}
+      {/* Last 10 */}
       <div className="bg-card rounded-lg border border-border p-6 card-glow">
         <h3 className="text-lg font-heading font-bold mb-4">Últimos 10 Partidos</h3>
         {last10.length === 0 ? (
@@ -171,6 +262,7 @@ export default function Dashboard({ matches }: DashboardProps) {
                   <th className="text-left py-2 px-2">Rival</th>
                   <th className="text-center py-2 px-2">Score</th>
                   <th className="text-center py-2 px-2">W/L</th>
+                  <th className="text-left py-2 px-2">Registró</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,6 +275,7 @@ export default function Dashboard({ matches }: DashboardProps) {
                       <td className="py-2 px-2 text-muted-foreground">{m.rival || "—"}</td>
                       <td className="text-center py-2 px-2 font-mono font-semibold">{m.scoreUs}-{m.scoreThem}</td>
                       <td className={cn("text-center py-2 px-2 font-bold", win ? "text-success" : "text-destructive")}>{win ? "W" : "L"}</td>
+                      <td className="py-2 px-2 text-xs text-muted-foreground">{m.recorded_by || "—"}</td>
                     </tr>
                   );
                 })}

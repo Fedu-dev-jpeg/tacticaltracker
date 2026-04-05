@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      matches: {
+        Row: {
+          created_at: string
+          ct_pistol: string
+          ct_second_round: string
+          date: string
+          id: string
+          map: string
+          notes: string
+          recorded_by: string
+          rival: string
+          score_them: number
+          score_us: number
+          starting_side: string
+          tr_pistol: string
+          tr_second_round: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ct_pistol?: string
+          ct_second_round?: string
+          date?: string
+          id?: string
+          map: string
+          notes?: string
+          recorded_by?: string
+          rival?: string
+          score_them?: number
+          score_us?: number
+          starting_side?: string
+          tr_pistol?: string
+          tr_second_round?: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ct_pistol?: string
+          ct_second_round?: string
+          date?: string
+          id?: string
+          map?: string
+          notes?: string
+          recorded_by?: string
+          rival?: string
+          score_them?: number
+          score_us?: number
+          starting_side?: string
+          tr_pistol?: string
+          tr_second_round?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       player_descriptions: {
         Row: {
           description: string
@@ -71,6 +128,42 @@ export type Database = {
           status?: string
           type?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      team_objectives: {
+        Row: {
+          completed: boolean
+          created_at: string
+          created_by: string
+          current_value: number
+          id: string
+          target_value: number
+          title: string
+          updated_at: string
+          week_start: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          created_by?: string
+          current_value?: number
+          id?: string
+          target_value?: number
+          title: string
+          updated_at?: string
+          week_start?: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          created_by?: string
+          current_value?: number
+          id?: string
+          target_value?: number
+          title?: string
+          updated_at?: string
+          week_start?: string
         }
         Relationships: []
       }
