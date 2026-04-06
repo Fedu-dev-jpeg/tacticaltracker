@@ -15,6 +15,7 @@ export interface Match {
   ctSecondRound: WinLoss;
   trPistol: WinLoss;
   trSecondRound: WinLoss;
+  trFinalizacion: WinLoss;
   startingSide: Side;
   notes: string;
   recorded_by?: string;

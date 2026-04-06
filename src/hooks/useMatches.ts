@@ -53,6 +53,7 @@ export function useMatches() {
     if (data.ctSecondRound !== undefined) updates.ct_second_round = data.ctSecondRound;
     if (data.trPistol !== undefined) updates.tr_pistol = data.trPistol;
     if (data.trSecondRound !== undefined) updates.tr_second_round = data.trSecondRound;
+    if (data.trFinalizacion !== undefined) updates.tr_finalizacion = data.trFinalizacion;
     if (data.startingSide !== undefined) updates.starting_side = data.startingSide;
     if (data.notes !== undefined) updates.notes = data.notes;
     await supabase.from("matches").update(updates).eq("id", id);
@@ -96,6 +97,7 @@ function dbToMatch(row: Record<string, unknown>): Match {
     ctSecondRound: row.ct_second_round as Match["ctSecondRound"],
     trPistol: row.tr_pistol as Match["trPistol"],
     trSecondRound: row.tr_second_round as Match["trSecondRound"],
+    trFinalizacion: (row.tr_finalizacion as Match["trFinalizacion"]) || "WIN",
     startingSide: row.starting_side as Match["startingSide"],
     notes: row.notes as string,
     recorded_by: (row.recorded_by as string) || "",
@@ -114,6 +116,7 @@ function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
     ct_second_round: match.ctSecondRound,
     tr_pistol: match.trPistol,
     tr_second_round: match.trSecondRound,
+    tr_finalizacion: match.trFinalizacion || "WIN",
     starting_side: match.startingSide,
     notes: match.notes || "",
     recorded_by: match.recorded_by || "",
