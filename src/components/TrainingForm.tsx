@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Match, MAPS, MATCH_TYPES, MapName, MatchType, Side, WinLoss } from "@/types/match";
+import { Match, MAPS, MATCH_TYPES, ROUND_TYPES, MapName, MatchType, Side, WinLoss, RoundType } from "@/types/match";
 import { toast } from "sonner";
 
 interface TrainingFormProps {
