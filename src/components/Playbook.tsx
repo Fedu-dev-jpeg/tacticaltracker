@@ -36,7 +36,7 @@ export interface Strategy {
   status: "Draft" | "Ready" | "Probado";
 }
 
-const STRAT_TYPE_ORDER = ["Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Dominio", "Retake", "Postplant", "Calls de base", "Sorpresa"];
+const STRAT_TYPE_ORDER = ["Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Setup", "Dominio", "Retake", "Postplant", "Finalización", "Calls de base", "Sorpresa"];
 const STRAT_TYPES = [...STRAT_TYPE_ORDER];
 
 const CODEWORDS = [
