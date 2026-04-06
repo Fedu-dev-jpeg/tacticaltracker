@@ -57,8 +57,10 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
   const [ctPistol, setCtPistol] = useState<WinLoss>(initialData?.ctPistol ?? "WIN");
   const [ctSecondRound, setCtSecondRound] = useState<WinLoss>(initialData?.ctSecondRound ?? "WIN");
   const [ctSetup, setCtSetup] = useState<WinLoss>(initialData?.ctSetup ?? "WIN");
+  const [ctFinalizacion, setCtFinalizacion] = useState<WinLoss>(initialData?.ctFinalizacion ?? "WIN");
   const [trPistol, setTrPistol] = useState<WinLoss>(initialData?.trPistol ?? "WIN");
   const [trSecondRound, setTrSecondRound] = useState<WinLoss>(initialData?.trSecondRound ?? "WIN");
+  const [trSetup, setTrSetup] = useState<WinLoss>(initialData?.trSetup ?? "WIN");
   const [trFinalizacion, setTrFinalizacion] = useState<WinLoss>(initialData?.trFinalizacion ?? "WIN");
   const [startingSide, setStartingSide] = useState<Side>(initialData?.startingSide ?? "CT");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
@@ -79,8 +81,10 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
       ctPistol,
       ctSecondRound,
       ctSetup,
+      ctFinalizacion,
       trPistol,
       trSecondRound,
+      trSetup,
       trFinalizacion,
       startingSide,
       notes,
@@ -94,8 +98,10 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
     setCtPistol("WIN");
     setCtSecondRound("WIN");
     setCtSetup("WIN");
+    setCtFinalizacion("WIN");
     setTrPistol("WIN");
     setTrSecondRound("WIN");
+    setTrSetup("WIN");
     setTrFinalizacion("WIN");
   };
 
@@ -182,14 +188,16 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
         </div>
 
         {/* Pistol & Conversion */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <WinLossToggle value={ctPistol} onChange={setCtPistol} label="CT Pistol" />
           <WinLossToggle value={ctSecondRound} onChange={setCtSecondRound} label="CT 2nd Round" />
           <WinLossToggle value={ctSetup} onChange={setCtSetup} label="CT Setup" />
+          <WinLossToggle value={ctFinalizacion} onChange={setCtFinalizacion} label="CT Finalización" />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <WinLossToggle value={trPistol} onChange={setTrPistol} label="TR Pistol" />
           <WinLossToggle value={trSecondRound} onChange={setTrSecondRound} label="TR 2nd Round" />
+          <WinLossToggle value={trSetup} onChange={setTrSetup} label="TR Setup" />
           <WinLossToggle value={trFinalizacion} onChange={setTrFinalizacion} label="TR Finalización" />
         </div>
 

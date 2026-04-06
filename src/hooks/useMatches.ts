@@ -52,8 +52,10 @@ export function useMatches() {
     if (data.ctPistol !== undefined) updates.ct_pistol = data.ctPistol;
     if (data.ctSecondRound !== undefined) updates.ct_second_round = data.ctSecondRound;
     if (data.ctSetup !== undefined) updates.ct_setup = data.ctSetup;
+    if (data.ctFinalizacion !== undefined) updates.ct_finalizacion = data.ctFinalizacion;
     if (data.trPistol !== undefined) updates.tr_pistol = data.trPistol;
     if (data.trSecondRound !== undefined) updates.tr_second_round = data.trSecondRound;
+    if (data.trSetup !== undefined) updates.tr_setup = data.trSetup;
     if (data.trFinalizacion !== undefined) updates.tr_finalizacion = data.trFinalizacion;
     if (data.startingSide !== undefined) updates.starting_side = data.startingSide;
     if (data.notes !== undefined) updates.notes = data.notes;
@@ -97,8 +99,10 @@ function dbToMatch(row: Record<string, unknown>): Match {
     ctPistol: row.ct_pistol as Match["ctPistol"],
     ctSecondRound: row.ct_second_round as Match["ctSecondRound"],
     ctSetup: (row.ct_setup as Match["ctSetup"]) || "WIN",
+    ctFinalizacion: (row.ct_finalizacion as Match["ctFinalizacion"]) || "WIN",
     trPistol: row.tr_pistol as Match["trPistol"],
     trSecondRound: row.tr_second_round as Match["trSecondRound"],
+    trSetup: (row.tr_setup as Match["trSetup"]) || "WIN",
     trFinalizacion: (row.tr_finalizacion as Match["trFinalizacion"]) || "WIN",
     startingSide: row.starting_side as Match["startingSide"],
     notes: row.notes as string,
@@ -117,8 +121,10 @@ function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
     ct_pistol: match.ctPistol,
     ct_second_round: match.ctSecondRound,
     ct_setup: match.ctSetup || "WIN",
+    ct_finalizacion: match.ctFinalizacion || "WIN",
     tr_pistol: match.trPistol,
     tr_second_round: match.trSecondRound,
+    tr_setup: match.trSetup || "WIN",
     tr_finalizacion: match.trFinalizacion || "WIN",
     starting_side: match.startingSide,
     notes: match.notes || "",
