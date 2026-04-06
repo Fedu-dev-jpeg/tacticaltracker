@@ -1,0 +1,1 @@
+ALTER TABLE public.matches ADD COLUMN ct_setup text NOT NULL DEFAULT 'WIN';

@@ -51,6 +51,7 @@ export function useMatches() {
     if (data.scoreThem !== undefined) updates.score_them = data.scoreThem;
     if (data.ctPistol !== undefined) updates.ct_pistol = data.ctPistol;
     if (data.ctSecondRound !== undefined) updates.ct_second_round = data.ctSecondRound;
+    if (data.ctSetup !== undefined) updates.ct_setup = data.ctSetup;
     if (data.trPistol !== undefined) updates.tr_pistol = data.trPistol;
     if (data.trSecondRound !== undefined) updates.tr_second_round = data.trSecondRound;
     if (data.trFinalizacion !== undefined) updates.tr_finalizacion = data.trFinalizacion;
@@ -95,6 +96,7 @@ function dbToMatch(row: Record<string, unknown>): Match {
     scoreThem: row.score_them as number,
     ctPistol: row.ct_pistol as Match["ctPistol"],
     ctSecondRound: row.ct_second_round as Match["ctSecondRound"],
+    ctSetup: (row.ct_setup as Match["ctSetup"]) || "WIN",
     trPistol: row.tr_pistol as Match["trPistol"],
     trSecondRound: row.tr_second_round as Match["trSecondRound"],
     trFinalizacion: (row.tr_finalizacion as Match["trFinalizacion"]) || "WIN",
@@ -114,6 +116,7 @@ function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
     score_them: match.scoreThem,
     ct_pistol: match.ctPistol,
     ct_second_round: match.ctSecondRound,
+    ct_setup: match.ctSetup || "WIN",
     tr_pistol: match.trPistol,
     tr_second_round: match.trSecondRound,
     tr_finalizacion: match.trFinalizacion || "WIN",
