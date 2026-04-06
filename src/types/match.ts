@@ -2,6 +2,9 @@ export type MapName = "Nuke" | "Ancient" | "Anubis" | "Inferno";
 export type MatchType = "Treino" | "Scrim" | "Oficial";
 export type Side = "CT" | "TR";
 export type WinLoss = "WIN" | "LOSS";
+export type RoundType = "Pistol" | "Anti-Eco" | "Forzado" | "Default" | "Exec" | "Dominio" | "Retake" | "Postplant" | "Calls de base" | "Sorpresa";
+
+export const ROUND_TYPES: RoundType[] = ["Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Dominio", "Retake", "Postplant", "Calls de base", "Sorpresa"];
 
 export interface Match {
   id: string;
