@@ -13,6 +13,7 @@ export interface Match {
   scoreThem: number;
   ctPistol: WinLoss;
   ctSecondRound: WinLoss;
+  ctSetup: WinLoss;
   trPistol: WinLoss;
   trSecondRound: WinLoss;
   trFinalizacion: WinLoss;
