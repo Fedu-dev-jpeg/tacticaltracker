@@ -14,8 +14,10 @@ export interface Match {
   ctPistol: WinLoss;
   ctSecondRound: WinLoss;
   ctSetup: WinLoss;
+  ctFinalizacion: WinLoss;
   trPistol: WinLoss;
   trSecondRound: WinLoss;
+  trSetup: WinLoss;
   trFinalizacion: WinLoss;
   startingSide: Side;
   notes: string;

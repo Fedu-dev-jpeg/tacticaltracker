@@ -17,6 +17,7 @@ export type Database = {
       matches: {
         Row: {
           created_at: string
+          ct_finalizacion: string
           ct_pistol: string
           ct_second_round: string
           ct_setup: string
@@ -32,11 +33,13 @@ export type Database = {
           tr_finalizacion: string
           tr_pistol: string
           tr_second_round: string
+          tr_setup: string
           type: string
           updated_at: string
         }
         Insert: {
           created_at?: string
+          ct_finalizacion?: string
           ct_pistol?: string
           ct_second_round?: string
           ct_setup?: string
@@ -52,11 +55,13 @@ export type Database = {
           tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
+          tr_setup?: string
           type: string
           updated_at?: string
         }
         Update: {
           created_at?: string
+          ct_finalizacion?: string
           ct_pistol?: string
           ct_second_round?: string
           ct_setup?: string
@@ -72,6 +77,7 @@ export type Database = {
           tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
+          tr_setup?: string
           type?: string
           updated_at?: string
         }
