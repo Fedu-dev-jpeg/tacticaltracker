@@ -187,18 +187,35 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
           </div>
         </div>
 
-        {/* Pistol & Conversion */}
+        {/* CT Side */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <WinLossToggle value={ctPistol} onChange={setCtPistol} label="CT Pistol" />
           <WinLossToggle value={ctSecondRound} onChange={setCtSecondRound} label="CT 2nd Round" />
-          <WinLossToggle value={ctSetup} onChange={setCtSetup} label="CT Setup" />
+          <div className="space-y-1.5">
+            <Label className="text-xs">CT Tipo</Label>
+            <Select value={ctSetup} onValueChange={(v) => setCtSetup(v as RoundType)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ROUND_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <WinLossToggle value={ctFinalizacion} onChange={setCtFinalizacion} label="CT Finalización" />
         </div>
+        {/* TR Side */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <WinLossToggle value={trPistol} onChange={setTrPistol} label="TR Pistol" />
           <WinLossToggle value={trSecondRound} onChange={setTrSecondRound} label="TR 2nd Round" />
           <WinLossToggle value={trSetup} onChange={setTrSetup} label="TR Setup" />
-          <WinLossToggle value={trFinalizacion} onChange={setTrFinalizacion} label="TR Finalización" />
+          <div className="space-y-1.5">
+            <Label className="text-xs">TR Tipo</Label>
+            <Select value={trFinalizacion} onValueChange={(v) => setTrFinalizacion(v as RoundType)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ROUND_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Notes */}
