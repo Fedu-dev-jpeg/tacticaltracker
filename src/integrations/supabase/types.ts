@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           ct_pistol: string
           ct_second_round: string
+          ct_setup: string
           date: string
           id: string
           map: string
@@ -38,6 +39,7 @@ export type Database = {
           created_at?: string
           ct_pistol?: string
           ct_second_round?: string
+          ct_setup?: string
           date?: string
           id?: string
           map: string
@@ -57,6 +59,7 @@ export type Database = {
           created_at?: string
           ct_pistol?: string
           ct_second_round?: string
+          ct_setup?: string
           date?: string
           id?: string
           map?: string
