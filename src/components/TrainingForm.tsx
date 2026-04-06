@@ -56,12 +56,12 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
   const [scoreThem, setScoreThem] = useState(initialData?.scoreThem?.toString() ?? "");
   const [ctPistol, setCtPistol] = useState<WinLoss>(initialData?.ctPistol ?? "WIN");
   const [ctSecondRound, setCtSecondRound] = useState<WinLoss>(initialData?.ctSecondRound ?? "WIN");
-  const [ctSetup, setCtSetup] = useState<RoundType>(initialData?.ctSetup ?? "Default");
+  const [ctSetup, setCtSetup] = useState<WinLoss>(initialData?.ctSetup ?? "WIN");
   const [ctFinalizacion, setCtFinalizacion] = useState<WinLoss>(initialData?.ctFinalizacion ?? "WIN");
   const [trPistol, setTrPistol] = useState<WinLoss>(initialData?.trPistol ?? "WIN");
   const [trSecondRound, setTrSecondRound] = useState<WinLoss>(initialData?.trSecondRound ?? "WIN");
   const [trSetup, setTrSetup] = useState<WinLoss>(initialData?.trSetup ?? "WIN");
-  const [trFinalizacion, setTrFinalizacion] = useState<RoundType>(initialData?.trFinalizacion ?? "Default");
+  const [trFinalizacion, setTrFinalizacion] = useState<WinLoss>(initialData?.trFinalizacion ?? "WIN");
   const [startingSide, setStartingSide] = useState<Side>(initialData?.startingSide ?? "CT");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
 
@@ -97,12 +97,12 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
     setNotes("");
     setCtPistol("WIN");
     setCtSecondRound("WIN");
-    setCtSetup("Default");
+    setCtSetup("WIN");
     setCtFinalizacion("WIN");
     setTrPistol("WIN");
     setTrSecondRound("WIN");
     setTrSetup("WIN");
-    setTrFinalizacion("Default");
+    setTrFinalizacion("WIN");
   };
 
   return (
@@ -191,15 +191,7 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <WinLossToggle value={ctPistol} onChange={setCtPistol} label="CT Pistol" />
           <WinLossToggle value={ctSecondRound} onChange={setCtSecondRound} label="CT 2nd Round" />
-          <div className="space-y-1.5">
-            <Label className="text-xs">CT Tipo</Label>
-            <Select value={ctSetup} onValueChange={(v) => setCtSetup(v as RoundType)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ROUND_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          <WinLossToggle value={ctSetup} onChange={setCtSetup} label="CT Setup" />
           <WinLossToggle value={ctFinalizacion} onChange={setCtFinalizacion} label="CT Finalización" />
         </div>
         {/* TR Side */}
@@ -207,15 +199,7 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
           <WinLossToggle value={trPistol} onChange={setTrPistol} label="TR Pistol" />
           <WinLossToggle value={trSecondRound} onChange={setTrSecondRound} label="TR 2nd Round" />
           <WinLossToggle value={trSetup} onChange={setTrSetup} label="TR Setup" />
-          <div className="space-y-1.5">
-            <Label className="text-xs">TR Tipo</Label>
-            <Select value={trFinalizacion} onValueChange={(v) => setTrFinalizacion(v as RoundType)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ROUND_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          <WinLossToggle value={trFinalizacion} onChange={setTrFinalizacion} label="TR Finalización" />
         </div>
 
         {/* Notes */}
