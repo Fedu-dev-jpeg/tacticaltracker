@@ -28,6 +28,7 @@ export type Database = {
           score_them: number
           score_us: number
           starting_side: string
+          tr_finalizacion: string
           tr_pistol: string
           tr_second_round: string
           type: string
@@ -46,6 +47,7 @@ export type Database = {
           score_them?: number
           score_us?: number
           starting_side?: string
+          tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
           type: string
@@ -64,6 +66,7 @@ export type Database = {
           score_them?: number
           score_us?: number
           starting_side?: string
+          tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
           type?: string

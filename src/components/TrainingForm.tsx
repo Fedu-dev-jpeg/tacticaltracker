@@ -58,6 +58,7 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
   const [ctSecondRound, setCtSecondRound] = useState<WinLoss>(initialData?.ctSecondRound ?? "WIN");
   const [trPistol, setTrPistol] = useState<WinLoss>(initialData?.trPistol ?? "WIN");
   const [trSecondRound, setTrSecondRound] = useState<WinLoss>(initialData?.trSecondRound ?? "WIN");
+  const [trFinalizacion, setTrFinalizacion] = useState<WinLoss>(initialData?.trFinalizacion ?? "WIN");
   const [startingSide, setStartingSide] = useState<Side>(initialData?.startingSide ?? "CT");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
 
@@ -78,6 +79,7 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
       ctSecondRound,
       trPistol,
       trSecondRound,
+      trFinalizacion,
       startingSide,
       notes,
     });
@@ -91,6 +93,7 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
     setCtSecondRound("WIN");
     setTrPistol("WIN");
     setTrSecondRound("WIN");
+    setTrFinalizacion("WIN");
   };
 
   return (
@@ -176,11 +179,12 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
         </div>
 
         {/* Pistol & Conversion */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <WinLossToggle value={ctPistol} onChange={setCtPistol} label="CT Pistol" />
           <WinLossToggle value={ctSecondRound} onChange={setCtSecondRound} label="CT 2nd Round" />
           <WinLossToggle value={trPistol} onChange={setTrPistol} label="TR Pistol" />
           <WinLossToggle value={trSecondRound} onChange={setTrSecondRound} label="TR 2nd Round" />
+          <WinLossToggle value={trFinalizacion} onChange={setTrFinalizacion} label="TR Finalización" />
         </div>
 
         {/* Notes */}
