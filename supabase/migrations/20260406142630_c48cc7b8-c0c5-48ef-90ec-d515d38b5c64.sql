@@ -1,0 +1,1 @@
+ALTER TABLE public.matches ADD COLUMN tr_finalizacion text NOT NULL DEFAULT 'WIN';
