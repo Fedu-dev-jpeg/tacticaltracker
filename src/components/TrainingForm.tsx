@@ -56,12 +56,12 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
   const [scoreThem, setScoreThem] = useState(initialData?.scoreThem?.toString() ?? "");
   const [ctPistol, setCtPistol] = useState<WinLoss>(initialData?.ctPistol ?? "WIN");
   const [ctSecondRound, setCtSecondRound] = useState<WinLoss>(initialData?.ctSecondRound ?? "WIN");
-  const [ctSetup, setCtSetup] = useState<WinLoss>(initialData?.ctSetup ?? "WIN");
+  const [ctSetup, setCtSetup] = useState<RoundType>(initialData?.ctSetup ?? "Default");
   const [ctFinalizacion, setCtFinalizacion] = useState<WinLoss>(initialData?.ctFinalizacion ?? "WIN");
   const [trPistol, setTrPistol] = useState<WinLoss>(initialData?.trPistol ?? "WIN");
   const [trSecondRound, setTrSecondRound] = useState<WinLoss>(initialData?.trSecondRound ?? "WIN");
   const [trSetup, setTrSetup] = useState<WinLoss>(initialData?.trSetup ?? "WIN");
-  const [trFinalizacion, setTrFinalizacion] = useState<WinLoss>(initialData?.trFinalizacion ?? "WIN");
+  const [trFinalizacion, setTrFinalizacion] = useState<RoundType>(initialData?.trFinalizacion ?? "Default");
   const [startingSide, setStartingSide] = useState<Side>(initialData?.startingSide ?? "CT");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
 
@@ -97,12 +97,12 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
     setNotes("");
     setCtPistol("WIN");
     setCtSecondRound("WIN");
-    setCtSetup("WIN");
+    setCtSetup("Default");
     setCtFinalizacion("WIN");
     setTrPistol("WIN");
     setTrSecondRound("WIN");
     setTrSetup("WIN");
-    setTrFinalizacion("WIN");
+    setTrFinalizacion("Default");
   };
 
   return (
