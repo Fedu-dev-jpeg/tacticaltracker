@@ -59,7 +59,7 @@ export function useMatches() {
     if (data.trFinalizacion !== undefined) updates.tr_finalizacion = data.trFinalizacion;
     if (data.startingSide !== undefined) updates.starting_side = data.startingSide;
     if (data.notes !== undefined) updates.notes = data.notes;
-    await supabase.from("matches").update(updates).eq("id", id);
+    await supabase.from("matches").update(updates as any).eq("id", id);
     fetchMatches();
   }, [fetchMatches]);
 
