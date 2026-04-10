@@ -91,6 +91,7 @@ export default function Playbook() {
   const [selectedMap, setSelectedMap] = useState<MapName>("Nuke");
   const [selectedSide, setSelectedSide] = useState<"CT" | "TR" | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [allExpanded, setAllExpanded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingStrat, setEditingStrat] = useState<Strategy | null>(null);
   const [gameplanMode, setGameplanMode] = useState(false);
