@@ -374,10 +374,14 @@ export default function Playbook() {
         </div>
       </div>
 
-      {/* Gameplan mode */}
+      {/* Gameplan mode + Expand all */}
       <div className="flex flex-wrap gap-2 items-center">
         <Button variant={gameplanMode ? "default" : "outline"} size="sm" onClick={() => { setGameplanMode(!gameplanMode); if (gameplanMode) setSelectedIds(new Set()); }} className={gameplanMode ? "gradient-accent text-accent-foreground" : ""}>
           <FileDown className="h-4 w-4 mr-1" />{gameplanMode ? `Gameplan (${selectedIds.size})` : "Armar Gameplan"}
+        </Button>
+        <Button variant={allExpanded ? "default" : "outline"} size="sm" onClick={() => setAllExpanded(!allExpanded)}>
+          {allExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+          {allExpanded ? "Colapsar todas" : "Expandir todas"}
         </Button>
         {gameplanMode && (
           <>
