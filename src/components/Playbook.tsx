@@ -91,6 +91,7 @@ export default function Playbook() {
   const [selectedMap, setSelectedMap] = useState<MapName>("Nuke");
   const [selectedSide, setSelectedSide] = useState<"CT" | "TR" | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [allExpanded, setAllExpanded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingStrat, setEditingStrat] = useState<Strategy | null>(null);
   const [gameplanMode, setGameplanMode] = useState(false);
@@ -226,33 +227,46 @@ export default function Playbook() {
     const byMap: Record<string, Strategy[]> = {};
     selectedStrats.forEach((s) => { if (!byMap[s.map]) byMap[s.map] = []; byMap[s.map].push(s); });
 
-    const mapSections = Object.entries(byMap).map(([map, strats]) => {
+    const mapSections = Object.entries(byMap).map(([map, strats], mapIdx) => {
       const ctS = sortByType(strats.filter((s) => s.side === "CT"));
       const trS = sortByType(strats.filter((s) => s.side === "TR"));
       const renderStrat = (s: Strategy) => `
-        <div style="margin-bottom:14px;page-break-inside:avoid;border:1px solid #333;border-radius:6px;padding:12px;background:#1a1a2e;">
+        <div style="page-break-inside:avoid;border:2px solid #000;border-radius:4px;padding:10px 12px;margin-bottom:10px;background:#fff;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-            <span style="background:${s.side === 'CT' ? '#1F4E79' : '#ED7D31'};color:#fff;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;">${s.side}</span>
-            <span style="background:#333;color:#aaa;font-size:10px;padding:2px 6px;border-radius:3px;">${s.type}</span>
-            <strong style="color:#e8e8e8;font-size:13px;">${s.name}</strong>
-            <span style="margin-left:auto;font-size:9px;color:${s.status === 'Ready' ? '#70AD47' : s.status === 'Probado' ? '#4a9eff' : '#888'};text-transform:uppercase;">${s.status}</span>
+            <span style="border:2px solid #000;font-size:11px;padding:1px 6px;border-radius:3px;font-weight:900;letter-spacing:1px;">${s.side}</span>
+            <span style="border:1px solid #666;font-size:10px;padding:1px 6px;border-radius:3px;color:#333;">${s.type}</span>
+            <strong style="color:#000;font-size:14px;">${s.name}</strong>
+            <span style="margin-left:auto;font-size:10px;font-weight:bold;color:#000;text-transform:uppercase;border:1px solid #000;padding:1px 5px;border-radius:3px;">${s.status}</span>
           </div>
-          <p style="color:#ccc;font-size:11px;margin:0 0 8px;">${s.description}</p>
-          ${selectedPlayer && s.playerRoles[selectedPlayer] ? `<div style="background:#2a1f00;border:1px solid #ED7D31;border-radius:4px;padding:6px 10px;margin-bottom:6px;"><strong style="color:#ED7D31;font-size:11px;">${selectedPlayer}</strong><span style="color:#ddd;font-size:11px;margin-left:8px;">${s.playerRoles[selectedPlayer]}</span><span style="color:#888;font-size:9px;margin-left:8px;">${playerDescriptions[selectedPlayer] || ''}</span></div>` : (Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:10px;background:#252540;padding:3px 8px;border-radius:4px;color:#ddd;"><strong style="color:#ED7D31;">${p}</strong>: ${r}</span>`).join('')}</div>` : '')}
-          ${s.notes ? `<p style="font-size:10px;color:#999;border-left:2px solid #ED7D31;padding-left:8px;margin:4px 0;">${s.notes}</p>` : ''}
+          <p style="color:#222;font-size:12px;margin:0 0 8px;line-height:1.5;">${s.description}</p>
+          ${selectedPlayer && s.playerRoles[selectedPlayer] ? `<div style="border:2px solid #000;border-radius:4px;padding:6px 10px;margin-bottom:6px;background:#f0f0f0;"><strong style="font-size:12px;">${selectedPlayer}</strong><span style="font-size:12px;margin-left:8px;">${s.playerRoles[selectedPlayer]}</span><span style="font-size:10px;margin-left:8px;color:#555;">${playerDescriptions[selectedPlayer] || ''}</span></div>` : (Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:11px;background:#f0f0f0;padding:3px 8px;border-radius:4px;border:1px solid #999;"><strong>${p}</strong>: ${r}</span>`).join('')}</div>` : '')}
+          ${s.notes ? `<p style="font-size:11px;color:#333;border-left:3px solid #000;padding-left:8px;margin:6px 0;line-height:1.4;">${s.notes}</p>` : ''}
         </div>`;
+
+      // CT section with page break before TR to avoid mixing
+      const ctBlock = ctS.length > 0 ? `<h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">🛡️ CT SIDE — ${map}</h3>${ctS.map(renderStrat).join('')}` : '';
+      const trBlock = trS.length > 0 ? `<div style="page-break-before:${ctS.length > 0 ? 'always' : 'auto'};"><h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">⚔️ TR SIDE — ${map}</h3>${trS.map(renderStrat).join('')}</div>` : '';
+
       return `
-        <div style="page-break-before:${map === Object.keys(byMap)[0] ? 'auto' : 'always'};">
-          <h2 style="color:#ED7D31;font-size:22px;margin:0 0 16px;border-bottom:2px solid #ED7D31;padding-bottom:8px;">📋 ${map}</h2>
-          ${ctS.length > 0 ? `<h3 style="color:#1F4E79;font-size:14px;margin:12px 0 8px;">🛡️ CT SIDE</h3>${ctS.map(renderStrat).join('')}` : ''}
-          ${trS.length > 0 ? `<h3 style="color:#ED7D31;font-size:14px;margin:12px 0 8px;">⚔️ TR SIDE</h3>${trS.map(renderStrat).join('')}` : ''}
+        <div style="page-break-before:${mapIdx === 0 ? 'auto' : 'always'};">
+          <h2 style="font-size:22px;margin:0 0 10px;border-bottom:3px solid #000;padding-bottom:6px;letter-spacing:1px;">📋 ${map.toUpperCase()}</h2>
+          ${ctBlock}
+          ${trBlock}
         </div>`;
     }).join('');
 
-    const html = `<html><head><style>@page{size:A4;margin:20mm;}body{font-family:Arial,sans-serif;background:#0f0f23;color:#e8e8e8;margin:0;padding:20px;}@media print{body{background:#0f0f23;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
-      <div style="text-align:center;margin-bottom:24px;"><h1 style="color:#ED7D31;font-size:28px;margin:0;">HAMBRIENTOS</h1><p style="color:#888;font-size:12px;margin:4px 0;">GAMEPLAN${selectedPlayer ? ` · ${selectedPlayer} (${playerDescriptions[selectedPlayer] || ''})` : ''} · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p></div>
+    const html = `<html><head><style>
+      @page{size:A4;margin:15mm 18mm;}
+      *{box-sizing:border-box;}
+      body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#000;margin:0;padding:16px;font-size:12px;line-height:1.4;}
+      @media print{body{background:#fff;}}
+    </style></head><body>
+      <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #000;padding-bottom:12px;">
+        <h1 style="font-size:30px;margin:0;letter-spacing:3px;">HAMBRIENTOS</h1>
+        <p style="font-size:12px;margin:4px 0;color:#333;">GAMEPLAN${selectedPlayer ? ` · ${selectedPlayer} (${playerDescriptions[selectedPlayer] || ''})` : ''} · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p>
+      </div>
       ${mapSections}
-      <div style="text-align:center;margin-top:24px;color:#555;font-size:10px;">HAMBRIENTOS CS2 Team · Generado automáticamente</div>
+      <div style="text-align:center;margin-top:20px;font-size:9px;color:#666;border-top:1px solid #ccc;padding-top:8px;">HAMBRIENTOS CS2 Team · Generado automáticamente</div>
     </body></html>`;
 
     const printWindow = window.open('', '_blank');
@@ -360,10 +374,14 @@ export default function Playbook() {
         </div>
       </div>
 
-      {/* Gameplan mode */}
+      {/* Gameplan mode + Expand all */}
       <div className="flex flex-wrap gap-2 items-center">
         <Button variant={gameplanMode ? "default" : "outline"} size="sm" onClick={() => { setGameplanMode(!gameplanMode); if (gameplanMode) setSelectedIds(new Set()); }} className={gameplanMode ? "gradient-accent text-accent-foreground" : ""}>
           <FileDown className="h-4 w-4 mr-1" />{gameplanMode ? `Gameplan (${selectedIds.size})` : "Armar Gameplan"}
+        </Button>
+        <Button variant={allExpanded ? "default" : "outline"} size="sm" onClick={() => setAllExpanded(!allExpanded)}>
+          {allExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+          {allExpanded ? "Colapsar todas" : "Expandir todas"}
         </Button>
         {gameplanMode && (
           <>
@@ -396,10 +414,10 @@ export default function Playbook() {
       {!editingStrat && (
         <>
           {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
-            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
+            <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} allExpanded={allExpanded} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
           )}
           {(selectedSide === "all" || selectedSide === "TR") && trStrats.length > 0 && (
-            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
+            <StratSection title="TR Side" icon={<Sword className="h-5 w-5" />} strats={trStrats} expandedId={expandedId} setExpandedId={setExpandedId} allExpanded={allExpanded} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
           )}
 
           {filtered.length === 0 && !showForm && (
@@ -429,8 +447,9 @@ export default function Playbook() {
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol, playerDescriptions }: {
+function StratSection({ title, icon, strats, expandedId, setExpandedId, allExpanded, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol, playerDescriptions }: {
   title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
+  allExpanded: boolean;
   onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
   selectedPlayer: string | null; ensureProtocol: (url: string) => string; playerDescriptions: Record<string, string>;
@@ -445,7 +464,7 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
         <div key={type} className="space-y-1.5">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">{type}</p>
           {typeStrats.map((s) => {
-            const isExpanded = expandedId === s.id;
+            const isExpanded = allExpanded || expandedId === s.id;
             const isSelected = selectedIds.has(s.id);
             const statusColors: Record<string, string> = { Draft: "bg-muted text-muted-foreground", Ready: "bg-success/20 text-success", Probado: "bg-primary/20 text-primary-foreground" };
             return (
