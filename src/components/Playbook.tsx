@@ -447,8 +447,9 @@ export default function Playbook() {
   );
 }
 
-function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol, playerDescriptions }: {
+function StratSection({ title, icon, strats, expandedId, setExpandedId, allExpanded, onDelete, onDuplicate, onEdit, gameplanMode, selectedIds, onToggleSelect, selectedPlayer, ensureProtocol, playerDescriptions }: {
   title: string; icon: React.ReactNode; strats: Strategy[]; expandedId: string | null; setExpandedId: (id: string | null) => void;
+  allExpanded: boolean;
   onDelete: (id: string) => void; onDuplicate: (s: Strategy) => void; onEdit: (s: Strategy) => void;
   gameplanMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void;
   selectedPlayer: string | null; ensureProtocol: (url: string) => string; playerDescriptions: Record<string, string>;
@@ -463,7 +464,7 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, onDelete
         <div key={type} className="space-y-1.5">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">{type}</p>
           {typeStrats.map((s) => {
-            const isExpanded = expandedId === s.id;
+            const isExpanded = allExpanded || expandedId === s.id;
             const isSelected = selectedIds.has(s.id);
             const statusColors: Record<string, string> = { Draft: "bg-muted text-muted-foreground", Ready: "bg-success/20 text-success", Probado: "bg-primary/20 text-primary-foreground" };
             return (
