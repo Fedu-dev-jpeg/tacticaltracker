@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -55,6 +56,10 @@ export default function Agenda() {
   const [loading, setLoading] = useState(true);
   const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [duplicateEvent, setDuplicateEvent] = useState<AgendaEvent | null>(null);
+  const [duplicateDate, setDuplicateDate] = useState("");
 
   // Bulk form
   const [bulkForm, setBulkForm] = useState({
@@ -101,9 +106,27 @@ export default function Agenda() {
   };
 
   const handleDelete = async (id: string) => {
+    setDeleteConfirm(null);
     const { error } = await supabase.from("agenda_events").delete().eq("id", id);
     if (error) { toast.error("Error al eliminar"); return; }
     toast.success("Evento eliminado");
+    fetchEvents();
+  };
+
+  const handleDuplicate = async () => {
+    if (!duplicateEvent || !duplicateDate) { toast.error("Seleccioná una fecha"); return; }
+    const { error } = await supabase.from("agenda_events").insert({
+      date: duplicateDate,
+      title: duplicateEvent.title,
+      description: duplicateEvent.description,
+      time_start: duplicateEvent.time_start,
+      time_end: duplicateEvent.time_end,
+      event_type: duplicateEvent.event_type,
+    });
+    if (error) { toast.error("Error al duplicar"); return; }
+    toast.success(`Evento duplicado al ${duplicateDate}`);
+    setDuplicateEvent(null);
+    setDuplicateDate("");
     fetchEvents();
   };
 
@@ -267,8 +290,9 @@ export default function Agenda() {
         <p className={cn("font-semibold leading-tight", compact ? "text-[11px]" : "text-sm")}>{ev.title}</p>
         {!compact && ev.description && <p className="opacity-70 leading-tight mt-0.5">{ev.description}</p>}
         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+          <button onClick={(e) => { e.stopPropagation(); setDuplicateEvent(ev); setDuplicateDate(""); }} className="p-0.5 rounded hover:bg-accent/30" title="Duplicar"><Copy className="h-3 w-3" /></button>
           <button onClick={(e) => { e.stopPropagation(); openEditEvent(ev); }} className="p-0.5 rounded hover:bg-accent/30"><Edit2 className="h-3 w-3" /></button>
-          <button onClick={(e) => { e.stopPropagation(); handleDelete(ev.id); }} className="p-0.5 rounded hover:bg-destructive/30"><Trash2 className="h-3 w-3" /></button>
+          <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(ev.id); }} className="p-0.5 rounded hover:bg-destructive/30"><Trash2 className="h-3 w-3" /></button>
         </div>
       </div>
     );
@@ -676,8 +700,63 @@ export default function Agenda() {
               </div>
             </div>
 
-            <Button onClick={handleBulkSave} className="w-full gradient-accent text-white font-heading">
+            <Button onClick={() => setBulkConfirmOpen(true)} className="w-full gradient-accent text-white font-heading">
               Crear {getBulkPreviewCount()} Eventos
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading">¿Eliminar evento?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteConfirm && handleDelete(deleteConfirm)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk creation confirmation */}
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading">¿Crear {getBulkPreviewCount()} eventos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se crearán {getBulkPreviewCount()} eventos de "{bulkForm.title}" en la agenda.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setBulkConfirmOpen(false); handleBulkSave(); }} className="gradient-accent text-white">
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Duplicate event dialog */}
+      <Dialog open={!!duplicateEvent} onOpenChange={(v) => { if (!v) { setDuplicateEvent(null); setDuplicateDate(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <Copy className="h-5 w-5 text-accent" />
+              Duplicar Evento
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Duplicar "<span className="font-semibold text-foreground">{duplicateEvent?.title}</span>" a otra fecha:
+            </p>
+            <Input type="date" value={duplicateDate} onChange={(e) => setDuplicateDate(e.target.value)} />
+            <Button onClick={handleDuplicate} className="w-full gradient-accent text-white font-heading" disabled={!duplicateDate}>
+              Duplicar
             </Button>
           </div>
         </DialogContent>
