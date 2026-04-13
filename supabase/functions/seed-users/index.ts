@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     // Create fedu if doesn't exist
     const { error } = await supabaseAdmin.auth.admin.createUser({
       email: "fedu@hambrientos.com",
-      password: "admin",
+      password: "admin1",
       email_confirm: true,
       user_metadata: { player_name: "Fedu" },
     });
