@@ -290,8 +290,9 @@ export default function Agenda() {
         <p className={cn("font-semibold leading-tight", compact ? "text-[11px]" : "text-sm")}>{ev.title}</p>
         {!compact && ev.description && <p className="opacity-70 leading-tight mt-0.5">{ev.description}</p>}
         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+          <button onClick={(e) => { e.stopPropagation(); setDuplicateEvent(ev); setDuplicateDate(""); }} className="p-0.5 rounded hover:bg-accent/30" title="Duplicar"><Copy className="h-3 w-3" /></button>
           <button onClick={(e) => { e.stopPropagation(); openEditEvent(ev); }} className="p-0.5 rounded hover:bg-accent/30"><Edit2 className="h-3 w-3" /></button>
-          <button onClick={(e) => { e.stopPropagation(); handleDelete(ev.id); }} className="p-0.5 rounded hover:bg-destructive/30"><Trash2 className="h-3 w-3" /></button>
+          <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(ev.id); }} className="p-0.5 rounded hover:bg-destructive/30"><Trash2 className="h-3 w-3" /></button>
         </div>
       </div>
     );
