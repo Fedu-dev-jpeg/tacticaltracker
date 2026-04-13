@@ -15,27 +15,33 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  const players = ["froud", "fedu", "hanzo", "diuva", "gyer", "pank", "ian"];
   const results: Record<string, string> = {};
 
-  for (const player of players) {
-    const email = `${player}@hambrientos.com`;
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: "hambre",
-      email_confirm: true,
-      user_metadata: { player_name: player.charAt(0).toUpperCase() + player.slice(1) },
-    });
-
-    if (error) {
-      if (error.message?.includes("already been registered")) {
-        results[player] = "already exists";
-      } else {
-        results[player] = `error: ${error.message}`;
+  // Delete all users except fedu
+  const { data: allUsers } = await supabaseAdmin.auth.admin.listUsers();
+  if (allUsers?.users) {
+    for (const user of allUsers.users) {
+      if (user.email !== "fedu@hambrientos.com") {
+        const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
+        results[user.email || user.id] = error ? `delete error: ${error.message}` : "deleted";
       }
-    } else {
-      results[player] = "created";
     }
+  }
+
+  // Update fedu's password to "admin"
+  const feduUser = allUsers?.users?.find(u => u.email === "fedu@hambrientos.com");
+  if (feduUser) {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(feduUser.id, { password: "admin" });
+    results["fedu"] = error ? `password update error: ${error.message}` : "password updated to admin";
+  } else {
+    // Create fedu if doesn't exist
+    const { error } = await supabaseAdmin.auth.admin.createUser({
+      email: "fedu@hambrientos.com",
+      password: "admin",
+      email_confirm: true,
+      user_metadata: { player_name: "Fedu" },
+    });
+    results["fedu"] = error ? `create error: ${error.message}` : "created with password admin";
   }
 
   return new Response(JSON.stringify({ results }), {
