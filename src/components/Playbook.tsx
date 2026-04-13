@@ -98,6 +98,7 @@ export default function Playbook() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
