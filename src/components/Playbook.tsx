@@ -420,7 +420,7 @@ export default function Playbook() {
       )}
 
       {/* Strategies grouped by side */}
-      {!editingStrat && (
+      {!editingStrat && viewMode === "list" && (
         <>
           {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
             <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} allExpanded={allExpanded} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
@@ -451,6 +451,19 @@ export default function Playbook() {
             </Button>
           )}
         </>
+      )}
+
+      {!editingStrat && viewMode === "board" && (
+        <BoardView
+          strategies={strategies}
+          selectedSide={selectedSide}
+          selectedPlayer={selectedPlayer}
+          onEdit={startEdit}
+          onDelete={deleteStrat}
+          onDuplicate={duplicateStrat}
+          ensureProtocol={ensureProtocol}
+          playerDescriptions={playerDescriptions}
+        />
       )}
     </div>
   );
