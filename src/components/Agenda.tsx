@@ -56,6 +56,10 @@ export default function Agenda() {
   const [loading, setLoading] = useState(true);
   const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [duplicateEvent, setDuplicateEvent] = useState<AgendaEvent | null>(null);
+  const [duplicateDate, setDuplicateDate] = useState("");
 
   // Bulk form
   const [bulkForm, setBulkForm] = useState({
