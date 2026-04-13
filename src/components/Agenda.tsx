@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
+import {
+  format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval,
+  isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, subMonths,
+  addDays, subDays, eachDayOfInterval as eachDay, getDay, isSameMonth
+} from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Plus, Trash2, ChevronLeft, ChevronRight, Clock, X } from "lucide-react";
+import { CalendarDays, Plus, Trash2, ChevronLeft, ChevronRight, Clock, Edit2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,20 +35,19 @@ const EVENT_TYPES: Record<string, { label: string; color: string }> = {
   off: { label: "Día Libre", color: "bg-muted/40 border-muted text-muted-foreground" },
 };
 
+type ViewMode = "day" | "week" | "month";
+
 export default function Agenda() {
   const [events, setEvents] = useState<AgendaEvent[]>([]);
-  const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [editingEvent, setEditingEvent] = useState<AgendaEvent | null>(null);
   const [form, setForm] = useState({ title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training" });
   const [loading, setLoading] = useState(true);
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
-  const daysOfWeek = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
-
-  useEffect(() => {
-    fetchEvents();
-  }, []);
+  useEffect(() => { fetchEvents(); }, []);
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -54,20 +57,32 @@ export default function Agenda() {
     setLoading(false);
   };
 
-  const handleAdd = async () => {
+  const handleSave = async () => {
     if (!selectedDate || !form.title.trim()) { toast.error("Completá título y fecha"); return; }
-    const { error } = await supabase.from("agenda_events").insert({
-      date: format(selectedDate, "yyyy-MM-dd"),
-      title: form.title.trim(),
-      description: form.description.trim(),
-      time_start: form.time_start,
-      time_end: form.time_end,
-      event_type: form.event_type,
-    });
-    if (error) { toast.error("Error al guardar"); console.error(error); return; }
-    toast.success("Evento agregado");
-    setDialogOpen(false);
-    setForm({ title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training" });
+    if (editingEvent) {
+      const { error } = await supabase.from("agenda_events").update({
+        date: format(selectedDate, "yyyy-MM-dd"),
+        title: form.title.trim(),
+        description: form.description.trim(),
+        time_start: form.time_start,
+        time_end: form.time_end,
+        event_type: form.event_type,
+      }).eq("id", editingEvent.id);
+      if (error) { toast.error("Error al actualizar"); return; }
+      toast.success("Evento actualizado");
+    } else {
+      const { error } = await supabase.from("agenda_events").insert({
+        date: format(selectedDate, "yyyy-MM-dd"),
+        title: form.title.trim(),
+        description: form.description.trim(),
+        time_start: form.time_start,
+        time_end: form.time_end,
+        event_type: form.event_type,
+      });
+      if (error) { toast.error("Error al guardar"); return; }
+      toast.success("Evento agregado");
+    }
+    closeDialog();
     fetchEvents();
   };
 
@@ -80,48 +95,109 @@ export default function Agenda() {
 
   const openNewEvent = (date: Date) => {
     setSelectedDate(date);
+    setEditingEvent(null);
     setForm({ title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training" });
     setDialogOpen(true);
+  };
+
+  const openEditEvent = (ev: AgendaEvent) => {
+    setSelectedDate(parseISO(ev.date));
+    setEditingEvent(ev);
+    setForm({ title: ev.title, description: ev.description, time_start: ev.time_start, time_end: ev.time_end, event_type: ev.event_type });
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingEvent(null);
   };
 
   const getEventsForDay = (date: Date) =>
     events.filter((e) => isSameDay(parseISO(e.date), date));
 
-  const isToday = (date: Date) => isSameDay(date, new Date());
+  const navigate = (dir: -1 | 1) => {
+    if (viewMode === "day") setCurrentDate(dir === 1 ? addDays(currentDate, 1) : subDays(currentDate, 1));
+    else if (viewMode === "week") setCurrentDate(dir === 1 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
+    else setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
+  };
 
-  return (
-    <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
-      {/* Week header */}
-      <div className="bg-card rounded-lg border border-border p-4 card-glow">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CalendarDays className="h-6 w-6 text-accent" />
-            <div>
-              <h2 className="text-lg font-heading font-bold">Agenda del Equipo</h2>
-              <p className="text-xs text-muted-foreground">
-                {format(currentWeekStart, "d MMM", { locale: es })} – {format(weekEnd, "d MMM yyyy", { locale: es })}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
-              Hoy
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+  const goToday = () => setCurrentDate(new Date());
+
+  const getTitle = () => {
+    if (viewMode === "day") return format(currentDate, "EEEE d 'de' MMMM yyyy", { locale: es });
+    if (viewMode === "week") {
+      const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
+      const we = endOfWeek(currentDate, { weekStartsOn: 1 });
+      return `${format(ws, "d MMM", { locale: es })} – ${format(we, "d MMM yyyy", { locale: es })}`;
+    }
+    return format(currentDate, "MMMM yyyy", { locale: es });
+  };
+
+  // ── Event card ──
+  const EventCard = ({ ev, compact = false }: { ev: AgendaEvent; compact?: boolean }) => {
+    const typeInfo = EVENT_TYPES[ev.event_type] || EVENT_TYPES.training;
+    return (
+      <div className={cn("rounded-md border p-1.5 group relative", typeInfo.color, compact ? "text-[10px]" : "text-xs")}>
+        <div className="flex items-center gap-1 mb-0.5">
+          <Clock className="h-2.5 w-2.5 shrink-0" />
+          <span>{ev.time_start}–{ev.time_end}</span>
+        </div>
+        <p className={cn("font-semibold leading-tight", compact ? "text-[11px]" : "text-sm")}>{ev.title}</p>
+        {!compact && ev.description && <p className="opacity-70 leading-tight mt-0.5">{ev.description}</p>}
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+          <button onClick={() => openEditEvent(ev)} className="p-0.5 rounded hover:bg-accent/30"><Edit2 className="h-3 w-3" /></button>
+          <button onClick={() => handleDelete(ev.id)} className="p-0.5 rounded hover:bg-destructive/30"><Trash2 className="h-3 w-3" /></button>
         </div>
       </div>
+    );
+  };
 
-      {/* Week grid */}
+  // ── Day view ──
+  const DayView = () => {
+    const dayEvents = getEventsForDay(currentDate);
+    const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 - 23:00
+    return (
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
+        <div className="flex items-center justify-between p-3 border-b border-border">
+          <h3 className="font-heading font-bold text-sm capitalize">{format(currentDate, "EEEE d", { locale: es })}</h3>
+          <button onClick={() => openNewEvent(currentDate)} className="p-1.5 rounded hover:bg-accent/20 text-muted-foreground hover:text-accent transition-colors">
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
+          {hours.map((h) => {
+            const hourStr = String(h).padStart(2, "0");
+            const hourEvents = dayEvents.filter((e) => e.time_start.startsWith(hourStr));
+            return (
+              <div key={h} className="flex min-h-[48px]">
+                <div className="w-16 shrink-0 text-right pr-3 py-2 text-xs text-muted-foreground">
+                  {hourStr}:00
+                </div>
+                <div className="flex-1 py-1 px-2 space-y-1 border-l border-border">
+                  {hourEvents.map((ev) => <EventCard key={ev.id} ev={ev} />)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {dayEvents.length === 0 && (
+          <p className="text-center text-muted-foreground/50 text-sm py-8 italic">Sin eventos para hoy</p>
+        )}
+      </div>
+    );
+  };
+
+  // ── Week view ──
+  const WeekView = () => {
+    const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const we = endOfWeek(currentDate, { weekStartsOn: 1 });
+    const days = eachDayOfInterval({ start: ws, end: we });
+
+    return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
-        {daysOfWeek.map((day) => {
+        {days.map((day) => {
           const dayEvents = getEventsForDay(day);
-          const today = isToday(day);
+          const today = isSameDay(day, new Date());
           return (
             <div
               key={day.toISOString()}
@@ -130,90 +206,167 @@ export default function Agenda() {
                 today ? "border-accent/50 ring-1 ring-accent/20" : "border-border"
               )}
             >
-              {/* Day header */}
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
-                  <span className={cn(
-                    "text-xs font-heading font-bold uppercase",
-                    today ? "text-accent" : "text-muted-foreground"
-                  )}>
+                  <span className={cn("text-xs font-heading font-bold uppercase", today ? "text-accent" : "text-muted-foreground")}>
                     {format(day, "EEE", { locale: es })}
                   </span>
-                  <span className={cn(
-                    "text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center",
-                    today ? "bg-accent text-accent-foreground" : "text-foreground"
-                  )}>
+                  <span className={cn("text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center", today ? "bg-accent text-accent-foreground" : "text-foreground")}>
                     {format(day, "d")}
                   </span>
                 </div>
-                <button
-                  onClick={() => openNewEvent(day)}
-                  className="p-1 rounded hover:bg-accent/20 text-muted-foreground hover:text-accent transition-colors"
-                >
+                <button onClick={() => openNewEvent(day)} className="p-1 rounded hover:bg-accent/20 text-muted-foreground hover:text-accent transition-colors">
                   <Plus className="h-3.5 w-3.5" />
                 </button>
               </div>
-
-              {/* Events */}
               <div className="flex-1 space-y-1.5">
-                {dayEvents.map((ev) => {
-                  const typeInfo = EVENT_TYPES[ev.event_type] || EVENT_TYPES.training;
-                  return (
-                    <div
-                      key={ev.id}
-                      className={cn("rounded-md border p-1.5 text-[10px] group relative", typeInfo.color)}
-                    >
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <Clock className="h-2.5 w-2.5 shrink-0" />
-                        <span>{ev.time_start}–{ev.time_end}</span>
-                      </div>
-                      <p className="font-semibold text-[11px] leading-tight">{ev.title}</p>
-                      {ev.description && (
-                        <p className="opacity-70 leading-tight mt-0.5">{ev.description}</p>
-                      )}
-                      <button
-                        onClick={() => handleDelete(ev.id)}
-                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/30 transition-opacity"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-                {dayEvents.length === 0 && (
-                  <p className="text-[10px] text-muted-foreground/50 italic">Sin eventos</p>
-                )}
+                {dayEvents.map((ev) => <EventCard key={ev.id} ev={ev} compact />)}
+                {dayEvents.length === 0 && <p className="text-[10px] text-muted-foreground/50 italic">Sin eventos</p>}
               </div>
             </div>
           );
         })}
       </div>
+    );
+  };
+
+  // ── Month view ──
+  const MonthView = () => {
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(currentDate);
+    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+    const allDays = eachDayOfInterval({ start: calStart, end: calEnd });
+
+    return (
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
+        {/* Weekday headers */}
+        <div className="grid grid-cols-7 border-b border-border">
+          {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+            <div key={d} className="text-center text-xs font-heading font-bold text-muted-foreground py-2">{d}</div>
+          ))}
+        </div>
+        {/* Calendar grid */}
+        <div className="grid grid-cols-7">
+          {allDays.map((day) => {
+            const dayEvents = getEventsForDay(day);
+            const today = isSameDay(day, new Date());
+            const inMonth = isSameMonth(day, currentDate);
+            return (
+              <div
+                key={day.toISOString()}
+                className={cn(
+                  "min-h-[90px] border-b border-r border-border p-1.5 transition-colors cursor-pointer hover:bg-accent/5",
+                  !inMonth && "opacity-40"
+                )}
+                onClick={() => {
+                  setCurrentDate(day);
+                  setViewMode("day");
+                }}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={cn(
+                    "text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center",
+                    today ? "bg-accent text-accent-foreground" : "text-foreground"
+                  )}>
+                    {format(day, "d")}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openNewEvent(day); }}
+                    className="p-0.5 rounded hover:bg-accent/20 text-muted-foreground hover:text-accent transition-colors opacity-0 hover:opacity-100"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="space-y-0.5">
+                  {dayEvents.slice(0, 2).map((ev) => {
+                    const typeInfo = EVENT_TYPES[ev.event_type] || EVENT_TYPES.training;
+                    return (
+                      <div key={ev.id} className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate border", typeInfo.color)}>
+                        {ev.title}
+                      </div>
+                    );
+                  })}
+                  {dayEvents.length > 2 && (
+                    <p className="text-[9px] text-muted-foreground font-medium pl-1">+{dayEvents.length - 2} más</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4 max-w-5xl mx-auto animate-slide-up">
+      {/* Header */}
+      <div className="bg-card rounded-lg border border-border p-4 card-glow">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <CalendarDays className="h-6 w-6 text-accent" />
+            <div>
+              <h2 className="text-lg font-heading font-bold">Agenda del Equipo</h2>
+              <p className="text-xs text-muted-foreground capitalize">{getTitle()}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View mode toggle */}
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {(["day", "week", "month"] as ViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-heading font-bold transition-colors",
+                    viewMode === mode
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                  )}
+                >
+                  {mode === "day" ? "Día" : mode === "week" ? "Semana" : "Mes"}
+                </button>
+              ))}
+            </div>
+            {/* Navigation */}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={goToday}>Hoy</Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(1)}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* View content */}
+      {viewMode === "day" && <DayView />}
+      {viewMode === "week" && <WeekView />}
+      {viewMode === "month" && <MonthView />}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 justify-center">
         {Object.entries(EVENT_TYPES).map(([key, { label, color }]) => (
-          <div key={key} className={cn("rounded-md border px-2 py-1 text-[10px] font-medium", color)}>
-            {label}
-          </div>
+          <div key={key} className={cn("rounded-md border px-2 py-1 text-[10px] font-medium", color)}>{label}</div>
         ))}
       </div>
 
-      {/* Add dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Add/Edit dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(v) => { if (!v) closeDialog(); else setDialogOpen(true); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-heading">
-              Nuevo Evento · {selectedDate && format(selectedDate, "EEE d MMM", { locale: es })}
+              {editingEvent ? "Editar Evento" : "Nuevo Evento"} · {selectedDate && format(selectedDate, "EEE d MMM", { locale: es })}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium mb-1 block">Título</label>
-              <Input
-                placeholder="Ej: Treino Nuke CT"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-              />
+              <Input placeholder="Ej: Treino Nuke CT" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -238,15 +391,10 @@ export default function Agenda() {
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Descripción (opcional)</label>
-              <Textarea
-                placeholder="Detalles, foco del día, notas..."
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={2}
-              />
+              <Textarea placeholder="Detalles, foco del día, notas..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
             </div>
-            <Button onClick={handleAdd} className="w-full gradient-accent text-white font-heading">
-              Agregar Evento
+            <Button onClick={handleSave} className="w-full gradient-accent text-white font-heading">
+              {editingEvent ? "Guardar Cambios" : "Agregar Evento"}
             </Button>
           </div>
         </DialogContent>
