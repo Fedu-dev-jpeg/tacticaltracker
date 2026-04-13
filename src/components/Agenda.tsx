@@ -731,23 +731,23 @@ export default function Agenda() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bulk creation confirmation */}
-      <AlertDialog open={bulkConfirmOpen} onOpenChange={(v) => { if (!v) setBulkConfirmOpen(false); }}>
-        <AlertDialogContent className="z-[60]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="font-heading">¿Crear {getBulkPreviewCount()} eventos?</AlertDialogTitle>
-            <AlertDialogDescription>
+      {/* Bulk creation confirmation - rendered with portal, needs to be above the bulk dialog */}
+      {bulkConfirmOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center" onClick={() => setBulkConfirmOpen(false)}>
+          <div className="bg-background border rounded-lg p-6 shadow-lg max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-heading font-semibold mb-2">¿Crear {getBulkPreviewCount()} eventos?</h2>
+            <p className="text-sm text-muted-foreground mb-4">
               Se crearán {getBulkPreviewCount()} eventos de "{bulkForm.title}" en la agenda.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setBulkConfirmOpen(false); setBulkDialogOpen(false); handleBulkSave(); }} className="gradient-accent text-white">
-              Confirmar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkConfirmOpen(false)}>Cancelar</Button>
+              <Button onClick={() => { setBulkConfirmOpen(false); setBulkDialogOpen(false); handleBulkSave(); }} className="gradient-accent text-white">
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Duplicate event dialog */}
       <Dialog open={!!duplicateEvent} onOpenChange={(v) => { if (!v) { setDuplicateEvent(null); setDuplicateDate(""); } }}>
