@@ -700,7 +700,7 @@ export default function Agenda() {
               </div>
             </div>
 
-            <Button onClick={() => { setBulkDialogOpen(false); setTimeout(() => setBulkConfirmOpen(true), 200); }} className="w-full gradient-accent text-white font-heading">
+            <Button onClick={() => setBulkConfirmOpen(true)} className="w-full gradient-accent text-white font-heading">
               Crear {getBulkPreviewCount()} Eventos
             </Button>
           </div>
@@ -724,8 +724,8 @@ export default function Agenda() {
       </AlertDialog>
 
       {/* Bulk creation confirmation */}
-      <AlertDialog open={bulkConfirmOpen} onOpenChange={(v) => { if (!v) { setBulkConfirmOpen(false); setBulkDialogOpen(true); } }}>
-        <AlertDialogContent>
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={(v) => { if (!v) setBulkConfirmOpen(false); }}>
+        <AlertDialogContent className="z-[60]">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-heading">¿Crear {getBulkPreviewCount()} eventos?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -734,7 +734,7 @@ export default function Agenda() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setBulkConfirmOpen(false); handleBulkSave(); }} className="gradient-accent text-white">
+            <AlertDialogAction onClick={() => { setBulkConfirmOpen(false); setBulkDialogOpen(false); handleBulkSave(); }} className="gradient-accent text-white">
               Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
