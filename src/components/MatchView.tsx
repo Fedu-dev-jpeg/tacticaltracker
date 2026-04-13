@@ -86,9 +86,10 @@ export default function MatchView({ strategies, player, playerDescription, onClo
           <div className="px-3 pb-3 space-y-2 border-t border-[#333]">
             <p className="text-[#ccc] text-sm leading-relaxed pt-2">{s.description}</p>
 
-            {displayMode === "all" && (
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(s.playerRoles).map(([p, r]) => (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(s.playerRoles)
+                .filter(([p]) => displayMode === "all" || p === player)
+                .map(([p, r]) => (
                   <span
                     key={p}
                     className={cn(
@@ -101,8 +102,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
                     {p}: {r}
                   </span>
                 ))}
-              </div>
-            )}
+            </div>
 
             {s.notes && (
               <p className="text-[#999] text-xs border-l-2 border-[#ED7D31] pl-2 italic">
