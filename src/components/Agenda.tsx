@@ -58,6 +58,7 @@ export default function Agenda() {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [pendingBulkConfirm, setPendingBulkConfirm] = useState(false);
   const [duplicateEvent, setDuplicateEvent] = useState<AgendaEvent | null>(null);
   const [duplicateDate, setDuplicateDate] = useState("");
 
