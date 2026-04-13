@@ -700,7 +700,7 @@ export default function Agenda() {
               </div>
             </div>
 
-            <Button onClick={() => setBulkConfirmOpen(true)} className="w-full gradient-accent text-white font-heading">
+            <Button onClick={() => { setBulkDialogOpen(false); setTimeout(() => setBulkConfirmOpen(true), 200); }} className="w-full gradient-accent text-white font-heading">
               Crear {getBulkPreviewCount()} Eventos
             </Button>
           </div>
