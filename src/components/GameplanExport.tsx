@@ -17,10 +17,10 @@ interface Props {
 type LayoutId = "original" | "horizontal" | "vertical" | "cheatsheet";
 
 const LAYOUTS: { id: LayoutId; label: string; desc: string; icon: typeof Table2 }[] = [
-  { id: "original", label: "Clásico (Cards)", desc: "El formato original con tarjetas detalladas, ideal para revisión completa", icon: FileText },
-  { id: "horizontal", label: "Tabla Horizontal", desc: "Tabla landscape limpia, una fila por estrategia, buena legibilidad", icon: Table2 },
-  { id: "vertical", label: "Tabla Compacta", desc: "Portrait resumido, agrupa por mapa y side, fuente mediana legible", icon: ListChecks },
-  { id: "cheatsheet", label: "Cheat Sheet", desc: "Referencia rápida en 2 columnas, solo nombre + tipo + tu rol", icon: Zap },
+  { id: "original", label: "Clásico (Cards)", desc: "Tarjetas detalladas, ideal para revisión completa", icon: FileText },
+  { id: "horizontal", label: "Tabla Horizontal", desc: "Landscape, una página CT y otra TT por mapa", icon: Table2 },
+  { id: "vertical", label: "Tabla Compacta", desc: "Portrait, alto contraste B&N, legible impreso", icon: ListChecks },
+  { id: "cheatsheet", label: "Cheat Sheet", desc: "Todo en una sola página A4, referencia rápida", icon: Zap },
 ];
 
 function sortByType(strats: Strategy[]): Strategy[] {
@@ -47,7 +47,7 @@ const headerHtml = (player: string | null, descs: Record<string, string>, count:
 const footerHtml = `<div style="text-align:center;margin-top:16px;font-size:8px;color:#888;border-top:1px solid #ccc;padding-top:6px;">FOCUS CS2 Team · Generado automáticamente</div>`;
 
 // ═══════════════════════════════════
-// ORIGINAL: Card-based (restored)
+// ORIGINAL: Card-based
 // ═══════════════════════════════════
 function buildOriginal(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
@@ -73,11 +73,11 @@ function buildOriginal(strats: Strategy[], player: string | null, descs: Record<
         ${s.notes ? `<p style="font-size:11px;color:#333;border-left:3px solid #000;padding-left:8px;margin:6px 0;line-height:1.4;">${s.notes}</p>` : ''}
       </div>`;
 
-    const ctBlock = ctS.length > 0 ? `<h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">🛡️ CT SIDE — ${map}</h3>${ctS.map(renderStrat).join('')}` : '';
-    const trBlock = trS.length > 0 ? `<div style="page-break-before:${ctS.length > 0 ? 'always' : 'auto'};"><h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">⚔️ TR SIDE — ${map}</h3>${trS.map(renderStrat).join('')}</div>` : '';
+    const ctBlock = ctS.length > 0 ? `<h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">CT SIDE — ${map}</h3>${ctS.map(renderStrat).join('')}` : '';
+    const trBlock = trS.length > 0 ? `<div style="page-break-before:${ctS.length > 0 ? 'always' : 'auto'};"><h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">TR SIDE — ${map}</h3>${trS.map(renderStrat).join('')}</div>` : '';
 
     return `<div style="page-break-before:${mapIdx === 0 ? 'auto' : 'always'};">
-      <h2 style="font-size:22px;margin:0 0 10px;border-bottom:3px solid #000;padding-bottom:6px;letter-spacing:1px;">📋 ${map.toUpperCase()}</h2>
+      <h2 style="font-size:22px;margin:0 0 10px;border-bottom:3px solid #000;padding-bottom:6px;letter-spacing:1px;">${map.toUpperCase()}</h2>
       ${ctBlock}${trBlock}
     </div>`;
   }).join('');
@@ -95,59 +95,68 @@ function buildOriginal(strats: Strategy[], player: string | null, descs: Record<
 }
 
 // ═══════════════════════════════════════
-// HORIZONTAL TABLE (Landscape, readable)
+// HORIZONTAL TABLE — CT page + TT page per map
 // ═══════════════════════════════════════
 function buildHorizontal(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
 
-  const mapSections = Object.entries(byMap).map(([map, mapStrats], i) => {
-    const sorted = sortByType(mapStrats);
-    const rows = sorted.map(s => {
+  const buildTable = (side: string, list: Strategy[], map: string) => {
+    if (list.length === 0) return '';
+    const rows = list.map(s => {
       const roles = player && s.playerRoles[player]
         ? `<strong>${player}:</strong> ${s.playerRoles[player]}`
-        : Object.entries(s.playerRoles).map(([p, r]) => `<strong>${p}</strong>: ${r}`).join('<br/>');
+        : Object.entries(s.playerRoles).map(([p, r]) => `<strong>${p}</strong>: ${r}`).join(' · ');
       return `<tr>
-        <td style="font-weight:800;text-align:center;color:${s.side === 'CT' ? '#1565c0' : '#c62828'}">${s.side}</td>
-        <td style="white-space:nowrap;">${s.type}</td>
-        <td style="font-weight:700;font-size:12px;">${s.name}</td>
-        <td>${s.description}</td>
-        <td style="font-size:10px;">${roles}</td>
+        <td style="white-space:nowrap;font-weight:700;">${s.type}</td>
+        <td style="font-weight:700;font-size:13px;">${s.name}</td>
+        <td style="font-size:11px;">${s.description}</td>
+        <td style="font-size:11px;">${roles}</td>
         <td style="font-size:10px;font-style:italic;">${s.notes || '—'}</td>
       </tr>`;
     }).join('');
 
-    return `<div style="page-break-before:${i > 0 ? 'always' : 'auto'};margin-bottom:20px;">
-      <h2 style="font-size:18px;margin:0 0 8px;border-bottom:3px solid #000;padding-bottom:4px;">📋 ${map.toUpperCase()}</h2>
+    const sideLabel = side === "CT" ? "CT SIDE" : "TR SIDE";
+    const borderColor = side === "CT" ? "#1565c0" : "#c62828";
+
+    return `<div style="page-break-after:always;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;border-bottom:3px solid ${borderColor};padding-bottom:6px;">
+        <span style="font-size:20px;font-weight:900;letter-spacing:1px;">${map.toUpperCase()}</span>
+        <span style="font-size:14px;font-weight:800;color:${borderColor};">${sideLabel}</span>
+        <span style="font-size:11px;color:#666;">${list.length} strats</span>
+      </div>
       <table><thead><tr>
-        <th style="width:40px;">Side</th>
-        <th style="width:80px;">Tipo</th>
-        <th style="width:140px;">Nombre</th>
-        <th style="width:35%;">Descripción</th>
-        <th style="width:20%;">Roles</th>
+        <th style="width:70px;">Tipo</th>
+        <th style="width:130px;">Nombre</th>
+        <th style="width:38%;">Descripción</th>
+        <th style="width:22%;">Roles</th>
         <th style="width:15%;">Notas</th>
       </tr></thead><tbody>${rows}</tbody></table>
     </div>`;
+  };
+
+  const pages = Object.entries(byMap).map(([map, mapStrats]) => {
+    const ct = sortByType(mapStrats.filter(s => s.side === "CT"));
+    const tr = sortByType(mapStrats.filter(s => s.side === "TR"));
+    return buildTable("CT", ct, map) + buildTable("TR", tr, map);
   }).join('');
 
   return `<html><head><style>
-    @page{size:A4 landscape;margin:12mm 14mm;}
+    @page{size:A4 landscape;margin:10mm 12mm;}
     *{box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:0;padding:12px;line-height:1.4;}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#000;margin:0;padding:10px;line-height:1.4;}
     table{width:100%;border-collapse:collapse;margin-bottom:10px;}
-    th{background:#1a1a1a;color:#fff;padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;}
-    td{border:1px solid #ccc;padding:6px 8px;vertical-align:top;}
-    tr:nth-child(even){background:#f8f8f8;}
-    tr:hover{background:#f0f0f0;}
+    th{background:#000;color:#fff;padding:6px 8px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}
+    td{border:1px solid #999;padding:5px 8px;vertical-align:top;}
+    tr:nth-child(even){background:#f0f0f0;}
     @media print{body{background:#fff;}}
   </style></head><body>
     ${headerHtml(player, descs, strats.length)}
-    ${mapSections}
-    ${footerHtml}
+    ${pages}
   </body></html>`;
 }
 
 // ═══════════════════════════════════════
-// VERTICAL COMPACT (Portrait, readable)
+// VERTICAL COMPACT — B&W high contrast
 // ═══════════════════════════════════════
 function buildVertical(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
@@ -158,42 +167,49 @@ function buildVertical(strats: Strategy[], player: string | null, descs: Record<
 
     const renderSide = (side: string, list: Strategy[]) => {
       if (list.length === 0) return '';
-      const sideColor = side === "CT" ? "#1565c0" : "#c62828";
-      const sideBg = side === "CT" ? "#e3f2fd" : "#ffebee";
       const rows = list.map(s => {
-        const role = player && s.playerRoles[player] ? s.playerRoles[player] : Object.entries(s.playerRoles).map(([p,r]) => `${p}: ${r}`).join(' · ');
-        return `<div style="padding:8px 10px;border-bottom:1px solid #ddd;page-break-inside:avoid;">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px;">
-            <span style="font-size:9px;color:#666;min-width:60px;">${s.type}</span>
-            <span style="font-weight:700;font-size:13px;">${s.name}</span>
-          </div>
-          <div style="font-size:11px;color:#333;margin-bottom:2px;">${s.description}</div>
-          <div style="display:flex;gap:12px;font-size:10px;">
-            <span style="color:#555;">👥 ${role}</span>
-            ${s.notes ? `<span style="color:#777;font-style:italic;">💡 ${s.notes}</span>` : ''}
-          </div>
-        </div>`;
+        const role = player && s.playerRoles[player]
+          ? s.playerRoles[player]
+          : Object.entries(s.playerRoles).map(([p, r]) => `${p}: ${r}`).join(' | ');
+        return `<tr>
+          <td style="font-size:10px;color:#333;white-space:nowrap;">${s.type}</td>
+          <td style="font-weight:800;font-size:12px;">${s.name}</td>
+          <td style="font-size:11px;">${s.description}</td>
+          <td style="font-size:10px;">${role}</td>
+          <td style="font-size:9px;font-style:italic;color:#444;">${s.notes || ''}</td>
+        </tr>`;
       }).join('');
 
-      return `<div style="margin-bottom:10px;">
-        <div style="background:${sideBg};color:${sideColor};font-weight:700;font-size:12px;padding:5px 10px;border-left:4px solid ${sideColor};">
-          ${side === "CT" ? "🛡️" : "⚔️"} ${side} SIDE
+      return `<div style="margin-bottom:8px;">
+        <div style="background:#000;color:#fff;font-weight:800;font-size:11px;padding:4px 8px;letter-spacing:1px;">
+          ${side} SIDE
         </div>
-        ${rows}
+        <table><thead><tr>
+          <th style="width:60px;">Tipo</th>
+          <th style="width:100px;">Nombre</th>
+          <th>Descripción</th>
+          <th style="width:22%;">Roles</th>
+          <th style="width:12%;">Notas</th>
+        </tr></thead><tbody>${rows}</tbody></table>
       </div>`;
     };
 
-    return `<div style="page-break-before:${i > 0 ? 'always' : 'auto'};margin-bottom:16px;">
-      <h2 style="font-size:16px;margin:0 0 8px;border-bottom:3px solid #000;padding-bottom:4px;">${map.toUpperCase()}</h2>
+    return `<div style="page-break-before:${i > 0 ? 'always' : 'auto'};margin-bottom:12px;">
+      <h2 style="font-size:16px;margin:0 0 6px;border-bottom:3px solid #000;padding-bottom:3px;letter-spacing:1px;">${map.toUpperCase()}</h2>
       ${renderSide("CT", ct)}
       ${renderSide("TR", tr)}
     </div>`;
   }).join('');
 
   return `<html><head><style>
-    @page{size:A4 portrait;margin:12mm 16mm;}
+    @page{size:A4 portrait;margin:10mm 12mm;}
     *{box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:0;padding:14px;line-height:1.4;}
+    body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:0;padding:10px;line-height:1.3;}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#333;color:#fff;padding:3px 6px;text-align:left;font-size:9px;text-transform:uppercase;border:1px solid #000;}
+    td{border:1px solid #666;padding:3px 6px;vertical-align:top;}
+    tr:nth-child(odd){background:#fff;}
+    tr:nth-child(even){background:#e8e8e8;}
     @media print{body{background:#fff;}}
   </style></head><body>
     ${headerHtml(player, descs, strats.length)}
@@ -203,10 +219,13 @@ function buildVertical(strats: Strategy[], player: string | null, descs: Record<
 }
 
 // ═══════════════════════════════════════
-// CHEAT SHEET (2-col, quick reference)
+// CHEAT SHEET — Everything on 1 A4 page
 // ═══════════════════════════════════════
 function buildCheatSheet(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
+  const totalStrats = strats.length;
+  // Dynamic font sizing based on total strats
+  const fontSize = totalStrats > 40 ? 6 : totalStrats > 25 ? 7 : 8;
 
   const mapBlocks = Object.entries(byMap).map(([map, mapStrats]) => {
     const ct = sortByType(mapStrats.filter(s => s.side === "CT"));
@@ -214,41 +233,40 @@ function buildCheatSheet(strats: Strategy[], player: string | null, descs: Recor
 
     const renderList = (side: string, list: Strategy[]) => {
       if (list.length === 0) return '';
-      const color = side === "CT" ? "#1565c0" : "#c62828";
       const items = list.map(s => {
-        const role = player && s.playerRoles[player] ? ` → ${s.playerRoles[player]}` : '';
-        return `<div style="padding:3px 0;border-bottom:1px dotted #ccc;display:flex;gap:6px;align-items:baseline;">
-          <span style="font-size:9px;color:#888;min-width:50px;">${s.type}</span>
-          <span style="font-weight:700;font-size:11px;">${s.name}</span>
-          ${role ? `<span style="font-size:10px;color:#555;">${role}</span>` : ''}
-        </div>`;
+        const role = player && s.playerRoles[player] ? s.playerRoles[player] : '';
+        return `<tr>
+          <td style="font-size:${fontSize}px;color:#555;padding:1px 2px;">${s.type}</td>
+          <td style="font-weight:800;font-size:${fontSize + 1}px;padding:1px 2px;">${s.name}</td>
+          ${role ? `<td style="font-size:${fontSize}px;padding:1px 2px;color:#333;">${role}</td>` : `<td></td>`}
+        </tr>`;
       }).join('');
-      return `<div style="margin-bottom:4px;">
-        <div style="color:${color};font-weight:700;font-size:10px;margin-bottom:2px;">${side === "CT" ? "🛡️" : "⚔️"} ${side}</div>
-        ${items}
+      return `<div style="margin-bottom:2px;">
+        <div style="font-weight:900;font-size:${fontSize + 1}px;color:#000;border-bottom:1px solid #000;margin-bottom:1px;">${side}</div>
+        <table style="width:100%;border-collapse:collapse;">${items}</table>
       </div>`;
     };
 
-    return `<div style="break-inside:avoid;margin-bottom:12px;border:1px solid #999;border-radius:4px;padding:8px;">
-      <div style="font-weight:900;font-size:13px;border-bottom:2px solid #000;padding-bottom:3px;margin-bottom:5px;">${map.toUpperCase()}</div>
+    return `<div style="break-inside:avoid;margin-bottom:6px;border:1.5px solid #000;padding:4px 5px;">
+      <div style="font-weight:900;font-size:${fontSize + 3}px;border-bottom:2px solid #000;padding-bottom:1px;margin-bottom:2px;">${map.toUpperCase()}</div>
       ${renderList("CT", ct)}
       ${renderList("TR", tr)}
     </div>`;
   }).join('');
 
   return `<html><head><style>
-    @page{size:A4 portrait;margin:10mm 12mm;}
-    *{box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:8px;}
-    .content{columns:2;column-gap:16px;}
+    @page{size:A4 portrait;margin:6mm 8mm;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:${fontSize}px;color:#000;line-height:1.2;}
+    .content{columns:2;column-gap:10px;}
+    table td{border-bottom:1px dotted #ccc;}
     @media print{body{background:#fff;}}
   </style></head><body>
-    <div style="text-align:center;margin-bottom:8px;border-bottom:2px solid #000;padding-bottom:6px;">
-      <span style="font-size:18px;font-weight:900;letter-spacing:2px;">FOCUS · CHEAT SHEET</span>
-      <span style="font-size:9px;color:#666;margin-left:10px;">${player || 'Team'} · ${new Date().toLocaleDateString('es-AR')}</span>
+    <div style="text-align:center;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:3px;">
+      <span style="font-size:14px;font-weight:900;letter-spacing:2px;">FOCUS CHEAT SHEET</span>
+      <span style="font-size:${fontSize + 1}px;color:#333;margin-left:8px;">${player || 'Team'} · ${new Date().toLocaleDateString('es-AR')} · ${totalStrats} strats</span>
     </div>
     <div class="content">${mapBlocks}</div>
-    ${footerHtml}
   </body></html>`;
 }
 
