@@ -74,6 +74,13 @@ export default function Agenda() {
 
   useEffect(() => { fetchEvents(); }, []);
 
+  useEffect(() => {
+    if (pendingBulkConfirm && !bulkDialogOpen) {
+      const timer = setTimeout(() => { setPendingBulkConfirm(false); setBulkConfirmOpen(true); }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingBulkConfirm, bulkDialogOpen]);
+
   const fetchEvents = async () => {
     setLoading(true);
     const { data, error } = await supabase.from("agenda_events").select("*").order("date").order("time_start");
