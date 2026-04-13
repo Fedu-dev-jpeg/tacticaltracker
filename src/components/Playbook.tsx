@@ -104,6 +104,7 @@ export default function Playbook() {
   const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   // Load strategies from Supabase on mount
   const fetchStrategies = useCallback(async () => {
