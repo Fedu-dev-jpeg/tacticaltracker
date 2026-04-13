@@ -5,7 +5,7 @@ import Dashboard from "@/components/Dashboard";
 import Analysis from "@/components/Analysis";
 import HistoryView from "@/components/HistoryView";
 import MapView from "@/components/MapView";
-import TournamentProgress from "@/components/TournamentProgress";
+import Agenda from "@/components/Agenda";
 import Playbook from "@/components/Playbook";
 import { useMatches } from "@/hooks/useMatches";
 import { SAMPLE_MATCHES } from "@/data/sampleMatches";
