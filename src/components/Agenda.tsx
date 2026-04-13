@@ -700,7 +700,7 @@ export default function Agenda() {
               </div>
             </div>
 
-            <Button onClick={handleBulkSave} className="w-full gradient-accent text-white font-heading">
+            <Button onClick={() => setBulkConfirmOpen(true)} className="w-full gradient-accent text-white font-heading">
               Crear {getBulkPreviewCount()} Eventos
             </Button>
           </div>
