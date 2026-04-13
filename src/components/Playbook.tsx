@@ -106,6 +106,7 @@ export default function Playbook() {
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showMatchView, setShowMatchView] = useState(false);
 
   // Load strategies from Supabase on mount
   const fetchStrategies = useCallback(async () => {
