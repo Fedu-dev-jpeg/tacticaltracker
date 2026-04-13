@@ -45,7 +45,7 @@ export default function Index() {
         />
       )}
       {activeTab === "maps" && <MapView matches={matches} />}
-      {activeTab === "tournament" && <TournamentProgress matches={matches} />}
+      {activeTab === "agenda" && <Agenda />}
       {activeTab === "playbook" && <Playbook />}
     </Layout>
   );
