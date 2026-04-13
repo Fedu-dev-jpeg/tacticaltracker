@@ -1,8 +1,8 @@
 import { Strategy } from "@/components/Playbook";
 import { MAPS, MapName } from "@/types/match";
-import { X, Shield, Sword, ChevronDown, ChevronUp } from "lucide-react";
+import { X, Shield, Sword, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface Props {
   strategies: Strategy[];
@@ -21,9 +21,12 @@ function sortByType(strats: Strategy[]): Strategy[] {
   });
 }
 
+type DisplayMode = "solo" | "all";
+
 export default function MatchView({ strategies, player, playerDescription, onClose }: Props) {
   const [activeMap, setActiveMap] = useState<MapName>(MAPS[0]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("solo");
 
   const playerStrats = strategies.filter(s => s.playerRoles[player]);
   const mapStrats = playerStrats.filter(s => s.map === activeMap);
@@ -34,6 +37,26 @@ export default function MatchView({ strategies, player, playerDescription, onClo
     map: m,
     count: playerStrats.filter(s => s.map === m).length,
   }));
+
+  // Arrow key navigation
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const idx = MAPS.indexOf(activeMap);
+      const next = e.key === "ArrowLeft"
+        ? (idx - 1 + MAPS.length) % MAPS.length
+        : (idx + 1) % MAPS.length;
+      setActiveMap(MAPS[next]);
+      setExpandedId(null);
+    } else if (e.key === "Escape") {
+      onClose();
+    }
+  }, [activeMap, onClose]);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   const renderStrat = (s: Strategy) => {
     const isExpanded = expandedId === s.id;
@@ -63,21 +86,23 @@ export default function MatchView({ strategies, player, playerDescription, onClo
           <div className="px-3 pb-3 space-y-2 border-t border-[#333]">
             <p className="text-[#ccc] text-sm leading-relaxed pt-2">{s.description}</p>
 
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(s.playerRoles).map(([p, r]) => (
-                <span
-                  key={p}
-                  className={cn(
-                    "text-xs px-2 py-1 rounded border",
-                    p === player
-                      ? "bg-[#ED7D31]/20 border-[#ED7D31]/50 text-[#ED7D31] font-bold"
-                      : "bg-[#222] border-[#444] text-[#999]"
-                  )}
-                >
-                  {p}: {r}
-                </span>
-              ))}
-            </div>
+            {displayMode === "all" && (
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(s.playerRoles).map(([p, r]) => (
+                  <span
+                    key={p}
+                    className={cn(
+                      "text-xs px-2 py-1 rounded border",
+                      p === player
+                        ? "bg-[#ED7D31]/20 border-[#ED7D31]/50 text-[#ED7D31] font-bold"
+                        : "bg-[#222] border-[#444] text-[#999]"
+                    )}
+                  >
+                    {p}: {r}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {s.notes && (
               <p className="text-[#999] text-xs border-l-2 border-[#ED7D31] pl-2 italic">
@@ -101,17 +126,32 @@ export default function MatchView({ strategies, player, playerDescription, onClo
           <span className="text-white font-bold text-lg">{player}</span>
           <span className="text-[#888] text-sm hidden sm:inline">{playerDescription}</span>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 hover:bg-[#222] rounded-lg transition-colors"
-        >
-          <X className="h-5 w-5 text-[#888]" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDisplayMode(displayMode === "solo" ? "all" : "solo")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border",
+              displayMode === "all"
+                ? "border-[#ED7D31]/50 bg-[#ED7D31]/10 text-[#ED7D31]"
+                : "border-[#444] bg-[#222] text-[#888] hover:text-white"
+            )}
+          >
+            {displayMode === "all" ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            {displayMode === "all" ? "Todos los roles" : "Solo mi rol"}
+          </button>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-[#222] rounded-lg transition-colors"
+          >
+            <X className="h-5 w-5 text-[#888]" />
+          </button>
+        </div>
       </div>
 
       {/* Map tabs */}
       <div className="sticky top-[53px] z-10 bg-[#111] border-b border-[#333] px-4">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex gap-1 overflow-x-auto items-center">
+          <span className="text-[#444] text-xs mr-1 hidden sm:inline">◀ ▶</span>
           {mapCounts.map(({ map, count }) => (
             <button
               key={map}
