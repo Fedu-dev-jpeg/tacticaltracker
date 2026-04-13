@@ -366,7 +366,15 @@ export default function Playbook() {
             );
           })}
         </div>
-        <div className="flex gap-1 ml-auto">
+        <div className="flex gap-1 ml-auto items-center">
+          <div className="flex gap-1 mr-3 bg-secondary/50 rounded-lg p-0.5">
+            <button onClick={() => setViewMode("list")} className={cn("p-1.5 rounded-md transition-all", viewMode === "list" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <List className="h-4 w-4" />
+            </button>
+            <button onClick={() => setViewMode("board")} className={cn("p-1.5 rounded-md transition-all", viewMode === "board" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
           {(["all", "CT", "TR"] as const).map((s) => (
             <button key={s} onClick={() => setSelectedSide(s)} className={cn("px-3 py-1.5 rounded-md text-xs font-semibold transition-all", selectedSide === s ? s === "CT" ? "bg-primary text-primary-foreground" : s === "TR" ? "bg-accent text-accent-foreground" : "bg-secondary text-foreground" : "bg-secondary/50 text-muted-foreground")}>
               {s === "all" ? "Todos" : s}
