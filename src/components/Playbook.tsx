@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid } from "lucide-react";
+import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid, Monitor } from "lucide-react";
 import GameplanExport from "@/components/GameplanExport";
+import MatchView from "@/components/MatchView";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
@@ -105,6 +106,7 @@ export default function Playbook() {
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showMatchView, setShowMatchView] = useState(false);
 
   // Load strategies from Supabase on mount
   const fetchStrategies = useCallback(async () => {
@@ -340,6 +342,11 @@ export default function Playbook() {
 
       {/* Gameplan mode + Expand all */}
       <div className="flex flex-wrap gap-2 items-center">
+        {selectedPlayer && (
+          <Button variant="outline" size="sm" onClick={() => setShowMatchView(true)} className="border-accent/50 text-accent hover:bg-accent/10">
+            <Monitor className="h-4 w-4 mr-1" /> Match View
+          </Button>
+        )}
         <Button variant={gameplanMode ? "default" : "outline"} size="sm" onClick={() => { setGameplanMode(!gameplanMode); if (gameplanMode) setSelectedIds(new Set()); }} className={gameplanMode ? "gradient-accent text-accent-foreground" : ""}>
           <FileDown className="h-4 w-4 mr-1" />{gameplanMode ? `Gameplan (${selectedIds.size})` : "Armar Gameplan"}
         </Button>
@@ -428,6 +435,15 @@ export default function Playbook() {
         selectedPlayer={selectedPlayer}
         playerDescriptions={playerDescriptions}
       />
+
+      {showMatchView && selectedPlayer && (
+        <MatchView
+          strategies={strategies}
+          player={selectedPlayer}
+          playerDescription={playerDescriptions[selectedPlayer] || ''}
+          onClose={() => setShowMatchView(false)}
+        />
+      )}
     </div>
   );
 }
