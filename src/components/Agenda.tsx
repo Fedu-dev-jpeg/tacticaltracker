@@ -706,6 +706,61 @@ export default function Agenda() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading">¿Eliminar evento?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteConfirm && handleDelete(deleteConfirm)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk creation confirmation */}
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading">¿Crear {getBulkPreviewCount()} eventos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se crearán {getBulkPreviewCount()} eventos de "{bulkForm.title}" en la agenda.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setBulkConfirmOpen(false); handleBulkSave(); }} className="gradient-accent text-white">
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Duplicate event dialog */}
+      <Dialog open={!!duplicateEvent} onOpenChange={(v) => { if (!v) { setDuplicateEvent(null); setDuplicateDate(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <Copy className="h-5 w-5 text-accent" />
+              Duplicar Evento
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Duplicar "<span className="font-semibold text-foreground">{duplicateEvent?.title}</span>" a otra fecha:
+            </p>
+            <Input type="date" value={duplicateDate} onChange={(e) => setDuplicateDate(e.target.value)} />
+            <Button onClick={handleDuplicate} className="w-full gradient-accent text-white font-heading" disabled={!duplicateDate}>
+              Duplicar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
