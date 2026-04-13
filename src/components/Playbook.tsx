@@ -342,6 +342,11 @@ export default function Playbook() {
 
       {/* Gameplan mode + Expand all */}
       <div className="flex flex-wrap gap-2 items-center">
+        {selectedPlayer && (
+          <Button variant="outline" size="sm" onClick={() => setShowMatchView(true)} className="border-accent/50 text-accent hover:bg-accent/10">
+            <Monitor className="h-4 w-4 mr-1" /> Match View
+          </Button>
+        )}
         <Button variant={gameplanMode ? "default" : "outline"} size="sm" onClick={() => { setGameplanMode(!gameplanMode); if (gameplanMode) setSelectedIds(new Set()); }} className={gameplanMode ? "gradient-accent text-accent-foreground" : ""}>
           <FileDown className="h-4 w-4 mr-1" />{gameplanMode ? `Gameplan (${selectedIds.size})` : "Armar Gameplan"}
         </Button>
