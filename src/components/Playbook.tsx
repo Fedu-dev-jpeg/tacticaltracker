@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X } from "lucide-react";
+import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
@@ -98,6 +98,7 @@ export default function Playbook() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
@@ -365,7 +366,15 @@ export default function Playbook() {
             );
           })}
         </div>
-        <div className="flex gap-1 ml-auto">
+        <div className="flex gap-1 ml-auto items-center">
+          <div className="flex gap-1 mr-3 bg-secondary/50 rounded-lg p-0.5">
+            <button onClick={() => setViewMode("list")} className={cn("p-1.5 rounded-md transition-all", viewMode === "list" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <List className="h-4 w-4" />
+            </button>
+            <button onClick={() => setViewMode("board")} className={cn("p-1.5 rounded-md transition-all", viewMode === "board" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
           {(["all", "CT", "TR"] as const).map((s) => (
             <button key={s} onClick={() => setSelectedSide(s)} className={cn("px-3 py-1.5 rounded-md text-xs font-semibold transition-all", selectedSide === s ? s === "CT" ? "bg-primary text-primary-foreground" : s === "TR" ? "bg-accent text-accent-foreground" : "bg-secondary text-foreground" : "bg-secondary/50 text-muted-foreground")}>
               {s === "all" ? "Todos" : s}
@@ -411,7 +420,7 @@ export default function Playbook() {
       )}
 
       {/* Strategies grouped by side */}
-      {!editingStrat && (
+      {!editingStrat && viewMode === "list" && (
         <>
           {(selectedSide === "all" || selectedSide === "CT") && ctStrats.length > 0 && (
             <StratSection title="CT Side" icon={<Shield className="h-5 w-5" />} strats={ctStrats} expandedId={expandedId} setExpandedId={setExpandedId} allExpanded={allExpanded} onDelete={deleteStrat} onDuplicate={duplicateStrat} onEdit={startEdit} gameplanMode={gameplanMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
@@ -442,6 +451,155 @@ export default function Playbook() {
             </Button>
           )}
         </>
+      )}
+
+      {!editingStrat && viewMode === "board" && (
+        <BoardView
+          strategies={strategies}
+          selectedSide={selectedSide}
+          selectedPlayer={selectedPlayer}
+          onEdit={startEdit}
+          onDelete={deleteStrat}
+          onDuplicate={duplicateStrat}
+          ensureProtocol={ensureProtocol}
+          playerDescriptions={playerDescriptions}
+        />
+      )}
+    </div>
+  );
+}
+
+function BoardView({ strategies, selectedSide, selectedPlayer, onEdit, onDelete, onDuplicate, ensureProtocol, playerDescriptions }: {
+  strategies: Strategy[];
+  selectedSide: "CT" | "TR" | "all";
+  selectedPlayer: string | null;
+  onEdit: (s: Strategy) => void;
+  onDelete: (id: string) => void;
+  onDuplicate: (s: Strategy) => void;
+  ensureProtocol: (url: string) => string;
+  playerDescriptions: Record<string, string>;
+}) {
+  const filteredByPlayer = selectedPlayer
+    ? strategies.filter((s) => s.playerRoles[selectedPlayer])
+    : strategies;
+
+  const filteredBySide = selectedSide === "all"
+    ? filteredByPlayer
+    : filteredByPlayer.filter((s) => s.side === selectedSide);
+
+  const byMap: Record<string, Strategy[]> = {};
+  MAPS.forEach((map) => {
+    const mapStrats = sortByType(filteredBySide.filter((s) => s.map === map));
+    if (mapStrats.length > 0) byMap[map] = mapStrats;
+  });
+
+  const statusColors: Record<string, string> = {
+    Draft: "bg-muted text-muted-foreground",
+    Ready: "bg-success/20 text-success",
+    Probado: "bg-primary/20 text-primary-foreground",
+  };
+
+  if (Object.keys(byMap).length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-40" />
+        <p className="font-heading">Sin estrategias para mostrar</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto pb-4">
+      <div className="flex gap-4" style={{ minWidth: `${Object.keys(byMap).length * 280}px` }}>
+        {Object.entries(byMap).map(([map, strats]) => {
+          const ctS = strats.filter((s) => s.side === "CT");
+          const trS = strats.filter((s) => s.side === "TR");
+          return (
+            <div key={map} className="flex-shrink-0 w-[270px] bg-secondary/30 rounded-xl border border-border">
+              <div className="p-3 border-b border-border sticky top-0 bg-secondary/30 rounded-t-xl">
+                <h3 className="font-heading font-bold text-sm text-foreground">{map}</h3>
+                <span className="text-[10px] text-muted-foreground">{strats.length} strats</span>
+              </div>
+              <div className="p-2 space-y-3 max-h-[70vh] overflow-y-auto">
+                {ctS.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 px-1">
+                      <Shield className="h-3.5 w-3.5 text-primary" />
+                      <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-primary">CT ({ctS.length})</span>
+                    </div>
+                    {ctS.map((s) => (
+                      <BoardCard key={s.id} strat={s} statusColors={statusColors} onEdit={onEdit} onDelete={onDelete} onDuplicate={onDuplicate} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
+                    ))}
+                  </div>
+                )}
+                {trS.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 px-1">
+                      <Sword className="h-3.5 w-3.5 text-accent" />
+                      <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-accent">TR ({trS.length})</span>
+                    </div>
+                    {trS.map((s) => (
+                      <BoardCard key={s.id} strat={s} statusColors={statusColors} onEdit={onEdit} onDelete={onDelete} onDuplicate={onDuplicate} selectedPlayer={selectedPlayer} ensureProtocol={ensureProtocol} playerDescriptions={playerDescriptions} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BoardCard({ strat: s, statusColors, onEdit, onDelete, onDuplicate, selectedPlayer, ensureProtocol, playerDescriptions }: {
+  strat: Strategy;
+  statusColors: Record<string, string>;
+  onEdit: (s: Strategy) => void;
+  onDelete: (id: string) => void;
+  onDuplicate: (s: Strategy) => void;
+  selectedPlayer: string | null;
+  ensureProtocol: (url: string) => string;
+  playerDescriptions: Record<string, string>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={cn("bg-card rounded-lg border border-border p-2.5 cursor-pointer hover:border-foreground/20 transition-all")} onClick={() => setExpanded(!expanded)}>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase", statusColors[s.status])}>{s.status}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">{s.type}</span>
+          </div>
+          <p className="text-xs font-heading font-semibold truncate">{s.name}</p>
+          {selectedPlayer && s.playerRoles[selectedPlayer] && (
+            <span className="text-[9px] text-accent mt-0.5 block">{selectedPlayer}: {s.playerRoles[selectedPlayer]}</span>
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <div className="mt-2 pt-2 border-t border-border space-y-2" onClick={(e) => e.stopPropagation()}>
+          <p className="text-[11px] text-foreground/80 leading-relaxed">{s.description}</p>
+          {Object.keys(s.playerRoles).length > 0 && !selectedPlayer && (
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(s.playerRoles).map(([p, r]) => (
+                <span key={p} className="text-[9px] bg-secondary rounded px-1.5 py-0.5"><strong className="text-accent">{p}</strong>: {r}</span>
+              ))}
+            </div>
+          )}
+          {s.notes && <p className="text-[10px] text-muted-foreground border-l-2 border-accent/50 pl-2">{s.notes}</p>}
+          {s.link && (
+            <a href={ensureProtocol(s.link)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary flex items-center gap-1 hover:underline">
+              <LinkIcon className="h-2.5 w-2.5" /> Ver referencia
+            </a>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => onEdit(s)} className="text-[10px] text-muted-foreground hover:text-accent flex items-center gap-0.5"><Pencil className="h-2.5 w-2.5" /> Editar</button>
+            <button onClick={() => onDuplicate(s)} className="text-[10px] text-muted-foreground hover:text-primary flex items-center gap-0.5"><Copy className="h-2.5 w-2.5" /> Duplicar</button>
+            <button onClick={() => onDelete(s.id)} className="text-[10px] text-muted-foreground hover:text-destructive flex items-center gap-0.5"><Trash2 className="h-2.5 w-2.5" /> Eliminar</button>
+          </div>
+        </div>
       )}
     </div>
   );
