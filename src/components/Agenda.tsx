@@ -106,9 +106,27 @@ export default function Agenda() {
   };
 
   const handleDelete = async (id: string) => {
+    setDeleteConfirm(null);
     const { error } = await supabase.from("agenda_events").delete().eq("id", id);
     if (error) { toast.error("Error al eliminar"); return; }
     toast.success("Evento eliminado");
+    fetchEvents();
+  };
+
+  const handleDuplicate = async () => {
+    if (!duplicateEvent || !duplicateDate) { toast.error("Seleccioná una fecha"); return; }
+    const { error } = await supabase.from("agenda_events").insert({
+      date: duplicateDate,
+      title: duplicateEvent.title,
+      description: duplicateEvent.description,
+      time_start: duplicateEvent.time_start,
+      time_end: duplicateEvent.time_end,
+      event_type: duplicateEvent.event_type,
+    });
+    if (error) { toast.error("Error al duplicar"); return; }
+    toast.success(`Evento duplicado al ${duplicateDate}`);
+    setDuplicateEvent(null);
+    setDuplicateDate("");
     fetchEvents();
   };
 
