@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid } from "lucide-react";
+import GameplanExport from "@/components/GameplanExport";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
@@ -103,6 +104,7 @@ export default function Playbook() {
   const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
   const [editingPlayerDesc, setEditingPlayerDesc] = useState<string | null>(null);
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   // Load strategies from Supabase on mount
   const fetchStrategies = useCallback(async () => {
@@ -223,56 +225,9 @@ export default function Playbook() {
     return sortByType(selected);
   }, [strategies, selectedIds, gameplanMap]);
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = () => {
     if (selectedIds.size === 0) { toast.error("Seleccioná al menos una estrategia"); return; }
-    const byMap: Record<string, Strategy[]> = {};
-    selectedStrats.forEach((s) => { if (!byMap[s.map]) byMap[s.map] = []; byMap[s.map].push(s); });
-
-    const mapSections = Object.entries(byMap).map(([map, strats], mapIdx) => {
-      const ctS = sortByType(strats.filter((s) => s.side === "CT"));
-      const trS = sortByType(strats.filter((s) => s.side === "TR"));
-      const renderStrat = (s: Strategy) => `
-        <div style="page-break-inside:avoid;border:2px solid #000;border-radius:4px;padding:10px 12px;margin-bottom:10px;background:#fff;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-            <span style="border:2px solid #000;font-size:11px;padding:1px 6px;border-radius:3px;font-weight:900;letter-spacing:1px;">${s.side}</span>
-            <span style="border:1px solid #666;font-size:10px;padding:1px 6px;border-radius:3px;color:#333;">${s.type}</span>
-            <strong style="color:#000;font-size:14px;">${s.name}</strong>
-            <span style="margin-left:auto;font-size:10px;font-weight:bold;color:#000;text-transform:uppercase;border:1px solid #000;padding:1px 5px;border-radius:3px;">${s.status}</span>
-          </div>
-          <p style="color:#222;font-size:12px;margin:0 0 8px;line-height:1.5;">${s.description}</p>
-          ${selectedPlayer && s.playerRoles[selectedPlayer] ? `<div style="border:2px solid #000;border-radius:4px;padding:6px 10px;margin-bottom:6px;background:#f0f0f0;"><strong style="font-size:12px;">${selectedPlayer}</strong><span style="font-size:12px;margin-left:8px;">${s.playerRoles[selectedPlayer]}</span><span style="font-size:10px;margin-left:8px;color:#555;">${playerDescriptions[selectedPlayer] || ''}</span></div>` : (Object.keys(s.playerRoles).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:11px;background:#f0f0f0;padding:3px 8px;border-radius:4px;border:1px solid #999;"><strong>${p}</strong>: ${r}</span>`).join('')}</div>` : '')}
-          ${s.notes ? `<p style="font-size:11px;color:#333;border-left:3px solid #000;padding-left:8px;margin:6px 0;line-height:1.4;">${s.notes}</p>` : ''}
-        </div>`;
-
-      // CT section with page break before TR to avoid mixing
-      const ctBlock = ctS.length > 0 ? `<h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">🛡️ CT SIDE — ${map}</h3>${ctS.map(renderStrat).join('')}` : '';
-      const trBlock = trS.length > 0 ? `<div style="page-break-before:${ctS.length > 0 ? 'always' : 'auto'};"><h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">⚔️ TR SIDE — ${map}</h3>${trS.map(renderStrat).join('')}</div>` : '';
-
-      return `
-        <div style="page-break-before:${mapIdx === 0 ? 'auto' : 'always'};">
-          <h2 style="font-size:22px;margin:0 0 10px;border-bottom:3px solid #000;padding-bottom:6px;letter-spacing:1px;">📋 ${map.toUpperCase()}</h2>
-          ${ctBlock}
-          ${trBlock}
-        </div>`;
-    }).join('');
-
-    const html = `<html><head><style>
-      @page{size:A4;margin:15mm 18mm;}
-      *{box-sizing:border-box;}
-      body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#000;margin:0;padding:16px;font-size:12px;line-height:1.4;}
-      @media print{body{background:#fff;}}
-    </style></head><body>
-      <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #000;padding-bottom:12px;">
-        <h1 style="font-size:30px;margin:0;letter-spacing:3px;">HAMBRIENTOS</h1>
-        <p style="font-size:12px;margin:4px 0;color:#333;">GAMEPLAN${selectedPlayer ? ` · ${selectedPlayer} (${playerDescriptions[selectedPlayer] || ''})` : ''} · ${new Date().toLocaleDateString('es-AR')} · ${selectedIds.size} estrategias</p>
-      </div>
-      ${mapSections}
-      <div style="text-align:center;margin-top:20px;font-size:9px;color:#666;border-top:1px solid #ccc;padding-top:8px;">HAMBRIENTOS CS2 Team · Generado automáticamente</div>
-    </body></html>`;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) { printWindow.document.write(html); printWindow.document.close(); setTimeout(() => printWindow.print(), 500); }
-    toast.success("Gameplan listo para imprimir");
+    setShowExportDialog(true);
   };
 
   if (loading) {
@@ -465,6 +420,14 @@ export default function Playbook() {
           playerDescriptions={playerDescriptions}
         />
       )}
+
+      <GameplanExport
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        strategies={selectedStrats}
+        selectedPlayer={selectedPlayer}
+        playerDescriptions={playerDescriptions}
+      />
     </div>
   );
 }
