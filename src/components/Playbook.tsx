@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid } from "lucide-react";
+import GameplanExport from "@/components/GameplanExport";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
