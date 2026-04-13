@@ -9,9 +9,9 @@ import { toast } from "sonner";
 
 export default function Login() {
   const { signIn } = useAuth();
-  const [email, setEmail] = useState(() => localStorage.getItem("hambrientos_saved_user") || "");
+  const [email, setEmail] = useState(() => localStorage.getItem("focus_saved_user") || "");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem("hambrientos_saved_user"));
+  const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem("focus_saved_user"));
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -22,9 +22,9 @@ export default function Login() {
     const finalEmail = trimmed.includes("@") ? trimmed : `${trimmed}@hambrientos.com`;
 
     if (rememberMe) {
-      localStorage.setItem("hambrientos_saved_user", email.trim());
+      localStorage.setItem("focus_saved_user", email.trim());
     } else {
-      localStorage.removeItem("hambrientos_saved_user");
+      localStorage.removeItem("focus_saved_user");
     }
 
     const { error } = await signIn(finalEmail, password);
