@@ -724,7 +724,7 @@ export default function Agenda() {
       </AlertDialog>
 
       {/* Bulk creation confirmation */}
-      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={(v) => { if (!v) { setBulkConfirmOpen(false); setBulkDialogOpen(true); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="font-heading">¿Crear {getBulkPreviewCount()} eventos?</AlertDialogTitle>
