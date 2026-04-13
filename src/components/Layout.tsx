@@ -34,7 +34,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
           <div className="flex items-center gap-2">
             <Crosshair className="h-7 w-7 text-accent" />
             <h1 className="text-2xl font-heading font-bold tracking-wide">
-              <span className="text-accent">HAMBRIENTOS</span>
+              <span className="text-accent">FOCUS</span>
               <span className="text-muted-foreground text-sm ml-2 font-body font-normal hidden sm:inline">CS2 Team Tracker</span>
             </h1>
           </div>

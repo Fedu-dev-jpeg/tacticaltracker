@@ -43,7 +43,7 @@ export default function Login() {
           </div>
           <div>
             <h1 className="text-3xl font-heading font-bold tracking-wide text-accent">
-              HAMBRIENTOS
+              FOCUS
             </h1>
             <p className="text-muted-foreground text-sm mt-1">CS2 Team Tracker</p>
           </div>
