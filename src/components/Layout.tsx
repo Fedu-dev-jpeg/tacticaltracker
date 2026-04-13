@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Focus, BarChart3, ClipboardList, History, Map, Trophy, BookOpen, LogOut, Crosshair } from "lucide-react";
+import { Focus, BarChart3, ClipboardList, History, Map, CalendarDays, BookOpen, LogOut, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ const tabs = [
   { id: "analysis", label: "Análisis", icon: Crosshair },
   { id: "history", label: "Historial", icon: History },
   { id: "maps", label: "Mapas", icon: Map },
-  { id: "tournament", label: "Torneo", icon: Trophy },
+  { id: "agenda", label: "Agenda", icon: CalendarDays },
   { id: "playbook", label: "Playbook", icon: BookOpen },
 ] as const;
 

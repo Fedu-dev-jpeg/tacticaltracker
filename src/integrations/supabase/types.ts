@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      agenda_events: {
+        Row: {
+          created_at: string
+          created_by: string
+          date: string
+          description: string
+          event_type: string
+          id: string
+          time_end: string
+          time_start: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          date: string
+          description?: string
+          event_type?: string
+          id?: string
+          time_end?: string
+          time_start?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          date?: string
+          description?: string
+          event_type?: string
+          id?: string
+          time_end?: string
+          time_start?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       matches: {
         Row: {
           created_at: string
