@@ -420,6 +420,14 @@ export default function Playbook() {
           playerDescriptions={playerDescriptions}
         />
       )}
+
+      <GameplanExport
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        strategies={selectedStrats}
+        selectedPlayer={selectedPlayer}
+        playerDescriptions={playerDescriptions}
+      />
     </div>
   );
 }
