@@ -31,8 +31,8 @@ Deno.serve(async (req) => {
   // Update fedu's password to "admin"
   const feduUser = allUsers?.users?.find(u => u.email === "fedu@hambrientos.com");
   if (feduUser) {
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(feduUser.id, { password: "admin" });
-    results["fedu"] = error ? `password update error: ${error.message}` : "password updated to admin";
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(feduUser.id, { password: "admin1" });
+    results["fedu"] = error ? `password update error: ${error.message}` : "password updated to admin1";
   } else {
     // Create fedu if doesn't exist
     const { error } = await supabaseAdmin.auth.admin.createUser({
