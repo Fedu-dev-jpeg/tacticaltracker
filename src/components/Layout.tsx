@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Crosshair, BarChart3, ClipboardList, History, Map, Trophy, BookOpen, LogOut } from "lucide-react";
+import { Focus, BarChart3, ClipboardList, History, Map, Trophy, BookOpen, LogOut, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
       <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
-            <Crosshair className="h-7 w-7 text-accent" />
+            <Focus className="h-7 w-7 text-accent" />
             <h1 className="text-2xl font-heading font-bold tracking-wide">
               <span className="text-accent">FOCUS</span>
               <span className="text-muted-foreground text-sm ml-2 font-body font-normal hidden sm:inline">CS2 Team Tracker</span>

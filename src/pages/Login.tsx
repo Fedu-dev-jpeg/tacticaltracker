@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Crosshair } from "lucide-react";
+import { Focus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -39,7 +39,7 @@ export default function Login() {
       <Card className="w-full max-w-sm border-border">
         <CardHeader className="text-center space-y-4 pb-2">
           <div className="flex justify-center">
-            <Crosshair className="h-12 w-12 text-accent" />
+            <Focus className="h-12 w-12 text-accent" />
           </div>
           <div>
             <h1 className="text-3xl font-heading font-bold tracking-wide text-accent">

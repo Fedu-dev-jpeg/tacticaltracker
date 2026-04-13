@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import NotFound from "./pages/NotFound.tsx";
-import { Crosshair } from "lucide-react";
+import { Focus } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -17,7 +17,7 @@ function AppContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <Crosshair className="h-10 w-10 text-accent animate-pulse" />
+        <Focus className="h-10 w-10 text-accent animate-pulse" />
       </div>
     );
   }
