@@ -3,7 +3,7 @@ import { Strategy } from "@/components/Playbook";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { FileDown, Table2, ListChecks, Zap, Monitor } from "lucide-react";
+import { FileDown, Table2, ListChecks, Zap, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -14,13 +14,13 @@ interface Props {
   playerDescriptions: Record<string, string>;
 }
 
-type LayoutId = "horizontal" | "vertical" | "cheatsheet" | "steam";
+type LayoutId = "original" | "horizontal" | "vertical" | "cheatsheet";
 
 const LAYOUTS: { id: LayoutId; label: string; desc: string; icon: typeof Table2 }[] = [
-  { id: "horizontal", label: "Tabla Horizontal", desc: "Tabla completa con toda la info, ideal para imprimir en A4 landscape", icon: Table2 },
-  { id: "vertical", label: "Tabla Vertical", desc: "Resumida, 1 strat por fila, ocupa menos espacio", icon: ListChecks },
-  { id: "cheatsheet", label: "Cheat Sheet", desc: "Ultra compacto en 2 columnas, ideal para tener al lado del monitor", icon: Zap },
-  { id: "steam", label: "Steam Overlay", desc: "Fondo oscuro, letra grande, pensado para leer en el overlay de Steam", icon: Monitor },
+  { id: "original", label: "Clásico (Cards)", desc: "El formato original con tarjetas detalladas, ideal para revisión completa", icon: FileText },
+  { id: "horizontal", label: "Tabla Horizontal", desc: "Tabla landscape limpia, una fila por estrategia, buena legibilidad", icon: Table2 },
+  { id: "vertical", label: "Tabla Compacta", desc: "Portrait resumido, agrupa por mapa y side, fuente mediana legible", icon: ListChecks },
+  { id: "cheatsheet", label: "Cheat Sheet", desc: "Referencia rápida en 2 columnas, solo nombre + tipo + tu rol", icon: Zap },
 ];
 
 function sortByType(strats: Strategy[]): Strategy[] {
@@ -38,128 +38,173 @@ function groupByMap(strats: Strategy[]): Record<string, Strategy[]> {
   return byMap;
 }
 
-function rolesStr(s: Strategy, player: string | null, descs: Record<string, string>): string {
-  if (player && s.playerRoles[player]) return `${player}: ${s.playerRoles[player]}`;
-  return Object.entries(s.playerRoles).map(([p, r]) => `${p}: ${r}`).join(" · ");
-}
+const headerHtml = (player: string | null, descs: Record<string, string>, count: number) => `
+  <div style="text-align:center;margin-bottom:16px;border-bottom:3px solid #000;padding-bottom:10px;">
+    <h1 style="font-size:28px;margin:0;letter-spacing:3px;">FOCUS</h1>
+    <p style="font-size:11px;margin:4px 0;color:#333;">GAMEPLAN${player ? ` · ${player} (${descs[player] || ''})` : ''} · ${new Date().toLocaleDateString('es-AR')} · ${count} estrategias</p>
+  </div>`;
 
-function rolesCompact(s: Strategy, player: string | null): string {
-  if (player && s.playerRoles[player]) return s.playerRoles[player];
-  return Object.entries(s.playerRoles).map(([p, r]) => `${p[0]}:${r}`).join(" ");
+const footerHtml = `<div style="text-align:center;margin-top:16px;font-size:8px;color:#888;border-top:1px solid #ccc;padding-top:6px;">FOCUS CS2 Team · Generado automáticamente</div>`;
+
+// ═══════════════════════════════════
+// ORIGINAL: Card-based (restored)
+// ═══════════════════════════════════
+function buildOriginal(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
+  const byMap = groupByMap(strats);
+
+  const mapSections = Object.entries(byMap).map(([map, mapStrats], mapIdx) => {
+    const ctS = sortByType(mapStrats.filter((s) => s.side === "CT"));
+    const trS = sortByType(mapStrats.filter((s) => s.side === "TR"));
+
+    const renderStrat = (s: Strategy) => `
+      <div style="page-break-inside:avoid;border:2px solid #000;border-radius:4px;padding:10px 12px;margin-bottom:10px;background:#fff;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="border:2px solid #000;font-size:11px;padding:1px 6px;border-radius:3px;font-weight:900;letter-spacing:1px;">${s.side}</span>
+          <span style="border:1px solid #666;font-size:10px;padding:1px 6px;border-radius:3px;color:#333;">${s.type}</span>
+          <strong style="color:#000;font-size:14px;">${s.name}</strong>
+          <span style="margin-left:auto;font-size:10px;font-weight:bold;color:#000;text-transform:uppercase;border:1px solid #000;padding:1px 5px;border-radius:3px;">${s.status}</span>
+        </div>
+        <p style="color:#222;font-size:12px;margin:0 0 8px;line-height:1.5;">${s.description}</p>
+        ${player && s.playerRoles[player]
+          ? `<div style="border:2px solid #000;border-radius:4px;padding:6px 10px;margin-bottom:6px;background:#f0f0f0;"><strong style="font-size:12px;">${player}</strong><span style="font-size:12px;margin-left:8px;">${s.playerRoles[player]}</span></div>`
+          : (Object.keys(s.playerRoles).length > 0
+            ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${Object.entries(s.playerRoles).map(([p, r]) => `<span style="font-size:11px;background:#f0f0f0;padding:3px 8px;border-radius:4px;border:1px solid #999;"><strong>${p}</strong>: ${r}</span>`).join('')}</div>`
+            : '')}
+        ${s.notes ? `<p style="font-size:11px;color:#333;border-left:3px solid #000;padding-left:8px;margin:6px 0;line-height:1.4;">${s.notes}</p>` : ''}
+      </div>`;
+
+    const ctBlock = ctS.length > 0 ? `<h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">🛡️ CT SIDE — ${map}</h3>${ctS.map(renderStrat).join('')}` : '';
+    const trBlock = trS.length > 0 ? `<div style="page-break-before:${ctS.length > 0 ? 'always' : 'auto'};"><h3 style="font-size:16px;margin:14px 0 8px;border-bottom:1px solid #000;padding-bottom:4px;">⚔️ TR SIDE — ${map}</h3>${trS.map(renderStrat).join('')}</div>` : '';
+
+    return `<div style="page-break-before:${mapIdx === 0 ? 'auto' : 'always'};">
+      <h2 style="font-size:22px;margin:0 0 10px;border-bottom:3px solid #000;padding-bottom:6px;letter-spacing:1px;">📋 ${map.toUpperCase()}</h2>
+      ${ctBlock}${trBlock}
+    </div>`;
+  }).join('');
+
+  return `<html><head><style>
+    @page{size:A4;margin:15mm 18mm;}
+    *{box-sizing:border-box;}
+    body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#000;margin:0;padding:16px;font-size:12px;line-height:1.4;}
+    @media print{body{background:#fff;}}
+  </style></head><body>
+    ${headerHtml(player, descs, strats.length)}
+    ${mapSections}
+    ${footerHtml}
+  </body></html>`;
 }
 
 // ═══════════════════════════════════════
-// LAYOUT 1: Horizontal Table (Landscape)
+// HORIZONTAL TABLE (Landscape, readable)
 // ═══════════════════════════════════════
 function buildHorizontal(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
 
-  const mapSections = Object.entries(byMap).map(([map, mapStrats]) => {
-    const ct = sortByType(mapStrats.filter(s => s.side === "CT"));
-    const tr = sortByType(mapStrats.filter(s => s.side === "TR"));
+  const mapSections = Object.entries(byMap).map(([map, mapStrats], i) => {
+    const sorted = sortByType(mapStrats);
+    const rows = sorted.map(s => {
+      const roles = player && s.playerRoles[player]
+        ? `<strong>${player}:</strong> ${s.playerRoles[player]}`
+        : Object.entries(s.playerRoles).map(([p, r]) => `<strong>${p}</strong>: ${r}`).join('<br/>');
+      return `<tr>
+        <td style="font-weight:800;text-align:center;color:${s.side === 'CT' ? '#1565c0' : '#c62828'}">${s.side}</td>
+        <td style="white-space:nowrap;">${s.type}</td>
+        <td style="font-weight:700;font-size:12px;">${s.name}</td>
+        <td>${s.description}</td>
+        <td style="font-size:10px;">${roles}</td>
+        <td style="font-size:10px;font-style:italic;">${s.notes || '—'}</td>
+      </tr>`;
+    }).join('');
 
-    const renderRows = (list: Strategy[]) => list.map(s => `
-      <tr>
-        <td style="font-weight:700;white-space:nowrap;">${s.side}</td>
-        <td>${s.type}</td>
-        <td style="font-weight:700;">${s.name}</td>
-        <td style="max-width:220px;">${s.description}</td>
-        <td style="font-size:9px;">${rolesStr(s, player, descs)}</td>
-        <td style="font-style:italic;font-size:9px;">${s.notes || '—'}</td>
-        <td style="text-align:center;font-size:9px;">${s.status}</td>
-      </tr>`).join('');
-
-    return `
-      <div style="page-break-inside:avoid;margin-bottom:16px;">
-        <h2 style="font-size:16px;margin:12px 0 6px;border-bottom:2px solid #000;padding-bottom:3px;">📋 ${map.toUpperCase()}</h2>
-        <table>
-          <thead><tr>
-            <th style="width:35px;">Side</th><th style="width:70px;">Tipo</th><th style="width:120px;">Nombre</th>
-            <th>Descripción</th><th>Roles</th><th>Notas</th><th style="width:55px;">Estado</th>
-          </tr></thead>
-          <tbody>
-            ${ct.length > 0 ? renderRows(ct) : ''}
-            ${ct.length > 0 && tr.length > 0 ? '<tr><td colspan="7" style="border:none;height:6px;background:transparent;"></td></tr>' : ''}
-            ${tr.length > 0 ? renderRows(tr) : ''}
-          </tbody>
-        </table>
-      </div>`;
+    return `<div style="page-break-before:${i > 0 ? 'always' : 'auto'};margin-bottom:20px;">
+      <h2 style="font-size:18px;margin:0 0 8px;border-bottom:3px solid #000;padding-bottom:4px;">📋 ${map.toUpperCase()}</h2>
+      <table><thead><tr>
+        <th style="width:40px;">Side</th>
+        <th style="width:80px;">Tipo</th>
+        <th style="width:140px;">Nombre</th>
+        <th style="width:35%;">Descripción</th>
+        <th style="width:20%;">Roles</th>
+        <th style="width:15%;">Notas</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
   }).join('');
 
   return `<html><head><style>
-    @page{size:A4 landscape;margin:10mm 12mm;}
+    @page{size:A4 landscape;margin:12mm 14mm;}
     *{box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px;}
-    table{width:100%;border-collapse:collapse;margin-bottom:8px;}
-    th,td{border:1px solid #333;padding:4px 6px;text-align:left;vertical-align:top;}
-    th{background:#222;color:#fff;font-size:9px;text-transform:uppercase;}
-    tr:nth-child(even){background:#f5f5f5;}
+    body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:0;padding:12px;line-height:1.4;}
+    table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+    th{background:#1a1a1a;color:#fff;padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;}
+    td{border:1px solid #ccc;padding:6px 8px;vertical-align:top;}
+    tr:nth-child(even){background:#f8f8f8;}
+    tr:hover{background:#f0f0f0;}
+    @media print{body{background:#fff;}}
   </style></head><body>
-    <div style="text-align:center;margin-bottom:10px;">
-      <h1 style="font-size:22px;margin:0;letter-spacing:2px;">FOCUS · GAMEPLAN</h1>
-      <p style="font-size:9px;color:#555;margin:2px 0;">${player ? `${player} (${descs[player] || ''}) · ` : ''}${new Date().toLocaleDateString('es-AR')} · ${strats.length} estrategias</p>
-    </div>
+    ${headerHtml(player, descs, strats.length)}
     ${mapSections}
-    <div style="text-align:center;font-size:8px;color:#999;margin-top:8px;">FOCUS CS2 Team · Generado automáticamente</div>
+    ${footerHtml}
   </body></html>`;
 }
 
-// ═══════════════════════════════════
-// LAYOUT 2: Vertical Compact Table
-// ═══════════════════════════════════
+// ═══════════════════════════════════════
+// VERTICAL COMPACT (Portrait, readable)
+// ═══════════════════════════════════════
 function buildVertical(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
 
-  const mapSections = Object.entries(byMap).map(([map, mapStrats]) => {
+  const mapSections = Object.entries(byMap).map(([map, mapStrats], i) => {
     const ct = sortByType(mapStrats.filter(s => s.side === "CT"));
     const tr = sortByType(mapStrats.filter(s => s.side === "TR"));
 
-    const renderBlock = (side: string, list: Strategy[]) => {
+    const renderSide = (side: string, list: Strategy[]) => {
       if (list.length === 0) return '';
-      const emoji = side === "CT" ? "🛡️" : "⚔️";
-      const rows = list.map(s => `
-        <tr>
-          <td style="font-size:8px;color:#666;">${s.type}</td>
-          <td style="font-weight:700;">${s.name}</td>
-          <td style="font-size:8px;">${rolesCompact(s, player)}</td>
-          <td style="font-size:8px;font-style:italic;">${s.notes ? s.notes.substring(0, 60) + (s.notes.length > 60 ? '…' : '') : ''}</td>
-        </tr>`).join('');
-      return `
-        <div style="margin-bottom:6px;">
-          <div style="font-size:10px;font-weight:700;margin:4px 0 2px;color:${side === 'CT' ? '#1a5276' : '#922b21'};">${emoji} ${side}</div>
-          <table><thead><tr><th>Tipo</th><th>Nombre</th><th>Roles</th><th>Notas</th></tr></thead><tbody>${rows}</tbody></table>
+      const sideColor = side === "CT" ? "#1565c0" : "#c62828";
+      const sideBg = side === "CT" ? "#e3f2fd" : "#ffebee";
+      const rows = list.map(s => {
+        const role = player && s.playerRoles[player] ? s.playerRoles[player] : Object.entries(s.playerRoles).map(([p,r]) => `${p}: ${r}`).join(' · ');
+        return `<div style="padding:8px 10px;border-bottom:1px solid #ddd;page-break-inside:avoid;">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px;">
+            <span style="font-size:9px;color:#666;min-width:60px;">${s.type}</span>
+            <span style="font-weight:700;font-size:13px;">${s.name}</span>
+          </div>
+          <div style="font-size:11px;color:#333;margin-bottom:2px;">${s.description}</div>
+          <div style="display:flex;gap:12px;font-size:10px;">
+            <span style="color:#555;">👥 ${role}</span>
+            ${s.notes ? `<span style="color:#777;font-style:italic;">💡 ${s.notes}</span>` : ''}
+          </div>
         </div>`;
+      }).join('');
+
+      return `<div style="margin-bottom:10px;">
+        <div style="background:${sideBg};color:${sideColor};font-weight:700;font-size:12px;padding:5px 10px;border-left:4px solid ${sideColor};">
+          ${side === "CT" ? "🛡️" : "⚔️"} ${side} SIDE
+        </div>
+        ${rows}
+      </div>`;
     };
 
-    return `
-      <div style="page-break-inside:avoid;margin-bottom:12px;">
-        <h3 style="font-size:13px;margin:8px 0 3px;border-bottom:2px solid #000;padding-bottom:2px;">${map.toUpperCase()}</h3>
-        ${renderBlock("CT", ct)}
-        ${renderBlock("TR", tr)}
-      </div>`;
+    return `<div style="page-break-before:${i > 0 ? 'always' : 'auto'};margin-bottom:16px;">
+      <h2 style="font-size:16px;margin:0 0 8px;border-bottom:3px solid #000;padding-bottom:4px;">${map.toUpperCase()}</h2>
+      ${renderSide("CT", ct)}
+      ${renderSide("TR", tr)}
+    </div>`;
   }).join('');
 
   return `<html><head><style>
-    @page{size:A4 portrait;margin:10mm 14mm;}
+    @page{size:A4 portrait;margin:12mm 16mm;}
     *{box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;font-size:9px;color:#000;margin:0;padding:10px;}
-    table{width:100%;border-collapse:collapse;}
-    th,td{border:1px solid #666;padding:2px 5px;text-align:left;vertical-align:top;}
-    th{background:#333;color:#fff;font-size:8px;text-transform:uppercase;}
-    tr:nth-child(even){background:#f0f0f0;}
+    body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:0;padding:14px;line-height:1.4;}
+    @media print{body{background:#fff;}}
   </style></head><body>
-    <div style="text-align:center;margin-bottom:8px;">
-      <h1 style="font-size:18px;margin:0;letter-spacing:2px;">FOCUS · GAMEPLAN RESUMIDO</h1>
-      <p style="font-size:8px;color:#555;margin:2px 0;">${player ? `${player} · ` : ''}${new Date().toLocaleDateString('es-AR')}</p>
-    </div>
+    ${headerHtml(player, descs, strats.length)}
     ${mapSections}
-    <div style="text-align:center;font-size:7px;color:#999;margin-top:6px;">FOCUS CS2 Team</div>
+    ${footerHtml}
   </body></html>`;
 }
 
-// ═══════════════════════════════════
-// LAYOUT 3: Cheat Sheet (2 columns)
-// ═══════════════════════════════════
+// ═══════════════════════════════════════
+// CHEAT SHEET (2-col, quick reference)
+// ═══════════════════════════════════════
 function buildCheatSheet(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
   const byMap = groupByMap(strats);
 
@@ -167,94 +212,55 @@ function buildCheatSheet(strats: Strategy[], player: string | null, descs: Recor
     const ct = sortByType(mapStrats.filter(s => s.side === "CT"));
     const tr = sortByType(mapStrats.filter(s => s.side === "TR"));
 
-    const renderMini = (s: Strategy) => {
-      const role = player && s.playerRoles[player] ? ` → ${s.playerRoles[player]}` : '';
-      return `<div style="margin-bottom:3px;padding:2px 4px;border-left:3px solid ${s.side === 'CT' ? '#2980b9' : '#c0392b'};background:${s.side === 'CT' ? '#eaf2f8' : '#fdedec'};">
-        <span style="font-weight:700;font-size:9px;">${s.type}</span> <span style="font-weight:900;font-size:10px;">${s.name}</span>${role ? `<span style="font-size:8px;color:#555;">${role}</span>` : ''}
-        ${s.notes ? `<div style="font-size:7px;color:#444;margin-top:1px;">${s.notes.substring(0, 80)}${s.notes.length > 80 ? '…' : ''}</div>` : ''}
+    const renderList = (side: string, list: Strategy[]) => {
+      if (list.length === 0) return '';
+      const color = side === "CT" ? "#1565c0" : "#c62828";
+      const items = list.map(s => {
+        const role = player && s.playerRoles[player] ? ` → ${s.playerRoles[player]}` : '';
+        return `<div style="padding:3px 0;border-bottom:1px dotted #ccc;display:flex;gap:6px;align-items:baseline;">
+          <span style="font-size:9px;color:#888;min-width:50px;">${s.type}</span>
+          <span style="font-weight:700;font-size:11px;">${s.name}</span>
+          ${role ? `<span style="font-size:10px;color:#555;">${role}</span>` : ''}
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:4px;">
+        <div style="color:${color};font-weight:700;font-size:10px;margin-bottom:2px;">${side === "CT" ? "🛡️" : "⚔️"} ${side}</div>
+        ${items}
       </div>`;
     };
 
-    const ctHtml = ct.length > 0 ? `<div style="font-size:9px;font-weight:700;color:#2980b9;margin:3px 0 1px;">🛡️ CT</div>${ct.map(renderMini).join('')}` : '';
-    const trHtml = tr.length > 0 ? `<div style="font-size:9px;font-weight:700;color:#c0392b;margin:3px 0 1px;">⚔️ TR</div>${tr.map(renderMini).join('')}` : '';
-
-    return `<div style="break-inside:avoid;margin-bottom:8px;">
-      <div style="font-size:11px;font-weight:900;border-bottom:2px solid #000;margin-bottom:3px;padding-bottom:1px;">${map.toUpperCase()}</div>
-      ${ctHtml}${trHtml}
+    return `<div style="break-inside:avoid;margin-bottom:12px;border:1px solid #999;border-radius:4px;padding:8px;">
+      <div style="font-weight:900;font-size:13px;border-bottom:2px solid #000;padding-bottom:3px;margin-bottom:5px;">${map.toUpperCase()}</div>
+      ${renderList("CT", ct)}
+      ${renderList("TR", tr)}
     </div>`;
   }).join('');
 
   return `<html><head><style>
-    @page{size:A4 portrait;margin:8mm 10mm;}
+    @page{size:A4 portrait;margin:10mm 12mm;}
     *{box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;font-size:8px;color:#000;margin:0;padding:6px;columns:2;column-gap:14px;}
+    body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:8px;}
+    .content{columns:2;column-gap:16px;}
+    @media print{body{background:#fff;}}
   </style></head><body>
-    <div style="column-span:all;text-align:center;margin-bottom:6px;border-bottom:2px solid #000;padding-bottom:4px;">
-      <span style="font-size:16px;font-weight:900;letter-spacing:2px;">FOCUS CHEAT SHEET</span>
-      <span style="font-size:8px;color:#666;margin-left:8px;">${player || 'Team'} · ${new Date().toLocaleDateString('es-AR')}</span>
+    <div style="text-align:center;margin-bottom:8px;border-bottom:2px solid #000;padding-bottom:6px;">
+      <span style="font-size:18px;font-weight:900;letter-spacing:2px;">FOCUS · CHEAT SHEET</span>
+      <span style="font-size:9px;color:#666;margin-left:10px;">${player || 'Team'} · ${new Date().toLocaleDateString('es-AR')}</span>
     </div>
-    ${mapBlocks}
+    <div class="content">${mapBlocks}</div>
+    ${footerHtml}
   </body></html>`;
 }
 
-// ═══════════════════════════════════════
-// LAYOUT 4: Steam Overlay (dark, large)
-// ═══════════════════════════════════════
-function buildSteamOverlay(strats: Strategy[], player: string | null, descs: Record<string, string>): string {
-  const byMap = groupByMap(strats);
-
-  const mapSections = Object.entries(byMap).map(([map, mapStrats]) => {
-    const ct = sortByType(mapStrats.filter(s => s.side === "CT"));
-    const tr = sortByType(mapStrats.filter(s => s.side === "TR"));
-
-    const renderCard = (s: Strategy) => {
-      const sideColor = s.side === "CT" ? "#4fc3f7" : "#ef5350";
-      const role = player && s.playerRoles[player] ? s.playerRoles[player] : '';
-      return `<div style="background:#1e1e1e;border:1px solid ${sideColor};border-radius:6px;padding:8px 10px;margin-bottom:6px;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-          <span style="color:${sideColor};font-weight:900;font-size:11px;border:1px solid ${sideColor};padding:1px 5px;border-radius:3px;">${s.side}</span>
-          <span style="color:#aaa;font-size:10px;">${s.type}</span>
-          <span style="color:#fff;font-weight:700;font-size:13px;">${s.name}</span>
-          ${role ? `<span style="margin-left:auto;color:#ED7D31;font-size:11px;font-weight:600;">→ ${role}</span>` : ''}
-        </div>
-        <div style="color:#ccc;font-size:11px;line-height:1.4;">${s.description}</div>
-        ${s.notes ? `<div style="color:#999;font-size:10px;border-left:2px solid #ED7D31;padding-left:6px;margin-top:4px;">${s.notes}</div>` : ''}
-      </div>`;
-    };
-
-    const ctHtml = ct.length > 0 ? `<div style="color:#4fc3f7;font-size:12px;font-weight:700;margin:8px 0 4px;">🛡️ CT SIDE</div>${ct.map(renderCard).join('')}` : '';
-    const trHtml = tr.length > 0 ? `<div style="color:#ef5350;font-size:12px;font-weight:700;margin:8px 0 4px;">⚔️ TR SIDE</div>${tr.map(renderCard).join('')}` : '';
-
-    return `<div style="margin-bottom:16px;">
-      <h2 style="color:#ED7D31;font-size:16px;margin:0 0 6px;border-bottom:1px solid #444;padding-bottom:4px;">${map.toUpperCase()}</h2>
-      ${ctHtml}${trHtml}
-    </div>`;
-  }).join('');
-
-  return `<html><head><style>
-    @page{size:A4 portrait;margin:10mm 14mm;}
-    *{box-sizing:border-box;}
-    body{font-family:'Segoe UI',Arial,sans-serif;background:#121212;color:#fff;margin:0;padding:14px;font-size:11px;}
-    @media print{body{background:#121212;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
-  </style></head><body>
-    <div style="text-align:center;margin-bottom:12px;border-bottom:1px solid #ED7D31;padding-bottom:8px;">
-      <h1 style="font-size:24px;margin:0;color:#ED7D31;letter-spacing:3px;">FOCUS</h1>
-      <p style="font-size:10px;color:#888;margin:2px 0;">GAMEPLAN${player ? ` · ${player}` : ''} · ${new Date().toLocaleDateString('es-AR')}</p>
-    </div>
-    ${mapSections}
-    <div style="text-align:center;font-size:8px;color:#555;margin-top:10px;border-top:1px solid #333;padding-top:6px;">FOCUS CS2 Team · Steam Overlay Ready</div>
-  </body></html>`;
-}
-
-const builders: Record<LayoutId, typeof buildHorizontal> = {
+const builders: Record<LayoutId, typeof buildOriginal> = {
+  original: buildOriginal,
   horizontal: buildHorizontal,
   vertical: buildVertical,
   cheatsheet: buildCheatSheet,
-  steam: buildSteamOverlay,
 };
 
 export default function GameplanExport({ open, onClose, strategies, selectedPlayer, playerDescriptions }: Props) {
-  const [selected, setSelected] = useState<LayoutId>("horizontal");
+  const [selected, setSelected] = useState<LayoutId>("original");
 
   const handleExport = () => {
     if (strategies.length === 0) { toast.error("No hay estrategias seleccionadas"); return; }
@@ -280,7 +286,7 @@ export default function GameplanExport({ open, onClose, strategies, selectedPlay
         </DialogHeader>
 
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">Elegí el formato que mejor se adapte a tu uso:</p>
+          <p className="text-sm text-muted-foreground">Elegí el formato de impresión:</p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {LAYOUTS.map((layout) => {
