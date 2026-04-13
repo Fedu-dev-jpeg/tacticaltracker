@@ -435,6 +435,15 @@ export default function Playbook() {
         selectedPlayer={selectedPlayer}
         playerDescriptions={playerDescriptions}
       />
+
+      {showMatchView && selectedPlayer && (
+        <MatchView
+          strategies={strategies}
+          player={selectedPlayer}
+          playerDescription={playerDescriptions[selectedPlayer] || ''}
+          onClose={() => setShowMatchView(false)}
+        />
+      )}
     </div>
   );
 }
