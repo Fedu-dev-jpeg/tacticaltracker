@@ -28,7 +28,8 @@ let deademCs2: DeademCs2Api | null = null;
 async function loadDeadem(): Promise<DeademCs2Api> {
   if (deademCs2) return deademCs2;
   // Vite must not try to transform this URL — the file is a plain UMD script.
-  await import(/* @vite-ignore */ "/node_modules/@deademx/cs2/dist/deadem-cs2.min.js");
+  const umdUrl = "/node_modules/@deademx/cs2/dist/deadem-cs2.min.js";
+  await import(/* @vite-ignore */ umdUrl);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const api = (self as any).deademCs2;
   if (!api) throw new Error("deadem UMD no expuso `deademCs2` en el worker global");
