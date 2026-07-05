@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import TournamentCountdown from "@/components/TournamentCountdown";
+import TournamentsManager from "@/components/TournamentsManager";
+import { useTournaments, getUpcomingTournament } from "@/hooks/useTournaments";
 
 interface DashboardProps {
   matches: Match[];
