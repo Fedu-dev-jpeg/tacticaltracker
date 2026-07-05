@@ -5,10 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// SIMULATED parser: produces plausible, deterministic-per-file data.
-// Once a real .dem binary parser is wired in, only the generateAnalysis()
-// block needs to change — the roster matching, DB writes and response
-// shape stay the same.
+// SIMULATED parser v2: emits the exact demo_data schema v2 (see src/types/demo.ts).
+// When the real WASM parser lands (Step 2), only generateDemoData() changes — the
+// roster matching, DB writes and response shape stay the same.
 
 const MAPS = ["Mirage", "Inferno", "Nuke", "Anubis", "Ancient", "Dust2", "Vertigo", "Overpass", "Train"];
 const RIVAL_NAMES = ["Team Nova", "Ratones", "Gauchos", "LosPibes", "Puntería GC"];
@@ -17,9 +16,15 @@ const RIVAL_TAGS = [
   ["hunter", "vito", "ninja", "cold", "sparks"],
   ["neo", "duke", "milo", "wraith", "vex"],
 ];
-const ROLES = ["A Anchor", "A Extremity", "B Anchor", "B Cave", "B Extremity", "Awper", "Mid"];
-const BUY_TYPES = ["P", "FE", "E", "HB", "FB"]; // Pistol, Full Eco, Eco, Half Buy, Full Buy
-const END_REASONS = ["Bomb", "Elimination", "Time", "Defuse"];
+const AWP_WEAPONS = ["awp"];
+const RIFLE_WEAPONS = ["ak47", "m4a1_silencer", "m4a1", "aug", "sg556"];
+const PISTOL_WEAPONS = ["glock", "usp_silencer", "hkp2000", "deagle"];
+
+type Side = "CT" | "TERRORIST";
+type EndReason = "target_bombed" | "bomb_defused" | "ct_elimination" | "t_elimination" | "round_time_expired";
+type BuyType = "full_eco" | "eco" | "half_buy" | "full_buy" | "pistol";
+
+const BUY_ORDER: BuyType[] = ["full_eco", "eco", "half_buy", "full_buy", "pistol"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -30,29 +35,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // --- Auth: require signed-in admin ---
     const authHeader = req.headers.get("Authorization") ?? "";
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
     if (!jwt) return json({ error: "unauthorized" }, 401);
     const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
     if (userErr || !userData?.user) return json({ error: "unauthorized" }, 401);
     const { data: roleRow } = await admin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userData.user.id)
-      .eq("role", "admin")
-      .maybeSingle();
+      .from("user_roles").select("role")
+      .eq("user_id", userData.user.id).eq("role", "admin").maybeSingle();
     if (!roleRow) return json({ error: "forbidden" }, 403);
 
     const body = await req.json();
     const { path, rival: rivalOverride, map: mapOverride, match_type: matchTypeOverride } = body ?? {};
     if (!path || typeof path !== "string") return json({ error: "path requerido" }, 400);
 
-
-    // Skip any storage read — downloading/listing under concurrency exceeds the edge memory limit.
-    const fileSize = 0;
-
     const rng = seededRng(hashString(path));
+    const fileSize = 0;
 
     const { data: teamRaw } = await admin
       .from("team_members")
@@ -60,38 +58,41 @@ Deno.serve(async (req) => {
       .eq("is_coach", false);
     const roster = (teamRaw ?? []).filter((m) => m.steam_id);
 
-    // --- SIMULATED PARSE (with user-provided overrides where available) ---
     const map = (typeof mapOverride === "string" && mapOverride.trim())
       ? mapOverride.trim()
       : MAPS[Math.floor(rng() * MAPS.length)];
     const matchType = (matchTypeOverride === "TRAINING" || matchTypeOverride === "OFFICIAL")
-      ? matchTypeOverride
-      : "OFFICIAL";
-    const startingSide: "CT" | "TR" = rng() > 0.5 ? "CT" : "TR";
-    const scoreUs = 6 + Math.floor(rng() * 10);
-    const scoreThem = 6 + Math.floor(rng() * 10);
-    const totalRounds = scoreUs + scoreThem;
-    // Rival name: prefer the override (user confirmation). Leave empty for the review step.
+      ? matchTypeOverride : "OFFICIAL";
+
+    const team1FirstHalfSide: Side = rng() > 0.5 ? "CT" : "TERRORIST";
+    const team2FirstHalfSide: Side = team1FirstHalfSide === "CT" ? "TERRORIST" : "CT";
+    const scoreTeam1 = 6 + Math.floor(rng() * 10);
+    const scoreTeam2 = 6 + Math.floor(rng() * 10);
+    const totalRounds = scoreTeam1 + scoreTeam2;
+
     const rival = (typeof rivalOverride === "string" && rivalOverride.trim())
-      ? rivalOverride.trim()
-      : "Sin definir";
+      ? rivalOverride.trim() : "Sin definir";
     const rivalTags = RIVAL_TAGS[Math.floor(rng() * RIVAL_TAGS.length)];
 
-    // Build demo player rows for our roster — no extra "guest" duplicate.
-    const usPlayers = roster.map((m) => genPlayer(m.steam_id!, m.steam_tag ?? m.player_name, totalRounds, rng, ROLES, false));
+    // Team rosters: our team = team1 (from DB), rival = team2 (synthetic steamids)
+    const team1Members = roster.slice(0, 5);
+    const team2Members = rivalTags.slice(0, 5).map((tag) => ({
+      steam_id: `76561198${100000000 + Math.floor(rng() * 900000000)}`,
+      steam_tag: tag,
+      player_name: tag,
+      user_id: null as string | null,
+      steam_avatar_url: null as string | null,
+    }));
 
-    // Rival team players (not stored in player_stats — only inside demo_data)
-    const themPlayers = rivalTags.map((tag, i) =>
-      genPlayer(`76561198${(100000000 + Math.floor(rng() * 900000000))}`, tag, totalRounds, rng, ROLES, false, i === 0),
-    );
+    const demoData = generateDemoData({
+      rng, map, matchType, totalRounds,
+      scoreTeam1, scoreTeam2,
+      team1: { name: "Hambrientos", members: team1Members, firstHalfSide: team1FirstHalfSide },
+      team2: { name: rival, members: team2Members, firstHalfSide: team2FirstHalfSide },
+      path,
+    });
 
-    // Rounds timeline
-    const rounds = buildRounds(totalRounds, scoreUs, scoreThem, startingSide, rng);
-
-    // Economy summary
-    const economy = buildEconomy(rounds);
-
-    // Insert match row
+    // --- Insert match row ---
     const { data: matchRow, error: matchErr } = await admin
       .from("matches")
       .insert({
@@ -99,74 +100,59 @@ Deno.serve(async (req) => {
         type: matchType,
         map,
         rival,
-        score_us: scoreUs,
-        score_them: scoreThem,
-        starting_side: startingSide,
+        score_us: scoreTeam1,
+        score_them: scoreTeam2,
+        starting_side: team1FirstHalfSide === "CT" ? "CT" : "TR",
         ct_pistol: "WIN", ct_second_round: "WIN", ct_setup: "WIN", ct_finalizacion: "WIN",
         tr_pistol: "WIN", tr_second_round: "WIN", tr_setup: "WIN", tr_finalizacion: "WIN",
         notes: `Importado desde demo: ${path}`,
         recorded_by: "demo-import",
       })
-      .select("id")
-      .single();
+      .select("id").single();
     if (matchErr) return json({ error: "matches insert: " + matchErr.message }, 500);
 
-    // Vinculación + insert de player_stats
+    // --- player_stats inserts (same shape as before — no consumers broken) ---
     const report: any[] = [];
-    for (const p of usPlayers) {
-      let matched = roster.find((r) => r.steam_id === p.steam_id);
-      let matchType: "steam_id" | "steam_tag" | "unmatched" = matched ? "steam_id" : "unmatched";
+    for (const member of team1Members) {
+      const p = demoData.players[member.steam_id];
+      if (!p) continue;
+      let matched = roster.find((r) => r.steam_id === member.steam_id);
+      let matchTypeStr: "steam_id" | "steam_tag" | "unmatched" = matched ? "steam_id" : "unmatched";
       if (!matched) {
-        matched = roster.find((r) => (r.steam_tag ?? "").toLowerCase() === p.steam_tag.toLowerCase());
-        if (matched) matchType = "steam_tag";
+        matched = roster.find((r) => (r.steam_tag ?? "").toLowerCase() === (member.steam_tag ?? "").toLowerCase());
+        if (matched) matchTypeStr = "steam_tag";
       }
-
       await admin.from("player_stats").insert({
         match_id: matchRow.id,
         user_id: matched?.user_id ?? null,
-        steam_id: p.steam_id,
-        steam_tag: p.steam_tag,
-        kills: p.kills, deaths: p.deaths, assists: p.assists,
-        adr: p.adr, hs_pct: p.hs_pct, kast_pct: p.kast_pct,
-        kr: +(p.kills / totalRounds).toFixed(2),
-        dr: +(p.deaths / totalRounds).toFixed(2),
-        fk: p.fk, fd: p.fd, flash_assists: p.flash_assists,
-        util_dmg: p.util_dmg, rating: p.rating,
+        steam_id: member.steam_id,
+        steam_tag: member.steam_tag,
+        kills: p.stats.kills, deaths: p.stats.deaths, assists: p.stats.assists,
+        adr: p.stats.adr, hs_pct: p.stats.kills > 0 ? +(p.stats.hs_kills / p.stats.kills * 100).toFixed(1) : 0,
+        kast_pct: p.stats.kast,
+        kr: +(p.stats.kills / totalRounds).toFixed(2),
+        dr: +(p.stats.deaths / totalRounds).toFixed(2),
+        fk: p.stats.first_kills, fd: p.stats.first_deaths,
+        flash_assists: p.stats.enemies_flashed,
+        util_dmg: p.stats.utility_damage,
+        rating: p.stats.rating,
       });
-
       report.push({
-        steam_id: p.steam_id, steam_tag: p.steam_tag,
+        steam_id: member.steam_id, steam_tag: member.steam_tag,
         matched_user_id: matched?.user_id ?? null,
         matched_player_name: matched?.player_name ?? null,
-        match_type: matchType,
+        match_type: matchTypeStr,
         avatar_url: matched?.steam_avatar_url ?? null,
-        kills: p.kills, deaths: p.deaths, assists: p.assists,
-        adr: p.adr, hs_pct: p.hs_pct, kast_pct: p.kast_pct, rating: p.rating,
+        kills: p.stats.kills, deaths: p.stats.deaths, assists: p.stats.assists,
+        adr: p.stats.adr, hs_pct: p.stats.hs_kills, kast_pct: p.stats.kast, rating: p.stats.rating,
       });
     }
 
-    // Rich demo_data blob
-    const demoData = {
-      version: 1,
-      generated_at: new Date().toISOString(),
-      map, rival,
-      score_us: scoreUs, score_them: scoreThem,
-      starting_side: startingSide,
-      total_rounds: totalRounds,
-      team_us: {
-        name: "Hambrientos",
-        score: scoreUs,
-        players: usPlayers.map((p) => playerForBlob(p, scoreUs > scoreThem)),
-      },
-      team_them: {
-        name: rival,
-        score: scoreThem,
-        players: themPlayers.map((p) => playerForBlob(p, scoreThem > scoreUs)),
-      },
-      rounds,
-      economy,
-      charts: buildCharts(usPlayers, themPlayers),
-    };
+    // Attach avatars into players dict for team1
+    for (const m of team1Members) {
+      const p = demoData.players[m.steam_id];
+      if (p) (p as any).avatar_url = m.steam_avatar_url ?? null;
+    }
 
     await admin.from("matches").update({ demo_data: demoData }).eq("id", matchRow.id);
 
@@ -176,8 +162,8 @@ Deno.serve(async (req) => {
       match_id: matchRow.id,
       file_size: fileSize,
       map, rival,
-      score_us: scoreUs, score_them: scoreThem,
-      starting_side: startingSide,
+      score_us: scoreTeam1, score_them: scoreTeam2,
+      starting_side: team1FirstHalfSide,
       total_rounds: totalRounds,
       players: report,
       summary: {
@@ -197,125 +183,316 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-function genPlayer(steamId: string, tag: string, totalRounds: number, rng: () => number, allRoles: string[], guest = false, isStar = false) {
-  const kills = Math.floor((isStar ? 16 : 10) + rng() * (guest ? 12 : 22));
-  const deaths = Math.floor(10 + rng() * 15);
-  const assists = Math.floor(2 + rng() * 8);
-  const adr = +(60 + rng() * 55).toFixed(1);
-  const hs_pct = +(30 + rng() * 40).toFixed(1);
-  const kast_pct = +(60 + rng() * 25).toFixed(1);
-  const fk = Math.floor(rng() * 5);
-  const fd = Math.floor(rng() * 5);
-  const flash_assists = Math.floor(rng() * 6);
-  const util_dmg = Math.floor(rng() * 120);
-  const rating = +(0.5 + rng() * 1.2).toFixed(2);
-  const damage = Math.floor(adr * totalRounds);
-  const trades = Math.floor(rng() * 5);
-  const impact = +(0.4 + rng() * 1.5).toFixed(2);
-  // Assign 1-2 roles
-  const nRoles = 1 + Math.floor(rng() * 2);
-  const roles: string[] = [];
-  const pool = [...allRoles];
-  for (let i = 0; i < nRoles && pool.length; i++) {
-    const idx = Math.floor(rng() * pool.length);
-    roles.push(pool.splice(idx, 1)[0]);
-  }
-  return {
-    steam_id: steamId, steam_tag: tag,
-    kills, deaths, assists, adr, hs_pct, kast_pct,
-    fk, fd, flash_assists, util_dmg, rating,
-    damage, trades, impact, roles,
-  };
+// ============================================================================
+// Simulator core → schema v2
+// ============================================================================
+interface TeamInput {
+  name: string;
+  members: Array<{ steam_id: string; steam_tag: string; player_name?: string | null }>;
+  firstHalfSide: Side;
 }
 
-function playerForBlob(p: any, teamWon: boolean) {
-  const kda = `${p.kills}/${p.deaths}/${p.assists}`;
-  const plusMinus = p.kills - p.deaths;
-  return {
-    steam_id: p.steam_id,
-    tag: p.steam_tag,
-    roles: p.roles,
-    kills: p.kills, deaths: p.deaths, assists: p.assists,
-    kda,
-    plus_minus: plusMinus,
-    adr: p.adr,
-    kast_pct: p.kast_pct,
-    rating: p.rating,
-    impact: p.impact,
-    damage: p.damage,
-    entry_kd: `${p.fk}/${p.fd}`,
-    trades: p.trades,
-    won: teamWon,
-  };
-}
+function generateDemoData(opts: {
+  rng: () => number;
+  map: string;
+  matchType: "OFFICIAL" | "TRAINING";
+  totalRounds: number;
+  scoreTeam1: number;
+  scoreTeam2: number;
+  team1: TeamInput;
+  team2: TeamInput;
+  path: string;
+}) {
+  const { rng, map, matchType, totalRounds, scoreTeam1, scoreTeam2, team1, team2, path } = opts;
 
-function buildRounds(total: number, scoreUs: number, scoreThem: number, startingSide: "CT" | "TR", rng: () => number) {
-  const rounds: any[] = [];
-  const wins: ("us" | "them")[] = [];
-  for (let i = 0; i < scoreUs; i++) wins.push("us");
-  for (let i = 0; i < scoreThem; i++) wins.push("them");
-  // Shuffle keeping first round distinct
-  for (let i = wins.length - 1; i > 0; i--) {
+  // Winner sequence
+  const winners: ("team1" | "team2")[] = [];
+  for (let i = 0; i < scoreTeam1; i++) winners.push("team1");
+  for (let i = 0; i < scoreTeam2; i++) winners.push("team2");
+  for (let i = winners.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [wins[i], wins[j]] = [wins[j], wins[i]];
+    [winners[i], winners[j]] = [winners[j], winners[i]];
   }
 
-  const opposite = (s: "CT" | "TR") => (s === "CT" ? "TR" : "CT");
-  const firstHalfUsSide = startingSide;
-  const secondHalfUsSide = opposite(startingSide);
+  const rounds: any[] = [];
+  const playerAgg: Record<string, PlayerAgg> = {};
+  const initAgg = (sid: string, name: string, team: "team1" | "team2") => {
+    if (!playerAgg[sid]) {
+      playerAgg[sid] = {
+        sid, name, team,
+        kills: 0, deaths: 0, assists: 0, hs_kills: 0, damage: 0,
+        rounds_with_kast: 0, first_kills: 0, first_deaths: 0,
+        clutches_won: 0, clutches_total: 0,
+        utility_damage: 0, enemies_flashed: 0, mvps: 0,
+        awp_kills: 0, pistol_kills: 0,
+        per_round: [] as any[],
+      };
+    }
+  };
+  team1.members.forEach((m) => initAgg(m.steam_id, m.steam_tag, "team1"));
+  team2.members.forEach((m) => initAgg(m.steam_id, m.steam_tag, "team2"));
 
-  for (let r = 0; r < total; r++) {
-    const isFirstHalf = r < 12;
-    const usSide = isFirstHalf ? firstHalfUsSide : secondHalfUsSide;
-    const themSide = opposite(usSide);
-    const winner = wins[r];
-    const winnerSide = winner === "us" ? usSide : themSide;
-    const survivors = 1 + Math.floor(rng() * 5);
-    const enemyRemaining = Math.floor(rng() * 3);
-    const reason = END_REASONS[Math.floor(rng() * END_REASONS.length)];
-    const isPistol = r === 0 || r === 12;
-    const usBuy = isPistol ? "P" : BUY_TYPES[1 + Math.floor(rng() * (BUY_TYPES.length - 1))];
-    const themBuy = isPistol ? "P" : BUY_TYPES[1 + Math.floor(rng() * (BUY_TYPES.length - 1))];
+  for (let ri = 0; ri < totalRounds; ri++) {
+    const roundNumber = ri + 1;
+    const firstHalf = roundNumber <= 12;
+    const team1SideThisRound: Side = firstHalf ? team1.firstHalfSide : (team1.firstHalfSide === "CT" ? "TERRORIST" : "CT");
+    const team2SideThisRound: Side = team1SideThisRound === "CT" ? "TERRORIST" : "CT";
+    const winnerKey = winners[ri];
+    const winnerSide: Side = winnerKey === "team1" ? team1SideThisRound : team2SideThisRound;
+    const isPistol = roundNumber === 1 || roundNumber === 13;
+
+    // Economy
+    const team1Equip = isPistol ? 800 : sampleEquip(rng, roundNumber, ri, "team1");
+    const team2Equip = isPistol ? 800 : sampleEquip(rng, roundNumber, ri, "team2");
+    const team1Buy = classifyBuyType(team1Equip, roundNumber);
+    const team2Buy = classifyBuyType(team2Equip, roundNumber);
+
+    // End reason
+    const bombPlanted = rng() < (winnerSide === "TERRORIST" ? 0.7 : 0.35);
+    let endReason: EndReason;
+    let bomb: any = null;
+    if (bombPlanted) {
+      const site: "A" | "B" = rng() > 0.5 ? "A" : "B";
+      const tSideMembers = team1SideThisRound === "TERRORIST" ? team1.members : team2.members;
+      const planter = tSideMembers[Math.floor(rng() * tSideMembers.length)];
+      if (winnerSide === "TERRORIST") {
+        endReason = rng() < 0.55 ? "target_bombed" : "ct_elimination";
+        bomb = { planted: true, site, planter_steamid: planter.steam_id, tick: 40000 + ri * 5000, defused: false, defuser_steamid: null };
+      } else {
+        endReason = rng() < 0.6 ? "bomb_defused" : "t_elimination";
+        const ctMembers = team1SideThisRound === "CT" ? team1.members : team2.members;
+        const defuser = ctMembers[Math.floor(rng() * ctMembers.length)];
+        bomb = { planted: true, site, planter_steamid: planter.steam_id, tick: 40000 + ri * 5000,
+          defused: endReason === "bomb_defused", defuser_steamid: endReason === "bomb_defused" ? defuser.steam_id : null };
+      }
+    } else {
+      // No plant → elimination or time expired
+      const roll = rng();
+      if (roll < 0.7) {
+        endReason = winnerSide === "CT" ? "t_elimination" : "ct_elimination";
+      } else {
+        endReason = "round_time_expired";
+      }
+    }
+
+    // Kills
+    const killCount = 3 + Math.floor(rng() * 6);
+    const attackersSide = (side: Side) => side === "CT"
+      ? (team1SideThisRound === "CT" ? team1.members : team2.members)
+      : (team1SideThisRound === "TERRORIST" ? team1.members : team2.members);
+    const winnerMembers = attackersSide(winnerSide);
+    const loserSide: Side = winnerSide === "CT" ? "TERRORIST" : "CT";
+    const loserMembers = attackersSide(loserSide);
+    const kills: any[] = [];
+    let openingSet = false;
+    let loserDeaths = 0;
+    for (let k = 0; k < killCount; k++) {
+      const attackerFromWinner = rng() < 0.65;
+      const attackerPool = attackerFromWinner ? winnerMembers : loserMembers;
+      const victimPool = attackerFromWinner ? loserMembers : winnerMembers;
+      const attacker = attackerPool[Math.floor(rng() * attackerPool.length)];
+      const victim = victimPool[Math.floor(rng() * victimPool.length)];
+      const assister = rng() < 0.25 ? attackerPool[Math.floor(rng() * attackerPool.length)] : null;
+      const weapon = pickWeapon(rng, isPistol);
+      const headshot = rng() < 0.42;
+      const wallbang = rng() < 0.06;
+      const distance = Math.round(200 + rng() * 1800);
+      const is_opening = !openingSet;
+      openingSet = true;
+      kills.push({
+        attacker: attacker.steam_id, victim: victim.steam_id,
+        assister: assister?.steam_id ?? null, weapon,
+        headshot, wallbang, distance, is_opening,
+        tick: 20000 + ri * 5000 + k * 200,
+      });
+      // Aggregate
+      const a = playerAgg[attacker.steam_id];
+      const v = playerAgg[victim.steam_id];
+      a.kills += 1;
+      if (headshot) a.hs_kills += 1;
+      if (AWP_WEAPONS.includes(weapon)) a.awp_kills += 1;
+      if (PISTOL_WEAPONS.includes(weapon)) a.pistol_kills += 1;
+      a.damage += 100 + Math.floor(rng() * 40);
+      v.deaths += 1;
+      if (is_opening) {
+        a.first_kills += 1;
+        v.first_deaths += 1;
+      }
+      if (assister) playerAgg[assister.steam_id].assists += 1;
+      if (attackerFromWinner) loserDeaths += 1;
+    }
+
+    // Clutch detection: if the winning side has only 1 survivor vs >=1 enemy survivors
+    const enemyAlive = Math.max(0, 5 - loserDeaths);
+    const winnerAliveEstimate = Math.max(1, 5 - Math.floor(killCount * 0.3));
+    let clutch: any = null;
+    if (winnerAliveEstimate === 1 && enemyAlive >= 1 && enemyAlive <= 4) {
+      // Pick last winner-side attacker as clutcher
+      const clutcher = winnerMembers[Math.floor(rng() * winnerMembers.length)];
+      clutch = { player_steamid: clutcher.steam_id, vs: enemyAlive, won: true };
+      playerAgg[clutcher.steam_id].clutches_won += 1;
+      playerAgg[clutcher.steam_id].clutches_total += 1;
+    } else if (rng() < 0.05) {
+      // Lost clutch attempt on the losing side
+      const attempted = loserMembers[Math.floor(rng() * loserMembers.length)];
+      const vs = (1 + Math.floor(rng() * 3)) as 1 | 2 | 3;
+      clutch = { player_steamid: attempted.steam_id, vs, won: false };
+      playerAgg[attempted.steam_id].clutches_total += 1;
+    }
+
+    // Utility for a couple of random players per round
+    for (const m of [...team1.members, ...team2.members]) {
+      const p = playerAgg[m.steam_id];
+      const utilRoll = rng();
+      if (utilRoll < 0.4) p.utility_damage += Math.floor(rng() * 25);
+      if (utilRoll < 0.3) p.enemies_flashed += Math.floor(rng() * 2);
+      // KAST heuristic: player is KAST-positive if they got a kill, assist, or (approximated) survived
+      const gotKill = kills.some((k) => k.attacker === m.steam_id);
+      const gotAssist = kills.some((k) => k.assister === m.steam_id);
+      const died = kills.some((k) => k.victim === m.steam_id);
+      if (gotKill || gotAssist || !died) p.rounds_with_kast += 1;
+      p.per_round.push({
+        round: roundNumber,
+        kills: kills.filter((k) => k.attacker === m.steam_id).length,
+        deaths: died ? 1 : 0,
+        damage: kills.filter((k) => k.attacker === m.steam_id).length * 100,
+      });
+    }
+
+    // MVP: attacker with most kills this round on winning side
+    const winnerKills = winnerMembers
+      .map((m) => ({ sid: m.steam_id, k: kills.filter((x) => x.attacker === m.steam_id).length }))
+      .sort((a, b) => b.k - a.k);
+    if (winnerKills[0]?.k > 0) playerAgg[winnerKills[0].sid].mvps += 1;
+
     rounds.push({
-      n: r + 1,
-      winner,
-      winner_team_label: winner === "us" ? "Team 1" : "Team 2",
-      winner_side: winnerSide,
-      survivors,
-      enemy_remaining: enemyRemaining,
-      reason,
+      round_number: roundNumber,
       is_pistol: isPistol,
-      us_side: usSide,
-      us_buy: usBuy,
-      them_buy: themBuy,
+      winner_side: winnerSide,
+      end_reason: endReason,
+      clutch,
+      bomb,
+      buy_types: { team1: team1Buy, team2: team2Buy },
+      kills,
+      economy: {
+        team1: { avg_equip: team1Equip, avg_balance: 800 + Math.floor(rng() * 8000), buy_type: team1Buy },
+        team2: { avg_equip: team2Equip, avg_balance: 800 + Math.floor(rng() * 8000), buy_type: team2Buy },
+      },
     });
   }
-  return rounds;
-}
 
-function buildEconomy(rounds: any[]) {
-  const summary = (side: "us" | "them") => {
-    const wins: Record<string, number> = { P: 0, FE: 0, E: 0, HB: 0, FB: 0 };
-    const losses: Record<string, number> = { P: 0, FE: 0, E: 0, HB: 0, FB: 0 };
-    for (const r of rounds) {
-      const buy = side === "us" ? r.us_buy : r.them_buy;
-      if (r.winner === side) wins[buy] = (wins[buy] ?? 0) + 1;
-      else losses[buy] = (losses[buy] ?? 0) + 1;
-    }
-    return { wins, losses };
-  };
-  return { us: summary("us"), them: summary("them") };
-}
+  // Build players dict
+  const players: Record<string, any> = {};
+  for (const agg of Object.values(playerAgg)) {
+    const adr = +(agg.damage / totalRounds).toFixed(1);
+    const kast = +((agg.rounds_with_kast / totalRounds) * 100).toFixed(1);
+    const rating = calculateRating(agg, totalRounds);
+    players[agg.sid] = {
+      steamid: agg.sid,
+      name: agg.name,
+      team: agg.team,
+      role_deduced: deduceRole(agg, totalRounds),
+      avatar_url: null,
+      stats: {
+        kills: agg.kills, deaths: agg.deaths, assists: agg.assists,
+        hs_kills: agg.hs_kills, damage: agg.damage, adr,
+        kast, rating,
+        first_kills: agg.first_kills, first_deaths: agg.first_deaths,
+        clutches_won: agg.clutches_won, clutches_total: agg.clutches_total,
+        utility_damage: agg.utility_damage, enemies_flashed: agg.enemies_flashed,
+        mvps: agg.mvps,
+      },
+      per_round: agg.per_round,
+    };
+  }
 
-function buildCharts(us: any[], them: any[]) {
-  const all = [...us, ...them].sort((a, b) => b.rating - a.rating);
+  // Buy-type summary
+  const emptySummary = () => Object.fromEntries(BUY_ORDER.map((b) => [b, { wins: 0, losses: 0 }]));
+  const summary: any = { team1: emptySummary(), team2: emptySummary() };
+  for (let i = 0; i < rounds.length; i++) {
+    const r = rounds[i];
+    const t1Won = winners[i] === "team1";
+    summary.team1[r.buy_types.team1][t1Won ? "wins" : "losses"] += 1;
+    summary.team2[r.buy_types.team2][t1Won ? "losses" : "wins"] += 1;
+  }
+
   return {
-    player_rating: all.map((p) => ({ tag: p.steam_tag, value: p.rating })),
-    damage_per_round: all.map((p) => ({ tag: p.steam_tag, value: p.adr })),
-    total_damage: [...all].sort((a, b) => b.damage - a.damage).map((p) => ({ tag: p.steam_tag, value: p.damage })),
-    clutch: us.slice(0, 2).map((p) => ({ tag: p.steam_tag, attempts: 2 + Math.floor(Math.random() * 3), wins: 1 + Math.floor(Math.random() * 2) })),
-    entry: all.map((p) => ({ tag: p.steam_tag, fk: p.fk, fd: p.fd, trades: p.trades })),
+    schema_version: 2 as const,
+    match: {
+      map, server: "", date: new Date().toISOString(), match_type: matchType, total_rounds: totalRounds,
+      score: { team1: scoreTeam1, team2: scoreTeam2 },
+      teams: {
+        team1: { name: team1.name, first_half_side: team1.firstHalfSide, player_steamids: team1.members.map((m) => m.steam_id) },
+        team2: { name: team2.name, first_half_side: team2.firstHalfSide, player_steamids: team2.members.map((m) => m.steam_id) },
+      },
+    },
+    rounds,
+    players,
+    buy_type_summary: summary,
   };
+}
+
+interface PlayerAgg {
+  sid: string; name: string; team: "team1" | "team2";
+  kills: number; deaths: number; assists: number;
+  hs_kills: number; damage: number;
+  rounds_with_kast: number;
+  first_kills: number; first_deaths: number;
+  clutches_won: number; clutches_total: number;
+  utility_damage: number; enemies_flashed: number;
+  mvps: number;
+  awp_kills: number; pistol_kills: number;
+  per_round: any[];
+}
+
+function classifyBuyType(avgEquip: number, roundNumber: number): BuyType {
+  if (roundNumber === 1 || roundNumber === 13) return "pistol";
+  if (avgEquip < 1000) return "full_eco";
+  if (avgEquip < 2500) return "eco";
+  if (avgEquip < 4000) return "half_buy";
+  return "full_buy";
+}
+
+function sampleEquip(rng: () => number, roundNumber: number, ri: number, _team: string): number {
+  const r = rng();
+  if (r < 0.08) return 500 + Math.floor(rng() * 400);   // full_eco
+  if (r < 0.22) return 1200 + Math.floor(rng() * 1200); // eco
+  if (r < 0.42) return 2700 + Math.floor(rng() * 1200); // half_buy
+  return 4200 + Math.floor(rng() * 1500);               // full_buy
+}
+
+function pickWeapon(rng: () => number, isPistol: boolean): string {
+  if (isPistol) return PISTOL_WEAPONS[Math.floor(rng() * PISTOL_WEAPONS.length)];
+  const r = rng();
+  if (r < 0.12) return AWP_WEAPONS[0];
+  if (r < 0.85) return RIFLE_WEAPONS[Math.floor(rng() * RIFLE_WEAPONS.length)];
+  return PISTOL_WEAPONS[Math.floor(rng() * PISTOL_WEAPONS.length)];
+}
+
+function calculateRating(a: PlayerAgg, totalRounds: number): number {
+  // Simplified HLTV-esque rating
+  const kpr = a.kills / totalRounds;
+  const dpr = a.deaths / totalRounds;
+  const impact = (2.13 * kpr) + (0.42 * (a.assists / totalRounds)) - 0.41;
+  const rating = 0.0073 * ((a.rounds_with_kast / totalRounds) * 100)
+    + 0.3591 * kpr
+    - 0.5329 * dpr
+    + 0.2372 * impact
+    + 0.0032 * (a.damage / totalRounds)
+    + 0.1587;
+  return +Math.max(0, rating).toFixed(2);
+}
+
+function deduceRole(a: PlayerAgg, totalRounds: number): "AWPer" | "Entry" | "Lurker" | "Support" | null {
+  // AWPer: >=20% of kills are AWP kills AND >=6 AWP kills
+  if (a.awp_kills >= 6 && (a.awp_kills / Math.max(a.kills, 1)) >= 0.2) return "AWPer";
+  // Entry: first_kills >= totalRounds * 0.15 (aggressive opener)
+  if (a.first_kills >= Math.max(3, Math.floor(totalRounds * 0.15))) return "Entry";
+  // Support: assists/(kills+1) high AND utility_damage above average
+  if (a.assists >= 6 && a.utility_damage >= 80) return "Support";
+  // Lurker: low first_deaths AND low first_kills but positive rating (survives openings)
+  if (a.first_deaths <= 2 && a.first_kills <= 2 && a.kills >= totalRounds * 0.6) return "Lurker";
+  return null; // IGL is impossible to deduce from data alone
 }
 
 function hashString(s: string) {

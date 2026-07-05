@@ -1,76 +1,86 @@
-# Mejoras al flujo de Demos y al diálogo de Stats
+# Refactor de demos — Paso 3 (simulador con schema real) — v2 con ajustes
 
-Cuatro bloques de trabajo, todos frontend salvo el reuso del `demo_data` ya guardado en la DB.
+Objetivo: `demo_data` y la UI cumplen exactamente el schema del prompt (sección 13), usando **enums reales del engine** para que cuando enchufemos el parser WASM en el Paso 2 no haya que traducir nada.
 
----
+## Schema `demo_data` (v2 ajustado)
 
-## 1. Filtros y resaltado en el Round Timeline
+- **`match`**: `map`, `server`, `date`, `match_type`, `total_rounds`, `score {team1, team2}`, `teams {team1, team2}` con `name`, `first_half_side` (`"CT"` | `"TERRORIST"`), `player_steamids[]`.
+- **`rounds[]`**:
+  - `round_number`, `is_pistol`
+  - `winner_side`: **`"CT"` | `"TERRORIST"`** (valores del engine, no nombres largos)
+  - `end_reason`: **enums reales del engine** — `target_bombed`, `bomb_defused`, `ct_elimination`, `t_elimination`, `round_time_expired`
+  - `clutch {player_steamid, vs (1-4), won}` o `null`
+  - `bomb {planted, site: "A"|"B", planter_steamid, tick, defused, defuser_steamid}` o `null`
+  - `buy_types {team1, team2}`: **`full_eco` | `eco` | `half_buy` | `full_buy` | `pistol`**
+  - `kills[]`: `attacker`, `victim`, `assister`, `weapon`, `headshot`, `wallbang`, `distance`, `is_opening`, `tick`
+  - `economy {team1, team2}`: `avg_equip`, `avg_balance`, `buy_type`
+- **`players`** (dict por steamid): `name`, `team`, `role_deduced` (`"AWPer" | "Entry" | "Lurker" | "Support" | null`), `stats` (kills, deaths, assists, hs_kills, damage, adr, kast, rating, first_kills, first_deaths, clutches_won, clutches_total, utility_damage, enemies_flashed, mvps), `per_round[]`.
+- **`buy_type_summary {team1, team2}`**: wins/losses por tipo de compra.
 
-En `MatchStatsDialog.tsx`, sobre el timeline de 24 rondas del "Full Stats":
+Fuera del blob:
+- **`charts`** se calculan on-the-fly en el frontend con `buildChartData(demoData)`. No se persisten.
 
-- Barra de filtros arriba del timeline con toggles:
-  - Lado: `Todos / CT / TR`
-  - Resultado: `Todos / Ganadas / Perdidas`
-  - Motivo: multi-chip (`Bomb`, `Defuse`, `Elimination`, `Time`)
-  - Solo `Pistol` (rondas 1 y 13)
-  - Solo `Clutch` (rondas donde `survivors === 1` o marcadas como clutch en `demo_data`)
-- Rondas que no matchean se muestran atenuadas (opacidad baja, sin color de lado), las que matchean se resaltan con anillo `ring-2 ring-accent` y un badge del motivo.
-- Contador "Mostrando X / 24" al lado de los filtros y botón "Reset".
-- El mini-panel (compact stats) recibe los mismos filtros vía prop opcional para mostrar "3 clutches · 2 pistols" resaltados.
+### Helpers de presentación (`src/lib/demoLabels.ts`)
 
-## 2. Exportación CSV / JSON
-
-Nuevo helper `src/lib/exportStats.ts` con dos funciones puras:
-
-- `exportRoundsCSV(match, demoData)` → columnas: `round, side, winner, reason, survivors, our_econ, their_econ, our_buy_type, their_buy_type, our_score, their_score`.
-- `exportEconomyCSV(demoData)` → filas por `buy_type` (Pistol / Full Eco / Eco / Half Buy / Full Buy) con `team, buy_type, wins, losses, win_rate`.
-- Versión JSON: dumpea `demo_data` completo (rondas + economía + roles + charts) con metadatos del match.
-
-En `MatchStatsDialog.tsx`, dropdown "Exportar" con 4 items:
-- Rondas CSV, Rondas JSON, Economía CSV, Análisis completo JSON.
-
-Descargas vía `Blob` + `URL.createObjectURL` — nombre del archivo `hambrientos-<map>-<yyyy-MM-dd>-<tipo>.csv/json`.
-
-## 3. Abrir Stats desde el historial (sin reparsear)
-
-- El `demo_data` ya se guarda en `matches` (columna JSONB creada previamente). Confirmar con un fetch mínimo.
-- En `Historial.tsx` (tabla de partidos), añadir columna/acción "Stats":
-  - Si `match.demo_data` existe → botón activo que abre `MatchStatsDialog` con los datos guardados (sin llamar a `parse-demo`).
-  - Si no existe → botón deshabilitado con tooltip "Sin demo parseada".
-- Igual tratamiento en el mini-listado del `Dashboard` ("Últimos 10 Partidos") si el match tiene `demo_data`.
-- `MatchStatsDialog` ya acepta el blob de análisis; se pasa directamente desde la fila.
-
-## 4. Cancelar y reintentar la subida/parseo
-
-En `DemoUploader.tsx`:
-
-- Guardar el `File` original en state (`lastFile`) y un `AbortController` por subida.
-- Botón "Cancelar" visible durante `subiendo | parseando | vinculando | guardando`:
-  - Llama `controller.abort()` (para el `supabase.functions.invoke` y el upload al storage).
-  - Marca el estado como `Cancelado` y deja las etapas visibles en gris.
-- Si la promesa falla o se cancela, mostrar bloque de error con:
-  - Mensaje corto (`error.message`)
-  - Botón "Reintentar" que vuelve a lanzar el flujo con `lastFile`, reiniciando el progreso desde 0 y avanzando por las mismas etapas.
-- Las 4 etapas siguen visibles siempre (ya está la barra multi-stage); se agrega un check verde ✓ por etapa completada, un spinner en la actual y un ícono ✕ en la que falló.
-
----
-
-## Detalles técnicos
-
-- `AbortSignal` compatible con `supabase.functions.invoke({ signal })` — supabase-js lo soporta desde v2.
-- `demo_data` es `Record<string, unknown>` en `types.ts`; casteo local a un tipo `DemoAnalysis` reutilizable extraído a `src/types/demo.ts`.
-- El export CSV escapa comillas y separa con `,` (Excel/Sheets friendly). Sin dependencias nuevas.
-- `MatchStatsDialog` pasa a aceptar `mode: "live" | "stored"` para saber si mostrar el hint "análisis guardado el DD/MM".
-
-### Archivos afectados
-
-```text
-src/components/MatchStatsDialog.tsx   (filtros + export dropdown + mode stored)
-src/components/DemoUploader.tsx       (cancel + retry + estados por etapa)
-src/components/Historial.tsx          (botón Stats por fila)
-src/components/Dashboard.tsx          (botón Stats en Últimos 10)
-src/lib/exportStats.ts                (nuevo — CSV/JSON helpers)
-src/types/demo.ts                     (nuevo — tipo DemoAnalysis)
+```ts
+END_REASON_LABEL = {
+  target_bombed: "Bomba explotó",
+  bomb_defused: "Bomba desactivada",
+  ct_elimination: "CT eliminados",
+  t_elimination: "T eliminados",
+  round_time_expired: "Tiempo agotado",
+}
+SIDE_LABEL = { CT: "Counter-Terrorist", TERRORIST: "Terrorist" }
+BUY_LABEL = { full_eco: "Full Eco", eco: "Eco", half_buy: "Half Buy", full_buy: "Full Buy", pistol: "Pistola" }
+BUY_SHORT = { full_eco: "F.Eco", eco: "Eco", half_buy: "Half", full_buy: "Full", pistol: "Pistol" }
 ```
 
-Sin cambios de schema ni edge functions.
+### Rangos de `avg_equip` → `buy_type` (calibrados)
+
+- `< 1000` → `full_eco`
+- `1000–2500` → `eco`
+- `2500–4000` → `half_buy`
+- `>= 4000` → `full_buy`
+- Ronda 1 y 13 (post-halftime) → `pistol` (override por número de ronda)
+
+## Archivos
+
+1. **`src/types/demo.ts`** — interfaces v2 con los enums del engine: `EndReason`, `BuyType`, `Side` (`"CT" | "TERRORIST"`), `DemoData`, `DemoMatch`, `DemoRound`, `DemoKill`, `DemoBomb`, `DemoClutch`, `DemoPlayer`. Sin `charts` en `DemoData`.
+2. **`src/lib/demoLabels.ts`** — helpers `END_REASON_LABEL`, `SIDE_LABEL`, `BUY_LABEL`, `BUY_SHORT`.
+3. **`src/lib/demoCharts.ts`** — `buildChartData(demoData)` que deriva `player_rating`, `damage_per_round`, `total_damage`, `clutch`, `entry` desde `rounds[]` + `players{}`.
+4. **`src/lib/demoData.ts`** — `migrateLegacyDemoData()` para envolver blobs viejos al schema v2 (mapea end_reasons viejos → enums del engine, buy_types viejos → nuevos, etc.).
+5. **`supabase/functions/parse-demo/index.ts`** — reescribir `generateAnalysis`:
+   - `winner_side` corto (`"CT"` / `"TERRORIST"`).
+   - `end_reason` con enums del engine.
+   - `bomb` estructurado con `site` A/B, `planter_steamid`, `tick`.
+   - `buy_types` derivados de `avg_equip` con los 5 valores calibrados.
+   - `kills[]` con `is_opening` en la primera kill de cada ronda.
+   - `detectClutch()` para 1vN.
+   - `buildPlayers()` con heurística de `role_deduced`: AWPer (kills con AWP), Entry (first_kills altos), Lurker (posición promedio separada), Support (assists + util damage). **IGL nunca hardcodeado — si no se puede deducir, `null`.**
+   - Sin `charts` en el output.
+   - Sigue insertando `player_stats` como hoy.
+6. **`src/components/MatchStatsDialog.tsx`** — consumir schema v2:
+   - `ScoreHeader` desde `match.teams.*.name` y `match.score`.
+   - `RoundsTimeline` usa `BUY_SHORT[buy_type]` y `END_REASON_LABEL[end_reason]`.
+   - `FullTeamTable` muestra `role_deduced` como pill (o "—" si es `null`).
+   - Splits CT/T por `first_half_side` + número de ronda.
+   - `PerformanceCharts` llama `buildChartData(demoData)` en un `useMemo`.
+   - Nueva pestaña "Rondas Detalladas" con timeline + kills.
+7. **`src/lib/exportStats.ts`** — actualizar exports + agregar `exportKillsCSV`.
+8. Consumidores livianos (`useMatches`, `usePendingMatches`, `HistoryView`, `Dashboard`, `DemoUploader`, `PendingConfirmations`) — remapeo de campos.
+
+## Fuera de alcance (Paso 2)
+
+- Web Worker + `@laihoe/demoparser2` (WASM).
+- Descompresión `.bz2` en browser.
+- Endpoint de ingesta del JSON parseado.
+- Heatmaps, callouts, detección real de roles.
+
+## Verificación
+
+- `tsgo` limpio.
+- Demo dummy → schema v2 en DB, `MatchStatsDialog` renderiza todas las pestañas.
+- Match viejo se abre bien vía `migrateLegacyDemoData`.
+- Playwright: abrir un match legacy y uno nuevo, verificar timeline + tabla + charts derivados.
+
+Con los 5 ajustes aplicados. ¿Arranco?

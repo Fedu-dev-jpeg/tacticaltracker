@@ -1,4 +1,5 @@
-import type { DemoData } from "@/components/MatchStatsDialog";
+import type { DemoData } from "@/types/demo";
+import { team1WonRound } from "@/lib/demoData";
 import { format } from "date-fns";
 
 function download(filename: string, mime: string, body: string) {
@@ -18,93 +19,91 @@ function csvEscape(v: unknown): string {
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
-
 function toCSV(headers: string[], rows: unknown[][]): string {
   return [headers.join(","), ...rows.map((r) => r.map(csvEscape).join(","))].join("\n");
 }
 
-interface FileMeta {
-  map?: string;
-  date?: string; // ISO
-  matchType?: string;
-  rival?: string;
-}
+interface FileMeta { map?: string; date?: string; matchType?: string; rival?: string; }
 
-function baseName(meta: FileMeta, kind: string, ext: string) {
-  const dt = meta.date ? format(new Date(meta.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-  const map = (meta.map ?? "match").toLowerCase().replace(/\s+/g, "-");
-  const type = (meta.matchType ?? "demo").toLowerCase();
+function baseName(demo: DemoData, meta: FileMeta, kind: string, ext: string) {
+  const dt = meta.date ? format(new Date(meta.date), "yyyy-MM-dd") : format(new Date(demo.match.date ?? new Date()), "yyyy-MM-dd");
+  const map = (meta.map ?? demo.match.map ?? "match").toLowerCase().replace(/\s+/g, "-");
+  const type = (meta.matchType ?? demo.match.match_type ?? "demo").toLowerCase();
   return `hambrientos-${map}-${dt}-${type}-${kind}.${ext}`;
 }
 
-export function exportRoundsCSV(data: DemoData, meta: FileMeta = {}) {
-  let usScore = 0;
-  let themScore = 0;
-  const rows = data.rounds.map((r) => {
-    if (r.winner === "us") usScore++; else themScore++;
+export function exportRoundsCSV(demo: DemoData, meta: FileMeta = {}) {
+  let s1 = 0, s2 = 0;
+  const rows = demo.rounds.map((r) => {
+    const t1Won = team1WonRound(demo, r);
+    if (t1Won) s1++; else s2++;
     return [
-      r.n,
-      r.us_side,
-      r.winner === "us" ? (data.team_us?.name ?? "Us") : (data.team_them?.name ?? "Them"),
+      r.round_number,
       r.winner_side,
-      r.reason,
-      r.survivors,
-      r.enemy_remaining,
+      t1Won ? demo.match.teams.team1.name : demo.match.teams.team2.name,
+      r.end_reason,
       r.is_pistol ? "yes" : "no",
-      r.us_buy,
-      r.them_buy,
-      usScore,
-      themScore,
+      r.clutch ? `1v${r.clutch.vs} ${r.clutch.won ? "won" : "lost"}` : "",
+      r.bomb?.planted ? (r.bomb.site ?? "planted") : "",
+      r.buy_types.team1,
+      r.buy_types.team2,
+      r.economy.team1.avg_equip,
+      r.economy.team2.avg_equip,
+      s1, s2,
     ];
   });
   const csv = toCSV(
-    ["round", "our_side", "winner", "winner_side", "reason", "our_survivors", "their_survivors", "pistol", "our_buy", "their_buy", "our_score", "their_score"],
+    ["round","winner_side","winner","end_reason","pistol","clutch","bomb","team1_buy","team2_buy","team1_equip","team2_equip","team1_score","team2_score"],
     rows,
   );
-  download(baseName({ ...meta, map: meta.map ?? data.map }, "rounds", "csv"), "text/csv", csv);
+  download(baseName(demo, meta, "rounds", "csv"), "text/csv", csv);
 }
 
-export function exportRoundsJSON(data: DemoData, meta: FileMeta = {}) {
+export function exportRoundsJSON(demo: DemoData, meta: FileMeta = {}) {
   const body = JSON.stringify(
-    { meta: { ...meta, map: meta.map ?? data.map, rival: meta.rival ?? data.rival }, rounds: data.rounds },
-    null,
-    2,
+    { meta: { ...meta, map: meta.map ?? demo.match.map }, rounds: demo.rounds },
+    null, 2,
   );
-  download(baseName({ ...meta, map: meta.map ?? data.map }, "rounds", "json"), "application/json", body);
+  download(baseName(demo, meta, "rounds", "json"), "application/json", body);
 }
 
-export function exportEconomyCSV(data: DemoData, meta: FileMeta = {}) {
-  const teams: { key: "us" | "them"; label: string }[] = [
-    { key: "us", label: data.team_us?.name ?? "Us" },
-    { key: "them", label: data.team_them?.name ?? "Them" },
-  ];
-  const buyTypes = Array.from(
-    new Set([
-      ...Object.keys(data.economy?.us?.wins ?? {}),
-      ...Object.keys(data.economy?.us?.losses ?? {}),
-      ...Object.keys(data.economy?.them?.wins ?? {}),
-      ...Object.keys(data.economy?.them?.losses ?? {}),
-    ]),
-  );
+export function exportKillsCSV(demo: DemoData, meta: FileMeta = {}) {
   const rows: unknown[][] = [];
-  for (const t of teams) {
-    for (const b of buyTypes) {
-      const wins = data.economy?.[t.key]?.wins?.[b] ?? 0;
-      const losses = data.economy?.[t.key]?.losses?.[b] ?? 0;
-      const total = wins + losses;
-      const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
-      rows.push([t.label, b, wins, losses, total, `${wr}%`]);
+  for (const r of demo.rounds) {
+    for (const k of r.kills) {
+      rows.push([
+        r.round_number, k.tick,
+        demo.players[k.attacker]?.name ?? k.attacker,
+        demo.players[k.victim]?.name ?? k.victim,
+        k.assister ? (demo.players[k.assister]?.name ?? k.assister) : "",
+        k.weapon, k.headshot ? "yes" : "no", k.wallbang ? "yes" : "no",
+        k.distance, k.is_opening ? "yes" : "no",
+      ]);
     }
   }
-  const csv = toCSV(["team", "buy_type", "wins", "losses", "total", "win_rate"], rows);
-  download(baseName({ ...meta, map: meta.map ?? data.map }, "economy", "csv"), "text/csv", csv);
+  const csv = toCSV(["round","tick","attacker","victim","assister","weapon","headshot","wallbang","distance","is_opening"], rows);
+  download(baseName(demo, meta, "kills", "csv"), "text/csv", csv);
 }
 
-export function exportFullJSON(data: DemoData, meta: FileMeta = {}) {
+export function exportEconomyCSV(demo: DemoData, meta: FileMeta = {}) {
+  const rows: unknown[][] = [];
+  for (const team of ["team1", "team2"] as const) {
+    const label = demo.match.teams[team].name;
+    const summary = demo.buy_type_summary[team];
+    for (const [buy, wl] of Object.entries(summary)) {
+      const total = wl.wins + wl.losses;
+      const wr = total > 0 ? Math.round((wl.wins / total) * 100) : 0;
+      rows.push([label, buy, wl.wins, wl.losses, total, `${wr}%`]);
+    }
+  }
+  const csv = toCSV(["team","buy_type","wins","losses","total","win_rate"], rows);
+  download(baseName(demo, meta, "economy", "csv"), "text/csv", csv);
+}
+
+export function exportFullJSON(demo: DemoData, meta: FileMeta = {}) {
   const body = JSON.stringify(
-    { meta: { ...meta, map: meta.map ?? data.map, rival: meta.rival ?? data.rival, exported_at: new Date().toISOString() }, analysis: data },
-    null,
-    2,
+    { meta: { ...meta, map: meta.map ?? demo.match.map, exported_at: new Date().toISOString() }, analysis: demo },
+    null, 2,
   );
-  download(baseName({ ...meta, map: meta.map ?? data.map }, "analysis", "json"), "application/json", body);
+  download(baseName(demo, meta, "analysis", "json"), "application/json", body);
 }
