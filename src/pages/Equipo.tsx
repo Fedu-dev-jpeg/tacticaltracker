@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useTeamMembers, TeamMember } from "@/hooks/useTeamMembers";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Navigate } from "react-router-dom";
-import { Users, Save, RefreshCw, Info, ShieldCheck } from "lucide-react";
+import { Users, Save, RefreshCw, Info, ShieldCheck, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -17,6 +17,7 @@ export default function Equipo() {
   const { members, loading, refetch, updateMember } = useTeamMembers();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const [seeding, setSeeding] = useState(false);
+  const [syncingAvatars, setSyncingAvatars] = useState(false);
 
   if (roleLoading) return <div className="p-6 text-muted-foreground">Cargando...</div>;
   if (!isAdmin) return <Navigate to="/" replace />;
@@ -49,10 +50,29 @@ export default function Equipo() {
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={runSeed} disabled={seeding}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${seeding && "animate-spin"}`} />
-          Sincronizar roster
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setSyncingAvatars(true);
+              const { data, error } = await supabase.functions.invoke("sync-steam-avatars");
+              setSyncingAvatars(false);
+              if (error) toast.error("Error: " + error.message);
+              else {
+                toast.success(`Avatares sincronizados (${data?.synced ?? 0})`);
+                refetch();
+              }
+            }}
+            disabled={syncingAvatars}
+          >
+            <ImageIcon className={`h-4 w-4 mr-2 ${syncingAvatars && "animate-pulse"}`} />
+            Sincronizar avatares Steam
+          </Button>
+          <Button variant="outline" onClick={runSeed} disabled={seeding}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${seeding && "animate-spin"}`} />
+            Sincronizar roster
+          </Button>
+        </div>
       </div>
 
       <Card className="border-accent/30 bg-accent/5">
