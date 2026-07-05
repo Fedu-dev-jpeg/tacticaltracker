@@ -340,7 +340,7 @@ function SideBadgeNote({ demo, side }: { demo: DemoData; side: Side }) {
   );
 }
 
-function FullTeamTable({ label, players }: { label: string; players: DemoPlayer[] }) {
+function FullTeamTable({ label, players, totalRounds = 0 }: { label: string; players: DemoPlayer[]; totalRounds?: number }) {
   return (
     <div>
       <div className="text-sm font-heading font-bold mb-2 flex items-center gap-2">
