@@ -147,9 +147,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
-  // Pre-upload confirmation dialog
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [overridesDraft, setOverridesDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
+  // Post-parse review dialog: show detected map/rival tags/players and let user confirm/fix.
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
+  const [savingReview, setSavingReview] = useState(false);
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
