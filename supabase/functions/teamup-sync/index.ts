@@ -14,6 +14,8 @@ const corsHeaders = {
 };
 
 const TEAMUP_BASE = "https://api.teamup.com";
+const CALENDAR_ID_RE = /^[A-Za-z0-9]{6}$/;
+const SECRET_KEY_RE = /^ks[A-Za-z0-9]{16}$/i;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -41,11 +43,21 @@ Deno.serve(async (req) => {
     if (!integ?.teamup_calendar_key || !integ?.teamup_api_key) {
       return json({ error: "Teamup no configurado. Guardá calendar key + API key primero." }, 400);
     }
-    const calKey = integ.teamup_calendar_key;
+    const calKey = normalizeCalendarKey(integ.teamup_calendar_key);
     const apiKey = integ.teamup_api_key;
     const calPass = (integ as { teamup_password?: string | null }).teamup_password ?? "";
     const teamupHeaders: Record<string, string> = { "Teamup-Token": apiKey };
     if (calPass) teamupHeaders["Teamup-Password"] = calPass;
+
+    if (CALENDAR_ID_RE.test(calKey) && !SECRET_KEY_RE.test(calKey)) {
+      return json(
+        {
+          error:
+            "Ese link de Teamup (/c/...) es un ID público y la API pide login. Para sincronizar, pegá un link secreto creado en Teamup → Settings → Sharing → Create Link; la clave debe empezar con ks...",
+        },
+        400,
+      );
+    }
 
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
@@ -57,7 +69,7 @@ Deno.serve(async (req) => {
       const end = new Date(today.getTime() + 90 * 86400_000).toISOString().slice(0, 10);
       const url = `${TEAMUP_BASE}/${calKey}/events?startDate=${start}&endDate=${end}`;
       const res = await fetch(url, { headers: teamupHeaders });
-      if (!res.ok) return json({ error: `Teamup pull: ${res.status} ${await res.text()}` }, 502);
+      if (!res.ok) return teamupError("pull", res);
       const payload = await res.json();
       const events = (payload.events ?? []) as Array<{
         id: string;
@@ -134,7 +146,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify(payload),
         });
       }
-      if (!res.ok) return json({ error: `Teamup push: ${res.status} ${await res.text()}` }, 502);
+      if (!res.ok) return teamupError("push", res);
       const created = await res.json();
       const newTeamupId = created?.event?.id ?? ev.teamup_event_id;
       if (ev.id && newTeamupId && newTeamupId !== ev.teamup_event_id) {
@@ -151,7 +163,7 @@ Deno.serve(async (req) => {
         headers: teamupHeaders,
       });
       if (!res.ok && res.status !== 404) {
-        return json({ error: `Teamup delete: ${res.status} ${await res.text()}` }, 502);
+        return teamupError("delete", res);
       }
       return json({ ok: true });
     }
@@ -167,4 +179,29 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function normalizeCalendarKey(value: string) {
+  const raw = value.trim();
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split("/").filter(Boolean);
+    return parts[0] === "c" && parts[1] ? parts[1] : parts[0] ?? raw;
+  } catch {
+    return raw.replace(/^https?:\/\/teamup\.com\//i, "").split("/")[0];
+  }
+}
+
+async function teamupError(action: string, res: Response) {
+  const text = await res.text();
+  if (res.status === 401 && text.includes("login_required")) {
+    return json(
+      {
+        error:
+          "Teamup pide login para ese calendario. No uses el link /c/48u5qv: necesitás un link secreto de Teamup que empiece con ks... (Settings → Sharing → Create Link) y una API Key.",
+      },
+      400,
+    );
+  }
+  return json({ error: `Teamup ${action}: ${res.status} ${text}` }, 502);
 }

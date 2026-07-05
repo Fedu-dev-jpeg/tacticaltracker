@@ -15,6 +15,19 @@ interface Integ {
   teamup_last_sync: string | null;
 }
 
+const normalizeTeamupCalendarKey = (value: string) => {
+  const raw = value.trim();
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split("/").filter(Boolean);
+    return parts[0] === "c" && parts[1] ? parts[1] : parts[0] ?? raw;
+  } catch {
+    return raw.replace(/^https?:\/\/teamup\.com\//i, "").split("/")[0];
+  }
+};
+
+const isCalendarId = (value: string) => /^[A-Za-z0-9]{6}$/.test(value);
+
 export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -52,11 +65,19 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
 
   const save = async () => {
     if (!user) return;
+    const normalizedCalKey = normalizeTeamupCalendarKey(calKey);
+    if (normalizedCalKey && isCalendarId(normalizedCalKey)) {
+      toast.error("Ese link /c/... no sirve para la API", {
+        description: "Pegá un link secreto creado en Teamup → Settings → Sharing → Create Link. Debe empezar con ks...",
+      });
+      setCalKey(normalizedCalKey);
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("integrations").upsert(
       {
         user_id: user.id,
-        teamup_calendar_key: calKey.trim() || null,
+        teamup_calendar_key: normalizedCalKey || null,
         teamup_api_key: apiKey.trim() || null,
         teamup_password: calPass.trim() || null,
       },
@@ -66,7 +87,8 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
     if (error) toast.error("No se pudo guardar: " + error.message);
     else {
       toast.success("Teamup configurado");
-      setInteg({ teamup_calendar_key: calKey, teamup_api_key: apiKey, teamup_last_sync: integ?.teamup_last_sync ?? null });
+      setCalKey(normalizedCalKey);
+      setInteg({ teamup_calendar_key: normalizedCalKey, teamup_api_key: apiKey, teamup_last_sync: integ?.teamup_last_sync ?? null });
     }
   };
 
@@ -145,7 +167,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
                 En el formulario poné tu email, un nombre de app (ej: "Hambrientos Tracker") y una descripción corta. Cuando llegue el mail, copiá la key (tipo <span className="font-mono">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>) y pegala abajo.
               </p>
               <p>
-                El <span className="font-medium text-foreground">Calendar Key</span> es la parte final de la URL de tu calendario de Teamup (empieza con <span className="font-mono">ks...</span>).
+                El <span className="font-medium text-foreground">Calendar Key</span> tiene que salir de un link secreto creado en Teamup → Settings → Sharing → Create Link, y empieza con <span className="font-mono">ks...</span>. El link público <span className="font-mono">/c/48u5qv</span> no funciona para la API sin login.
               </p>
             </div>
           </div>
@@ -157,7 +179,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
               <Input
                 value={calKey}
                 onChange={(e) => setCalKey(e.target.value)}
-                placeholder="ks123abc... (parte final de tu URL de Teamup)"
+                placeholder="ks123abc... (no /c/48u5qv)"
                 className="font-mono text-xs"
               />
             </div>
