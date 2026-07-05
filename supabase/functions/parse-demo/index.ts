@@ -98,16 +98,30 @@ Deno.serve(async (req) => {
     }
 
     // ── Validate the parsed payload ───────────────────────────────────────
+    console.log("[parse-demo] payload snapshot:", JSON.stringify({
+      map: parsed?.map,
+      players_count: Array.isArray(parsed?.players) ? parsed.players.length : "not-array",
+      rounds_count: Array.isArray(parsed?.rounds) ? parsed.rounds.length : "not-array",
+      score: parsed?.score,
+      total_rounds: parsed?.total_rounds,
+    }));
     const errs: string[] = [];
     if (!parsed.map || typeof parsed.map !== "string") errs.push("parsed.map ausente");
     if (!parsed.score || typeof parsed.score.ct !== "number" || typeof parsed.score.t !== "number") {
       errs.push("parsed.score debe tener ct y t numéricos");
     }
     if (!Array.isArray(parsed.rounds)) errs.push("parsed.rounds debe ser array");
-    if (!Array.isArray(parsed.players) || parsed.players.length === 0) {
-      errs.push("parsed.players debe tener al menos un jugador");
+    if (!Array.isArray(parsed.players)) errs.push("parsed.players debe ser array");
+    if (errs.length > 0) {
+      console.error("[parse-demo] validation failed:", errs);
+      return json({ error: "payload inválido", details: errs }, 400);
     }
-    if (errs.length > 0) return json({ error: "payload inválido", details: errs }, 400);
+    // Empty players is allowed (parser may not have captured user_info yet) —
+    // we'll just skip player_stats inserts below and log a warning.
+    if (parsed.players.length === 0) {
+      console.warn("[parse-demo] payload has 0 players — inserting match without player_stats");
+    }
+
 
     const matchType = (matchTypeOverride === "TRAINING" || matchTypeOverride === "OFFICIAL")
       ? matchTypeOverride : "OFFICIAL";
