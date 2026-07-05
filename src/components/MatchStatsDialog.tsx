@@ -125,16 +125,59 @@ function ScoreHeader({ data }: { data: DemoData }) {
   );
 }
 
-function MiniView({ data, onFull }: { data: DemoData; onFull: () => void }) {
+function StoredBanner({ meta }: { meta?: MatchStatsMeta }) {
   return (
-    <div className="p-5">
-      <DialogHeader className="mb-3">
+    <div className="flex items-center gap-2 text-[11px] rounded-md border border-accent/30 bg-accent/10 px-3 py-1.5 text-accent">
+      <Archive className="h-3.5 w-3.5" />
+      <span>Análisis guardado{meta?.savedAt ? ` · ${new Date(meta.savedAt).toLocaleDateString()}` : ""} — abierto sin reparsear la demo.</span>
+    </div>
+  );
+}
+
+function ExportMenu({ data, meta }: { data: DemoData; meta?: MatchStatsMeta }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2">
+          <Download className="h-3.5 w-3.5" /> Exportar
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">Round Analysis</DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => exportRoundsCSV(data, meta)}>
+          <FileSpreadsheet className="h-3.5 w-3.5 mr-2" /> Rondas · CSV
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => exportRoundsJSON(data, meta)}>
+          <FileJson className="h-3.5 w-3.5 mr-2" /> Rondas · JSON
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">Economía</DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => exportEconomyCSV(data, meta)}>
+          <FileSpreadsheet className="h-3.5 w-3.5 mr-2" /> Breakdown · CSV
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => exportFullJSON(data, meta)}>
+          <FileJson className="h-3.5 w-3.5 mr-2" /> Análisis completo · JSON
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function MiniView({ data, meta, mode, onFull }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; onFull: () => void }) {
+  return (
+    <div className="p-5 space-y-3">
+      <DialogHeader className="mb-1">
         <DialogTitle className="text-lg font-heading">Match Statistics</DialogTitle>
         <div className="text-xs text-muted-foreground">Player performance data</div>
       </DialogHeader>
-      <div className="flex items-center justify-between gap-4 mb-3">
+      {mode === "stored" && <StoredBanner meta={meta} />}
+      <div className="flex items-center justify-between gap-4">
         <ScoreHeader data={data} />
-        <Button variant="outline" size="sm" onClick={onFull}>View Full Stats</Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu data={data} meta={meta} />
+          <Button variant="outline" size="sm" onClick={onFull}>View Full Stats</Button>
+        </div>
       </div>
       <MiniTeamTable label={data.team_them.name} players={data.team_them.players} />
       <MiniTeamTable label={data.team_us.name} players={data.team_us.players} className="mt-3" />
