@@ -161,18 +161,19 @@ async function parseFile(
 
   // Load the deadem UMD lazily so any load error is reported through the
   // normal message channel instead of a bare worker `error` event.
-  const { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType } = await loadDeadem();
+  const { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType, EntityOperation } = await loadDeadem();
 
   // Feed the parser a WHATWG stream backed by the in-memory bytes.
   const blob = new Blob([bytes.buffer as ArrayBuffer]);
   const stream = blob.stream();
 
   const parser = new Parser(new ParserConfiguration({
-    // Frequent yields = responsive worker + progress ticks.
-    breakInterval: 200,
-    // Skip entity packets entirely — we only need game events, string tables
-    // and the demo header. Roughly 6-8× faster than the default config.
-    messagePacketTypesExclude: [ MessagePacketType.SVC_PACKET_ENTITIES ],
+    breakInterval: 500,
+    // In CS2 the round winner and end reason live on CCSGameRulesProxy entity
+    // props (m_iRoundEndWinnerTeam / m_eRoundEndReason), NOT on the game event
+    // payload. Decoding just that one class keeps us fast (~4-6× vs full) while
+    // preserving the data we need to score rounds.
+    entityClasses: [ 'CCSGameRulesProxy' ],
   }));
 
   // ── State collected during parsing ─────────────────────────────────────
@@ -190,6 +191,11 @@ async function parseFile(
   let bytesProcessed = 0;
   const eventCounts = new Map<string, number>();
   let debugMissedRoundEnd = 0;
+  // Filled in by ENTITY_PACKET interceptor from CCSGameRulesProxy mutations.
+  // In CS2 the round outcome comes from these entity props, not the game event.
+  let pendingWinner: number | null = null;
+  let pendingReason = 0;
+  const gameRulesFieldsSeen = new Set<string>();
 
   // Snapshot user_info string table into `players` (lazy — only after
   // string tables have been populated by the parser).
@@ -293,23 +299,19 @@ async function parseFile(
       }
       case "round_end":
       case "round_officially_ended":
-      case "cs_win_panel_round": {
-        // `round_end` fires when the outcome is decided; `round_officially_ended`
-        // fires at freeze time after; `cs_win_panel_round` shows the summary
-        // panel. Some CS2 demos ship only one of these — accept whichever wins
-        // first for a given round number and dedupe by round index.
-        if (rounds.length >= roundNumber && roundNumber > 0) break; // already recorded
-        // Valve CSTeam enum: 2 = T, 3 = CT. Some events use `final_event` /
-        // `winner_team` instead of `winner`.
-        const winnerRaw = event.winner ?? event.winner_team ?? event.final_event;
-        const winnerNum = Number(winnerRaw);
-        // If we can't tell, skip — better no round than a wrong one.
+      case "cs_win_panel_round":
+      case "cs_win_panel_match": {
+        // In CS2 the game event carries no winner — read it from the
+        // CCSGameRulesProxy props captured by the ENTITY_PACKET interceptor.
+        if (rounds.length >= roundNumber && roundNumber > 0) break; // dedupe
+        let winnerNum = Number(event.winner ?? event.winner_team ?? event.final_event ?? NaN);
+        if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner != null) winnerNum = pendingWinner;
         if (winnerNum !== 2 && winnerNum !== 3) {
           debugMissedRoundEnd = (debugMissedRoundEnd ?? 0) + 1;
           break;
         }
         const side: "CT" | "TERRORIST" = winnerNum === 3 ? "CT" : "TERRORIST";
-        const reasonNum = Number(event.reason ?? 0);
+        const reasonNum = Number(event.reason ?? pendingReason ?? 0);
         rounds.push({
           round_number: rounds.length + 1,
           winner_side: side,
@@ -319,6 +321,8 @@ async function parseFile(
         });
         currentRoundKills = [];
         currentRoundHasOpening = false;
+        pendingWinner = null;
+        pendingReason = 0;
         break;
       }
       case "player_death": {
@@ -363,9 +367,29 @@ async function parseFile(
     }
   });
 
-  // Match end payload sometimes carries the definitive scoreboard — capture it
-  // but we don't depend on it (we compute score from round_end events).
-  parser.registerPostInterceptor(InterceptorStage.MESSAGE_PACKET, () => { /* placeholder */ });
+  // CS2 game events do NOT include the round winner. Track it from
+  // CCSGameRulesProxy entity mutations: m_iRoundEndWinnerTeam (2=T, 3=CT)
+  // and m_eRoundEndReason. The values are set slightly before the
+  // round_officially_ended game event, so pending values are ready to consume.
+  parser.registerPostInterceptor(InterceptorStage.ENTITY_PACKET, (
+    _dp: unknown,
+    _mp: unknown,
+    events: Array<{ operation: unknown; entity: { class?: { name?: string } }; getChanges: () => Record<string, unknown> }>,
+  ) => {
+    for (const ev of events) {
+      if (ev.operation !== EntityOperation.UPDATE && ev.operation !== EntityOperation.CREATE) continue;
+      if (ev.entity?.class?.name !== 'CCSGameRulesProxy') continue;
+      const changes = ev.getChanges();
+      for (const k of Object.keys(changes)) gameRulesFieldsSeen.add(k);
+      const w = changes.m_iRoundEndWinnerTeam ?? changes['CCSGameRules.m_iRoundEndWinnerTeam'];
+      const r = changes.m_eRoundEndReason ?? changes['CCSGameRules.m_eRoundEndReason'];
+      if (w !== undefined && w !== null) {
+        const n = Number(w);
+        if (n === 2 || n === 3) pendingWinner = n;
+      }
+      if (r !== undefined && r !== null) pendingReason = Number(r);
+    }
+  });
 
   await parser.parse(stream);
   await parser.dispose();
@@ -409,6 +433,7 @@ async function parseFile(
     missed_round_ends: debugMissedRoundEnd,
     top_events: Object.fromEntries(topEvents),
     total_event_types: eventCounts.size,
+    game_rules_fields_seen: [...gameRulesFieldsSeen].sort(),
     parse_ms: Math.round(tParseEnd - performance.now()) * -1,
   });
   wlog("worker:parse", "players-snapshot", activePlayers.map((p) => ({
