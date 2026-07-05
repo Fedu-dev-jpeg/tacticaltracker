@@ -433,6 +433,7 @@ async function parseFile(
     missed_round_ends: debugMissedRoundEnd,
     top_events: Object.fromEntries(topEvents),
     total_event_types: eventCounts.size,
+    game_rules_fields_seen: [...gameRulesFieldsSeen].sort(),
     parse_ms: Math.round(tParseEnd - performance.now()) * -1,
   });
   wlog("worker:parse", "players-snapshot", activePlayers.map((p) => ({
