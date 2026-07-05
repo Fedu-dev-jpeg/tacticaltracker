@@ -770,12 +770,27 @@ function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel, mem
       <div className="space-y-2">
         <Label className="text-xs">Roles por jugador</Label>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          {PLAYERS.map((p) => (
-            <div key={p} className="space-y-1">
-              <span className="text-[10px] text-accent font-semibold">{p}</span>
-              <Input value={playerRoles[p] || ""} onChange={(e) => setPlayerRoles((prev) => ({ ...prev, [p]: e.target.value }))} placeholder="Rol..." className="h-8 text-xs" />
-            </div>
-          ))}
+          {PLAYERS.map((p) => {
+            const m = memberByName[p.toLowerCase()];
+            const roleLabel = m?.role_in_team;
+            return (
+              <div key={p} className="space-y-1 rounded-md border border-border bg-secondary/20 p-2">
+                <div className="flex items-center gap-2">
+                  <SteamAvatar
+                    memberId={m?.id}
+                    url={m?.steam_avatar_url ?? m?.avatar_url ?? null}
+                    fallback={p}
+                    size={24}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-heading font-bold text-accent leading-tight truncate">{p}</div>
+                    {roleLabel && <div className="text-[9px] text-muted-foreground truncate">{roleLabel}</div>}
+                  </div>
+                </div>
+                <Input value={playerRoles[p] || ""} onChange={(e) => setPlayerRoles((prev) => ({ ...prev, [p]: e.target.value }))} placeholder="Rol..." className="h-8 text-xs" />
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
