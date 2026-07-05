@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 
 type Stage = "idle" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error";
 
@@ -50,6 +52,63 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
+  const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const { members: teamMembers } = useTeamMembers();
+  const players = teamMembers.filter((m) => !m.is_coach);
+
+  const assignManualLink = async (p: ParsedPlayer) => {
+    const memberId = manualLinks[p.steam_id];
+    if (!memberId || !result?.match_id) {
+      toast.error("Elegí un jugador primero");
+      return;
+    }
+    const member = players.find((m) => m.id === memberId);
+    if (!member) return;
+    setAssigning(p.steam_id);
+    // 1) update player_stats row
+    const { error: updErr } = await supabase
+      .from("player_stats")
+      .update({ user_id: member.user_id })
+      .eq("match_id", result.match_id)
+      .eq("steam_id", p.steam_id);
+    if (updErr) {
+      setAssigning(null);
+      toast.error("No se pudo asignar: " + updErr.message);
+      return;
+    }
+    // 2) opportunistically patch team_member for future auto-linking
+    const patch: { steam_id?: string; steam_tag?: string } = {};
+    const looksLikeSteamId = /^7656119\d{10}$/.test(p.steam_id);
+    if (looksLikeSteamId && !member.steam_id) patch.steam_id = p.steam_id;
+    if (p.steam_tag && !member.steam_tag) patch.steam_tag = p.steam_tag;
+    if (Object.keys(patch).length > 0) {
+      await supabase.from("team_members").update(patch).eq("id", memberId);
+    }
+    // 3) update local result to reflect the link
+    setResult((prev) => {
+      if (!prev?.players) return prev;
+      return {
+        ...prev,
+        players: prev.players.map((row) =>
+          row.steam_id === p.steam_id
+            ? {
+                ...row,
+                match_type: looksLikeSteamId ? "steam_id" : "steam_tag",
+                matched_user_id: member.user_id,
+                matched_player_name: member.player_name,
+                avatar_url: (member as { steam_avatar_url?: string | null }).steam_avatar_url ?? row.avatar_url,
+              }
+            : row,
+        ),
+        summary: prev.summary
+          ? { ...prev.summary, unmatched: Math.max(0, prev.summary.unmatched - 1), by_steam_tag: prev.summary.by_steam_tag + 1 }
+          : prev.summary,
+      };
+    });
+    setAssigning(null);
+    toast.success(`Vinculado a ${member.player_name}`);
+  };
 
   const currentPct = STAGES.find((s) => s.key === stage)?.pct ?? 0;
 
@@ -286,11 +345,39 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <div className="h-7 w-7 rounded-full border border-destructive/40 flex items-center justify-center">
-                                  <HelpCircle className="h-3.5 w-3.5 text-destructive" />
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <div className="h-7 w-7 rounded-full border border-destructive/40 flex items-center justify-center">
+                                    <HelpCircle className="h-3.5 w-3.5 text-destructive" />
+                                  </div>
+                                  <span className="text-destructive text-[11px] uppercase">Sin vincular — asignar manual</span>
                                 </div>
-                                <span className="text-destructive text-[11px] uppercase">Sin vincular</span>
+                                <div className="flex items-center gap-1.5">
+                                  <Select
+                                    value={manualLinks[p.steam_id] ?? ""}
+                                    onValueChange={(v) => setManualLinks((prev) => ({ ...prev, [p.steam_id]: v }))}
+                                  >
+                                    <SelectTrigger className="h-7 text-[11px] w-36">
+                                      <SelectValue placeholder="Elegir jugador" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {players.map((m) => (
+                                        <SelectItem key={m.id} value={m.id} className="text-xs">
+                                          {m.player_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[11px]"
+                                    disabled={!manualLinks[p.steam_id] || assigning === p.steam_id}
+                                    onClick={() => assignManualLink(p)}
+                                  >
+                                    {assigning === p.steam_id ? <Loader2 className="h-3 w-3 animate-spin" /> : <><UserPlus className="h-3 w-3 mr-1" /> Vincular</>}
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </td>

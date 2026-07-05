@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
       }
 
       await admin.from("integrations").update({ teamup_last_sync: new Date().toISOString() }).eq("user_id", userId);
-      return json({ ok: true, imported, total: events.length });
+      return json({ ok: true, imported, total: events.length, range: { start, end } });
     }
 
     if (action === "push") {

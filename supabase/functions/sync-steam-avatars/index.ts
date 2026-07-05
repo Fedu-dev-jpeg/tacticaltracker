@@ -10,10 +10,16 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: members, error } = await supabase
-      .from("team_members")
-      .select("id, player_name, steam_id")
-      .not("steam_id", "is", null);
+    let memberId: string | undefined;
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      memberId = body?.member_id;
+    }
+
+    let query = supabase.from("team_members").select("id, player_name, steam_id").not("steam_id", "is", null);
+    if (memberId) query = query.eq("id", memberId);
+
+    const { data: members, error } = await query;
 
     if (error) throw error;
 
