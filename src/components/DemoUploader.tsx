@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,12 +7,14 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat, Pause, Play, Copy, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
@@ -59,6 +61,9 @@ interface Job {
   abort: AbortController;
   attempt: number; // 1-indexed current attempt
   maxAttempts: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  durationMs: number | null;
 }
 
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
@@ -71,10 +76,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
-  // Concurrency + retry settings (persisted in memory for the session)
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(2);
-  const [autoRetry, setAutoRetry] = useState<boolean>(true);
-  const [maxAttempts, setMaxAttempts] = useState<number>(3);
+  // Concurrency + retry settings (persisted across reloads)
+  const [maxConcurrent, setMaxConcurrent] = useLocalStorage<number>("demo-uploader:maxConcurrent", 2);
+  const [autoRetry, setAutoRetry] = useLocalStorage<boolean>("demo-uploader:autoRetry", true);
+  const [maxAttempts, setMaxAttempts] = useLocalStorage<number>("demo-uploader:maxAttempts", 3);
+  const [paused, setPaused] = useLocalStorage<boolean>("demo-uploader:paused", false);
+  const [errorJobId, setErrorJobId] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
@@ -141,9 +149,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         if (job.abort.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
       };
       let current: Stage = "uploading";
+      const t0 = Date.now();
       try {
         current = "uploading";
-        updateJob(job.id, { stage: current });
+        updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
         const path = `${Date.now()}-${job.file.name}`;
         const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file, {
           contentType: "application/octet-stream",
@@ -170,21 +179,23 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         throwIfAborted();
 
         const parsed = data as ParsedDemo;
-        updateJob(job.id, { stage: "done", result: parsed });
+        const t1 = Date.now();
+        updateJob(job.id, { stage: "done", result: parsed, finishedAt: t1, durationMs: t1 - t0 });
         setResult(parsed);
         onParsed(parsed);
         toast.success(`Demo importada: ${job.fileName}`);
       } catch (e) {
         const err = e as Error;
+        const t1 = Date.now();
         if (err.name === "AbortError") {
-          updateJob(job.id, { stage: "cancelled", failedStage: current });
+          updateJob(job.id, { stage: "cancelled", failedStage: current, finishedAt: t1, durationMs: t1 - t0 });
           toast.info(`Cancelada: ${job.fileName}`);
         } else {
           // Auto-retry only for parsing/matching stages
           const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
           if (canAutoRetry) {
             const nextAttempt = job.attempt + 1;
-            updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController() });
+            updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController(), startedAt: null });
             startedRef.current.delete(job.id);
             toast.info(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`);
             const backoff = 800 * job.attempt;
@@ -193,7 +204,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             }, backoff);
             retryTimeoutsRef.current.set(job.id, timer);
           } else {
-            updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
+            updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message), finishedAt: t1, durationMs: t1 - t0 });
             toast.error(`Falló ${job.fileName}`);
           }
         }
@@ -205,11 +216,12 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     [onParsed, updateJob, autoRetry],
   );
 
-  // Scheduler: pick up "queued" jobs whenever a slot is free
+  // Scheduler: pick up "queued" jobs whenever a slot is free (unless paused)
   useEffect(() => {
     const runningIds = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).map((j) => j.id);
     // ensure ref reflects actual running set
     runningIds.forEach((id) => startedRef.current.add(id));
+    if (paused) return;
     const freeSlots = Math.max(0, maxConcurrent - runningIds.length);
     if (freeSlots === 0) return;
     const pending = jobs.filter((j) => j.stage === "queued" && !startedRef.current.has(j.id));
@@ -218,7 +230,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       // delay slightly so backoff timers can elapse; runPipeline sets stage
       window.setTimeout(() => runPipeline(j), 50);
     }
-  }, [jobs, maxConcurrent, runPipeline]);
+  }, [jobs, maxConcurrent, runPipeline, paused]);
 
   // Clean up pending retry timers on unmount
   useEffect(() => {
@@ -250,6 +262,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         abort: new AbortController(),
         attempt: 1,
         maxAttempts: autoRetry ? maxAttempts : 1,
+        startedAt: null,
+        finishedAt: null,
+        durationMs: null,
       }));
       setJobs((prev) => [...prev, ...newJobs]);
       // scheduler effect will pick them up
@@ -276,9 +291,23 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       startedRef.current.delete(id);
       return prev.map((x) =>
         x.id === id
-          ? { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1 }
+          ? { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null }
           : x,
       );
+    });
+  }, [autoRetry, maxAttempts]);
+
+  const retryAllErrors = useCallback(() => {
+    setJobs((prev) => {
+      let count = 0;
+      const next = prev.map((x) => {
+        if (x.stage !== "error") return x;
+        startedRef.current.delete(x.id);
+        count++;
+        return { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null };
+      });
+      if (count > 0) toast.info(`Reintentando ${count} demo${count === 1 ? "" : "s"} con error`);
+      return next;
     });
   }, [autoRetry, maxAttempts]);
 
@@ -307,6 +336,31 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const finishedCount = doneCount + errorCount + cancelledCount;
   const totalCount = jobs.length;
   const globalPct = totalCount > 0 ? Math.round((finishedCount / totalCount) * 100) : 0;
+  const errorJob = errorJobId ? jobs.find((j) => j.id === errorJobId) ?? null : null;
+
+  // Tick every second while there is work in flight (for ETA display)
+  useEffect(() => {
+    if (activeCount === 0 && queuedCount === 0) return;
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [activeCount, queuedCount]);
+
+  // ETA: use avg duration of finished jobs (fallback to elapsed of running jobs) divided by concurrency.
+  const eta = useMemo(() => {
+    const remaining = activeCount + queuedCount;
+    if (remaining === 0 || paused) return null;
+    const finishedDurations = jobs.filter((j) => j.durationMs != null && (j.stage === "done" || j.stage === "error" || j.stage === "cancelled")).map((j) => j.durationMs as number);
+    const runningElapsed = jobs.filter((j) => j.startedAt && ["uploading","parsing","matching","saving"].includes(j.stage)).map((j) => nowTick - (j.startedAt as number));
+    const samples = finishedDurations.length > 0 ? finishedDurations : runningElapsed;
+    if (samples.length === 0) return null;
+    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const conc = Math.max(1, Math.min(maxConcurrent, activeCount || maxConcurrent));
+    // subtract already-elapsed portion of active jobs from the projected remaining time
+    const elapsedActive = runningElapsed.reduce((a, b) => a + Math.min(b, avg), 0);
+    const totalWork = avg * remaining;
+    const etaMs = Math.max(0, (totalWork - elapsedActive) / conc);
+    return etaMs;
+  }, [jobs, activeCount, queuedCount, maxConcurrent, nowTick, paused]);
 
   return (
     <Card className="border-border">
@@ -433,15 +487,52 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         {/* Global progress */}
         {totalCount > 0 && (
           <div className="rounded-md border border-accent/30 bg-accent/5 p-3 space-y-2">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
               <div className="flex items-center gap-2 font-heading font-bold">
                 <BarChart3 className="h-4 w-4 text-accent" />
                 <span>Progreso global</span>
                 <span className="text-muted-foreground font-body font-normal">
                   {finishedCount} / {totalCount} procesadas
                 </span>
+                {eta != null && (
+                  <span className="text-muted-foreground font-body font-normal flex items-center gap-1">
+                    <Timer className="h-3 w-3 text-accent" />
+                    ETA <span className="text-accent tabular-nums">{formatEta(eta)}</span>
+                  </span>
+                )}
+                {paused && (
+                  <Badge variant="outline" className="h-5 border-accent/40 text-accent">
+                    <Pause className="h-2.5 w-2.5 mr-1" /> Pausado
+                  </Badge>
+                )}
               </div>
-              <span className="tabular-nums text-accent font-heading font-bold">{globalPct}%</span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => {
+                    setPaused((p) => {
+                      const next = !p;
+                      toast.info(next ? "Cola pausada" : "Cola reanudada");
+                      return next;
+                    });
+                  }}
+                >
+                  {paused ? <><Play className="h-3 w-3 mr-1" /> Reanudar</> : <><Pause className="h-3 w-3 mr-1" /> Pausar</>}
+                </Button>
+                {errorCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10"
+                    onClick={retryAllErrors}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" /> Reintentar errores ({errorCount})
+                  </Button>
+                )}
+                <span className="tabular-nums text-accent font-heading font-bold text-xs ml-1">{globalPct}%</span>
+              </div>
             </div>
             <Progress value={globalPct} className="h-2" />
             <div className="flex flex-wrap gap-1.5 text-[10px]">
@@ -493,6 +584,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 onRetry={() => retryJob(j.id)}
                 onRemove={() => removeJob(j.id)}
                 onOpen={() => j.result && setResult(j.result)}
+                onShowError={() => setErrorJobId(j.id)}
                 isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
               />
             ))}
@@ -632,7 +724,73 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           </div>
         )}
       </CardContent>
+      <ErrorDetailsDialog job={errorJob} onOpenChange={(open) => { if (!open) setErrorJobId(null); }} onRetry={() => { if (errorJob) { retryJob(errorJob.id); setErrorJobId(null); } }} />
     </Card>
+  );
+}
+
+function formatEta(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return `${m}m ${String(r).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+function ErrorDetailsDialog({ job, onOpenChange, onRetry }: { job: Job | null; onOpenChange: (open: boolean) => void; onRetry: () => void }) {
+  const open = !!job;
+  const stageLabel = job ? (STAGES.find((s) => s.key === job.failedStage)?.label ?? job.failedStage ?? "—") : "";
+  const log = job
+    ? [
+        `Archivo: ${job.fileName}`,
+        `Etapa: ${stageLabel}`,
+        `Intento: ${job.attempt}/${job.maxAttempts}`,
+        `Fecha: ${new Date().toISOString()}`,
+        "",
+        "Error:",
+        job.error ?? "(sin mensaje)",
+      ].join("\n")
+    : "";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-destructive" /> Detalle del error
+          </DialogTitle>
+          <DialogDescription>
+            {job ? (
+              <>Falló durante <span className="text-destructive font-medium">{stageLabel}</span> · intento {job.attempt}/{job.maxAttempts}</>
+            ) : null}
+          </DialogDescription>
+        </DialogHeader>
+        {job && (
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground">Archivo</div>
+            <div className="font-mono text-xs bg-muted/30 rounded p-2 break-all">{job.fileName}</div>
+            <div className="text-xs text-muted-foreground">Log</div>
+            <pre className="text-[11px] bg-muted/30 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{log}</pre>
+          </div>
+        )}
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(log); toast.success("Log copiado al portapapeles"); }
+              catch { toast.error("No se pudo copiar el log"); }
+            }}
+          >
+            <Copy className="h-3 w-3 mr-1" /> Copiar log
+          </Button>
+          <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" onClick={onRetry}>
+            <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -642,6 +800,7 @@ function JobRow({
   onRetry,
   onRemove,
   onOpen,
+  onShowError,
   isSelected,
 }: {
   job: Job;
@@ -649,6 +808,7 @@ function JobRow({
   onRetry: () => void;
   onRemove: () => void;
   onOpen: () => void;
+  onShowError: () => void;
   isSelected: boolean;
 }) {
   const active = job.stage === "uploading" || job.stage === "parsing" || job.stage === "matching" || job.stage === "saving";
@@ -720,6 +880,11 @@ function JobRow({
           {(job.stage === "error" || job.stage === "cancelled") && (
             <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10" onClick={onRetry}>
               <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
+            </Button>
+          )}
+          {job.stage === "error" && (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-destructive/40 text-destructive hover:bg-destructive/10" onClick={onShowError}>
+              <AlertCircle className="h-3 w-3 mr-1" /> Ver error
             </Button>
           )}
           {!active && (
