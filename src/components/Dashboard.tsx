@@ -230,116 +230,16 @@ export default function Dashboard({ matches }: DashboardProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Map Win Rate — grouped Victorias / Derrotas */}
-        <div className="bg-card rounded-lg border border-border p-6 card-glow">
-          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-3">Win Rate por Mapa</h3>
-          {matches.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-8">Sin datos aún. ¡Registrá tu primer treino!</p>
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mapData.filter((d) => d.played > 0)} barCategoryGap="30%">
-                  <CartesianGrid stroke="hsl(220 16% 18%)" vertical={false} />
-                  <XAxis dataKey="name" stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis stroke="hsl(215 15% 55%)" fontSize={12} allowDecimals={false} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" />
-                  <Bar dataKey="wins" name="Victorias" fill={COLORS.win} radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="losses" name="Derrotas" fill={COLORS.loss} radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
+        {/* Map Win Rate — grouped Victorias / Derrotas + WR% label */}
+        <MapWinRateCard matches={matches} mapData={mapData} colors={COLORS} />
 
-        {/* Pistol — horizontal single-series with side colors */}
-        <div className="bg-card rounded-lg border border-border p-6 card-glow">
-          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-3">Pistol & Conversión</h3>
-          {matches.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-8">Sin datos</p>
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={pistolData} layout="vertical" barCategoryGap="30%">
-                  <CartesianGrid stroke="hsl(220 16% 18%)" horizontal={false} />
-                  <XAxis type="number" domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis type="category" dataKey="name" stroke="hsl(215 15% 55%)" fontSize={11} width={80} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} formatter={(v: number) => `${v}%`} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" payload={[{ value: "Win Rate %", type: "square", color: COLORS.ct }]} />
-                  <Bar dataKey="value" name="Win Rate %" radius={[0, 2, 2, 0]}>
-                    {pistolData.map((entry, i) => (
-                      <Cell key={i} fill={entry.side === "CT" ? COLORS.ct : COLORS.tr} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
+        {/* Pistol & Conversión con filtros + drill-down por mapa */}
+        <PistolConversionCard matches={matches} colors={COLORS} />
       </div>
 
-      {/* Tendencia de Resultados */}
-      <div className="bg-card rounded-lg border border-border p-6 card-glow">
-        <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-3">Tendencia de Resultados</h3>
-        {trendData.length === 0 ? (
-          <p className="text-muted-foreground text-sm text-center py-8">Sin datos</p>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr,220px] gap-6 items-center">
-            <div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.6} />
-                        <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="hsl(220 16% 18%)" vertical={false} />
-                    <XAxis dataKey="idx" hide />
-                    <YAxis stroke="hsl(215 15% 55%)" fontSize={12} allowDecimals={false} />
-                    <ReferenceLine y={0} stroke="hsl(215 15% 45%)" strokeDasharray="2 2" />
-                    <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                    <Area type="monotone" dataKey="diff" stroke={COLORS.accent} strokeWidth={3} fill="url(#trendFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              {/* Segmented W/L strip */}
-              <div className="flex gap-1 mt-2">
-                {trendData.map((d, i) => (
-                  <div
-                    key={i}
-                    className="h-1.5 flex-1 rounded-full"
-                    style={{ backgroundColor: d.win ? COLORS.win : COLORS.loss }}
-                    title={d.win ? "Win" : "Loss"}
-                  />
-                ))}
-              </div>
-            </div>
-            {/* Side panel */}
-            <div className="space-y-4 border-l border-border/60 pl-6">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-md bg-success/20 text-success text-xs font-bold">W {wins}</span>
-                <span className="text-muted-foreground">/</span>
-                <span className="px-2 py-0.5 rounded-md bg-destructive/20 text-destructive text-xs font-bold">L {losses}</span>
-              </div>
-              <div className={cn("h-16 w-16 rounded-full border-4 flex items-center justify-center font-heading font-bold text-2xl", wlDiff >= 0 ? "border-success text-success" : "border-destructive text-destructive")}>
-                {wlDiff >= 0 ? `+${wlDiff}` : wlDiff}
-              </div>
-              <div className="text-xs space-y-1">
-                <div className="flex justify-between"><span className="text-muted-foreground">Diferencia W/L</span><span className={cn("font-bold", wlDiff >= 0 ? "text-success" : "text-destructive")}>{wlDiff >= 0 ? `+${wlDiff}` : wlDiff}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Racha más larga 🔥</span><span className="font-bold text-foreground">{longest}</span></div>
-              </div>
-              {(bestMap || worstMap) && (
-                <div className="pt-3 border-t border-border/60 text-[11px] space-y-1">
-                  {bestMap && <div className="text-success">💪 {bestMap.name} · {bestMap.winRate}%</div>}
-                  {worstMap && worstMap !== bestMap && <div className="text-destructive">⚠️ {worstMap.name} · {worstMap.winRate}%</div>}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Tendencia de Resultados con filtros */}
+      <ResultsTrendCard matches={matches} bestMap={bestMap} worstMap={worstMap} colors={COLORS} />
+
 
       {/* Last 10 */}
       <div className="bg-card rounded-lg border border-border p-6 card-glow">
