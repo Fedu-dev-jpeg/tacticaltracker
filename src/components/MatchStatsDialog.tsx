@@ -237,14 +237,17 @@ function RolePills({ roles }: { roles: string[] }) {
   );
 }
 
-function FullView({ data, onBack }: { data: DemoData; onBack: () => void }) {
+function FullView({ data, meta, mode, onBack }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; onBack: () => void }) {
   return (
     <div className="p-5 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div className="text-xs text-muted-foreground">
-          <button onClick={onBack} className="hover:text-accent">Private Demos</button> <span className="mx-1">›</span> <span className="text-accent">Match Statistics</span>
+          <button onClick={onBack} className="hover:text-accent">Stats</button> <span className="mx-1">›</span> <span className="text-accent">Full Analysis</span>
         </div>
+        <ExportMenu data={data} meta={meta} />
       </div>
+
+      {mode === "stored" && <StoredBanner meta={meta} />}
 
       {/* Map header */}
       <div className="rounded-lg border border-border p-6 text-center space-y-3">
