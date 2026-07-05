@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,26 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
+// Only allow same-origin, path-only redirects to prevent open-redirect abuse.
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+  return raw;
+}
+
 export default function Login() {
-  const { signIn } = useAuth();
+  const { signIn, user } = useAuth();
   const [email, setEmail] = useState(() => localStorage.getItem("tt_saved_user") || "");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem("tt_saved_user"));
   const [loading, setLoading] = useState(false);
+
+  const nextTarget = safeNext(new URLSearchParams(window.location.search).get("next"));
+
+  // If already signed in (e.g. returning from a bounce), honor `next` immediately.
+  useEffect(() => {
+    if (user && nextTarget) window.location.href = nextTarget;
+  }, [user, nextTarget]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +36,15 @@ export default function Login() {
     else localStorage.removeItem("tt_saved_user");
 
     const { error } = await signIn(finalEmail, password);
-    if (error) toast.error("Credenciales incorrectas. Intentá de nuevo.");
+    if (error) {
+      toast.error("Credenciales incorrectas. Intentá de nuevo.");
+      setLoading(false);
+      return;
+    }
+    if (nextTarget) {
+      window.location.href = nextTarget;
+      return;
+    }
     setLoading(false);
   };
 

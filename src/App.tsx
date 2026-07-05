@@ -18,6 +18,7 @@ import Equipo from "./pages/Equipo";
 import Auditoria from "./pages/Auditoria";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import OAuthConsent from "./pages/OAuthConsent";
 import { useMatches } from "@/hooks/useMatches";
 import { useNavigate } from "react-router-dom";
 
@@ -92,7 +93,12 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <BrowserRouter>
-          <AppContent />
+          {/* Public routes render outside the auth gate. */}
+          <Routes>
+            <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="*" element={<AppContent />} />
+          </Routes>
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>
