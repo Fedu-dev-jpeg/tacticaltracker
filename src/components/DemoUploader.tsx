@@ -52,6 +52,63 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
+  const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const { members: teamMembers } = useTeamMembers();
+  const players = teamMembers.filter((m) => !m.is_coach);
+
+  const assignManualLink = async (p: ParsedPlayer) => {
+    const memberId = manualLinks[p.steam_id];
+    if (!memberId || !result?.match_id) {
+      toast.error("Elegí un jugador primero");
+      return;
+    }
+    const member = players.find((m) => m.id === memberId);
+    if (!member) return;
+    setAssigning(p.steam_id);
+    // 1) update player_stats row
+    const { error: updErr } = await supabase
+      .from("player_stats")
+      .update({ user_id: member.user_id })
+      .eq("match_id", result.match_id)
+      .eq("steam_id", p.steam_id);
+    if (updErr) {
+      setAssigning(null);
+      toast.error("No se pudo asignar: " + updErr.message);
+      return;
+    }
+    // 2) opportunistically patch team_member for future auto-linking
+    const patch: { steam_id?: string; steam_tag?: string } = {};
+    const looksLikeSteamId = /^7656119\d{10}$/.test(p.steam_id);
+    if (looksLikeSteamId && !member.steam_id) patch.steam_id = p.steam_id;
+    if (p.steam_tag && !member.steam_tag) patch.steam_tag = p.steam_tag;
+    if (Object.keys(patch).length > 0) {
+      await supabase.from("team_members").update(patch).eq("id", memberId);
+    }
+    // 3) update local result to reflect the link
+    setResult((prev) => {
+      if (!prev?.players) return prev;
+      return {
+        ...prev,
+        players: prev.players.map((row) =>
+          row.steam_id === p.steam_id
+            ? {
+                ...row,
+                match_type: looksLikeSteamId ? "steam_id" : "steam_tag",
+                matched_user_id: member.user_id,
+                matched_player_name: member.player_name,
+                avatar_url: (member as { steam_avatar_url?: string | null }).steam_avatar_url ?? row.avatar_url,
+              }
+            : row,
+        ),
+        summary: prev.summary
+          ? { ...prev.summary, unmatched: Math.max(0, prev.summary.unmatched - 1), by_steam_tag: prev.summary.by_steam_tag + 1 }
+          : prev.summary,
+      };
+    });
+    setAssigning(null);
+    toast.success(`Vinculado a ${member.player_name}`);
+  };
 
   const currentPct = STAGES.find((s) => s.key === stage)?.pct ?? 0;
 
