@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import TeamupConnect from "@/components/TeamupConnect";
 
 interface AgendaEvent {
   id: string;
@@ -89,6 +90,27 @@ export default function Agenda() {
     setLoading(false);
   };
 
+  // ── Teamup helpers ──
+  const pushToTeamup = async (row: AgendaEvent) => {
+    try {
+      await supabase.functions.invoke("teamup-sync", {
+        body: { action: "push", event: row },
+      });
+    } catch (e) {
+      console.warn("Teamup push falló (silencioso):", e);
+    }
+  };
+  const deleteFromTeamup = async (teamupId: string | null | undefined) => {
+    if (!teamupId) return;
+    try {
+      await supabase.functions.invoke("teamup-sync", {
+        body: { action: "delete", teamup_event_id: teamupId },
+      });
+    } catch (e) {
+      console.warn("Teamup delete falló (silencioso):", e);
+    }
+  };
+
   // ── CRUD ──
   const handleSave = async () => {
     if (!selectedDate || !form.title.trim()) { toast.error("Completá título y fecha"); return; }
@@ -101,13 +123,15 @@ export default function Agenda() {
       event_type: form.event_type,
     };
     if (editingEvent) {
-      const { error } = await supabase.from("agenda_events").update(payload).eq("id", editingEvent.id);
+      const { data, error } = await supabase.from("agenda_events").update(payload).eq("id", editingEvent.id).select().single();
       if (error) { toast.error("Error al actualizar"); return; }
       toast.success("Evento actualizado");
+      if (data) pushToTeamup(data as AgendaEvent);
     } else {
-      const { error } = await supabase.from("agenda_events").insert(payload);
+      const { data, error } = await supabase.from("agenda_events").insert(payload).select().single();
       if (error) { toast.error("Error al guardar"); return; }
       toast.success("Evento agregado");
+      if (data) pushToTeamup(data as AgendaEvent);
     }
     closeDialog();
     fetchEvents();
@@ -115,9 +139,11 @@ export default function Agenda() {
 
   const handleDelete = async (id: string) => {
     setDeleteConfirm(null);
+    const target = events.find((e) => e.id === id);
     const { error } = await supabase.from("agenda_events").delete().eq("id", id);
     if (error) { toast.error("Error al eliminar"); return; }
     toast.success("Evento eliminado");
+    deleteFromTeamup((target as AgendaEvent & { teamup_event_id?: string })?.teamup_event_id);
     fetchEvents();
   };
 
@@ -482,6 +508,7 @@ export default function Agenda() {
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto animate-slide-up">
+      <TeamupConnect onSynced={fetchEvents} />
       {/* Header */}
       <div className="bg-card rounded-lg border border-border p-4 card-glow">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

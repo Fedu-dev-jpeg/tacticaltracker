@@ -8,17 +8,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid, Monitor } from "lucide-react";
+import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid, Monitor, Users, ScrollText, Settings2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import GameplanExport from "@/components/GameplanExport";
 import MatchView from "@/components/MatchView";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
-  Froud: "Lurker · DTT y ST",
-  Fedu: "Soporte · IGL",
-  Hanzo: "AWPer principal",
-  Diuva: "Star Player",
-  Gyer: "Ancla",
+  Boke: "",
+  Kud: "",
+  Koda: "",
+  Ray: "",
+  Fedu: "IGL · Soporte",
 };
 
 // Legacy localStorage keys for migration
@@ -52,16 +53,7 @@ const CODEWORDS = [
 ];
 
 function getDefaultStrategies(): Strategy[] {
-  return [
-    { id: "def-1", map: "Nuke", side: "TR", type: "Default", name: "Lobby Split", description: "Default con control de lobby. Hanzo lobby, Froud AWP outside, Diuva door/silo, Gyer rotador, Fedu soporte.", playerRoles: { Hanzo: "Lobby", Froud: "AWP", Diuva: "Outside", Gyer: "Door/Silo", Fedu: "Rotador" }, notes: "Ganar info de ramp antes de commitear", link: "", status: "Ready" },
-    { id: "def-2", map: "Nuke", side: "CT", type: "Default", name: "Ramp Control", description: "Setup CT con foco en mantener ramp. Diuva ramp, Hanzo A anchor, Froud door/main, Fedu outside, Froud AWP.", playerRoles: { Diuva: "Ramp", Hanzo: "A Anchor", Froud: "AWP", Fedu: "Outside", Gyer: "Door/Main" }, notes: "Rotación rápida si pierden ramp", link: "", status: "Ready" },
-    { id: "def-3", map: "Inferno", side: "TR", type: "Default", name: "Banana Aggro", description: "Control agresivo de banana con Hanzo aggro y Fedu soporte. AWP Froud desde T spawn.", playerRoles: { Hanzo: "Banana Aggro", Fedu: "Banana Supp", Froud: "AWP", Gyer: "Boiler", Diuva: "Apps" }, notes: "Molly car, smoke CT, progresar con flashes", link: "", status: "Ready" },
-    { id: "def-4", map: "Ancient", side: "TR", type: "Exec", name: "B Split Mid", description: "Split B desde mid. Diuva outside B, Gyer mid aggro, Froud AWP, Hanzo outside A como lurk.", playerRoles: { Diuva: "Outside B", Gyer: "Mid Aggro", Froud: "AWP", Hanzo: "Outside A", Fedu: "Roamer" }, notes: "Timing importante con smokes de mid", link: "", status: "Draft" },
-    { id: "def-5", map: "Anubis", side: "CT", type: "Retake", name: "B Retake 3-man", description: "Retake B con 3 jugadores desde mid y connector. Utility coordinada.", playerRoles: { Froud: "AWP Mid", Hanzo: "Entry", Diuva: "Soporte", Fedu: "Anchor A", Gyer: "Info Canal" }, notes: "No retakear sin al menos 2 flashes", link: "", status: "Draft" },
-    { id: "def-6", map: "Nuke", side: "TR", type: "Pistol", name: "Lobby Rush", description: "Rush rápido por lobby con flashes coordinadas.", playerRoles: { Hanzo: "Entry", Froud: "Flash", Diuva: "Second", Gyer: "Trade", Fedu: "Lurk Outside" }, notes: "Timing con la primera flash es clave", link: "", status: "Ready" },
-    { id: "def-7", map: "Nuke", side: "CT", type: "Pistol", name: "Stack Ramp", description: "3 jugadores ramp para ganar control agresivo.", playerRoles: { Diuva: "Ramp Entry", Hanzo: "Flash", Froud: "Heaven AWP", Fedu: "Outside", Gyer: "Ramp Support" }, notes: "Si pierden ramp retomar con utility", link: "", status: "Probado" },
-    { id: "def-8", map: "Inferno", side: "CT", type: "Default", name: "B Anchor + Apps", description: "Setup clásico con Diuva pit, Hanzo apps hold.", playerRoles: { Diuva: "Pit", Hanzo: "Apps", Froud: "AWP Mid", Fedu: "B Anchor", Gyer: "Short" }, notes: "Rotación por CT spawn si pierden banana", link: "", status: "Ready" },
-  ];
+  return [];
 }
 
 function dbRowToStrategy(row: any): Strategy {
@@ -76,7 +68,8 @@ function dbRowToStrategy(row: any): Strategy {
     notes: row.notes || "",
     link: row.link || "",
     status: row.status as Strategy["status"],
-  };
+    book: row.book || "estrategias",
+  } as Strategy & { book: string };
 }
 
 function sortByType(strats: Strategy[]): Strategy[] {
@@ -113,23 +106,9 @@ export default function Playbook() {
     const { data, error } = await supabase.from("strategies").select("*");
     if (error) {
       console.error("Error loading strategies:", error);
-      // Fallback to localStorage if DB is empty or errors
-      const local = localStorage.getItem(STORAGE_KEY);
-      setStrategies(local ? JSON.parse(local) : getDefaultStrategies());
-    } else if (data.length === 0) {
-      // Seed defaults into DB
-      const defaults = getDefaultStrategies();
-      const rows = defaults.map((s) => ({
-        id: crypto.randomUUID(),
-        map: s.map, side: s.side, type: s.type, name: s.name,
-        description: s.description, player_roles: s.playerRoles as any,
-        notes: s.notes, link: s.link, status: s.status,
-      }));
-      await supabase.from("strategies").insert(rows);
-      const { data: seeded } = await supabase.from("strategies").select("*");
-      setStrategies((seeded || []).map(dbRowToStrategy));
+      setStrategies([]);
     } else {
-      setStrategies(data.map(dbRowToStrategy));
+      setStrategies((data || []).map(dbRowToStrategy));
     }
     setLoading(false);
   }, []);
@@ -167,6 +146,9 @@ export default function Playbook() {
 
   const filtered = useMemo(() => {
     const f = strategies.filter((s) => {
+      // Only include entries that belong to the "estrategias" book
+      const book = (s as unknown as { book?: string }).book ?? "estrategias";
+      if (book !== "estrategias") return false;
       if (s.map !== selectedMap) return false;
       if (selectedSide !== "all" && s.side !== selectedSide) return false;
       if (selectedPlayer && !s.playerRoles[selectedPlayer]) return false;
@@ -245,7 +227,27 @@ export default function Playbook() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      {/* Codewords Reference */}
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center">
+          <BookOpen className="h-5 w-5 text-accent" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-heading font-bold">Playbook</h1>
+          <p className="text-xs text-muted-foreground">Estrategias del equipo, roles y utilidad</p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="estrategias" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="estrategias" className="gap-2"><BookOpen className="h-3.5 w-3.5" /> Estrategias</TabsTrigger>
+          <TabsTrigger value="individual" className="gap-2"><Users className="h-3.5 w-3.5" /> Individual / Core</TabsTrigger>
+          <TabsTrigger value="protocolos" className="gap-2"><ScrollText className="h-3.5 w-3.5" /> Protocolos</TabsTrigger>
+          <TabsTrigger value="setups" className="gap-2"><Settings2 className="h-3.5 w-3.5" /> Setups</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="estrategias" className="space-y-6 mt-0">
+          {/* Codewords Reference */}
       <div className="bg-card rounded-lg border border-border overflow-hidden">
         <button onClick={() => setShowCodewords(!showCodewords)} className="w-full flex items-center gap-2 p-3 hover:bg-secondary/30 transition-colors text-left">
           <MessageSquare className="h-4 w-4 text-accent" />
@@ -427,6 +429,28 @@ export default function Playbook() {
           playerDescriptions={playerDescriptions}
         />
       )}
+        </TabsContent>
+
+        <TabsContent value="individual" className="mt-0">
+          <IndividualCoreTab
+            playerDescriptions={playerDescriptions}
+            savePlayerDesc={savePlayerDesc}
+            editingPlayerDesc={editingPlayerDesc}
+            setEditingPlayerDesc={setEditingPlayerDesc}
+            tempPlayerDesc={tempPlayerDesc}
+            setTempPlayerDesc={setTempPlayerDesc}
+            strategies={strategies}
+          />
+        </TabsContent>
+
+        <TabsContent value="protocolos" className="mt-0">
+          <BookList book="protocolos" strategies={strategies} setStrategies={setStrategies} title="Protocolos" description="Reglas y procedimientos del equipo (economía, timeouts, comms, etc.)" />
+        </TabsContent>
+
+        <TabsContent value="setups" className="mt-0">
+          <BookList book="setups" strategies={strategies} setStrategies={setStrategies} title="Setups" description="Formaciones y utility fijas por mapa / lado" />
+        </TabsContent>
+      </Tabs>
 
       <GameplanExport
         open={showExportDialog}
@@ -753,5 +777,180 @@ function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel }: {
         <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
       </div>
     </form>
+  );
+}
+
+// -----------------------------
+// Individual / Core tab
+// -----------------------------
+function IndividualCoreTab({
+  playerDescriptions,
+  savePlayerDesc,
+  editingPlayerDesc,
+  setEditingPlayerDesc,
+  tempPlayerDesc,
+  setTempPlayerDesc,
+  strategies,
+}: {
+  playerDescriptions: Record<string, string>;
+  savePlayerDesc: (player: string) => void | Promise<void>;
+  editingPlayerDesc: string | null;
+  setEditingPlayerDesc: (v: string | null) => void;
+  tempPlayerDesc: string;
+  setTempPlayerDesc: (v: string) => void;
+  strategies: Strategy[];
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {PLAYERS.map((p) => {
+          const isEditing = editingPlayerDesc === p;
+          const stratCount = strategies.filter((s) => s.playerRoles[p]).length;
+          return (
+            <div key={p} className="rounded-lg border border-border bg-card p-4 card-glow">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center font-heading font-bold text-accent">
+                  {p.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-heading font-bold">{p}</div>
+                  {isEditing ? (
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        value={tempPlayerDesc}
+                        onChange={(e) => setTempPlayerDesc(e.target.value)}
+                        placeholder="Rol / core del jugador"
+                        className="h-7 text-xs"
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); savePlayerDesc(p); } }}
+                      />
+                      <button onClick={() => savePlayerDesc(p)} className="text-success"><Check className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setEditingPlayerDesc(null)} className="text-muted-foreground"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground truncate">
+                      {playerDescriptions[p] || <span className="italic opacity-60">Sin rol definido</span>}
+                    </div>
+                  )}
+                </div>
+                {!isEditing && (
+                  <button
+                    onClick={() => { setEditingPlayerDesc(p); setTempPlayerDesc(playerDescriptions[p] || ""); }}
+                    className="text-muted-foreground hover:text-accent"
+                    title="Editar rol"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>Estrategias asignadas</span>
+                <span className="font-mono text-accent">{stratCount}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-[11px] text-muted-foreground">
+        Los coaches no aparecen acá — el playbook individual es solo para los 5 jugadores.
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------
+// Generic Protocolos / Setups tab
+// -----------------------------
+function BookList({
+  book,
+  strategies,
+  setStrategies,
+  title,
+  description,
+}: {
+  book: "protocolos" | "setups";
+  strategies: Strategy[];
+  setStrategies: React.Dispatch<React.SetStateAction<Strategy[]>>;
+  title: string;
+  description: string;
+}) {
+  const items = strategies.filter((s) => (s as unknown as { book?: string }).book === book || (book === "protocolos" && s.type === "__protocolo__") || (book === "setups" && s.type === "__setup__"));
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const id = crypto.randomUUID();
+    const row = {
+      id,
+      map: "Nuke" as MapName,
+      side: "TR" as const,
+      type: book === "protocolos" ? "__protocolo__" : "__setup__",
+      name: name.trim(),
+      description: desc.trim(),
+      player_roles: {} as unknown as Record<string, string>,
+      notes: "",
+      link: "",
+      status: "Ready" as const,
+      book,
+    };
+    const { error } = await supabase.from("strategies").insert(row as never);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    setStrategies((prev) => [{ ...row, playerRoles: {} } as Strategy, ...prev]);
+    setName(""); setDesc("");
+    toast.success(`${title === "Protocolos" ? "Protocolo" : "Setup"} agregado`);
+  };
+
+  const remove = async (id: string) => {
+    await supabase.from("strategies").delete().eq("id", id);
+    setStrategies((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-heading font-bold">{title}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+        <Label className="text-xs">Nuevo {title === "Protocolos" ? "protocolo" : "setup"}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Título" />
+        <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Detalle / pasos" rows={3} />
+        <div className="flex justify-end">
+          <Button size="sm" onClick={add} disabled={saving || !name.trim()}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar
+          </Button>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <BookOpen className="h-10 w-10 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">Sin {title.toLowerCase()} todavía.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((s) => (
+            <div key={s.id} className="rounded-lg border border-border bg-card p-4 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-heading font-semibold">{s.name}</div>
+                {s.description && <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{s.description}</p>}
+              </div>
+              <button
+                onClick={() => remove(s.id)}
+                className="text-muted-foreground hover:text-destructive shrink-0"
+                title="Eliminar"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
