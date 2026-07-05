@@ -147,6 +147,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
+  // Pre-upload confirmation dialog
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [overridesDraft, setOverridesDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
