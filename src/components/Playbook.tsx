@@ -693,9 +693,10 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, allExpan
   );
 }
 
-function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel }: {
+function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel, memberByName }: {
   initialData: Strategy; title: string; submitLabel: string;
   onSubmit: (s: Strategy) => void; onCancel: () => void;
+  memberByName: Record<string, TeamMember>;
 }) {
   const [map, setMap] = useState<MapName>(initialData.map);
   const [side, setSide] = useState<"CT" | "TR">(initialData.side);
