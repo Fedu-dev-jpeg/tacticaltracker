@@ -24,6 +24,8 @@ interface ParsedStrat {
   warnings: string[];
 }
 
+const MAX_PDF_BYTES = 5 * 1024 * 1024; // 5 MB
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -33,9 +35,27 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // --- Auth: require signed-in admin ---
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    if (!jwt) return json({ error: "unauthorized" }, 401);
+    const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
+    if (userErr || !userData?.user) return json({ error: "unauthorized" }, 401);
+    const { data: roleRow } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!roleRow) return json({ error: "forbidden" }, 403);
+
     const { pdf_base64, map, book = "estrategias", default_side = "CT" } = await req.json();
-    if (!pdf_base64) return json({ error: "pdf_base64 requerido" }, 400);
+    if (!pdf_base64 || typeof pdf_base64 !== "string") return json({ error: "pdf_base64 requerido" }, 400);
+    // Approx byte size from base64 length
+    const approxBytes = Math.floor((pdf_base64.length * 3) / 4);
+    if (approxBytes > MAX_PDF_BYTES) return json({ error: "pdf demasiado grande (máx 5 MB)" }, 413);
     if (!map || !VALID_MAPS.includes(map)) return json({ error: "mapa inválido" }, 400);
+
 
     // Decode base64
     const bin = Uint8Array.from(atob(pdf_base64), (c) => c.charCodeAt(0));

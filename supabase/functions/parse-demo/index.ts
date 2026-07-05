@@ -30,9 +30,24 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // --- Auth: require signed-in admin ---
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    if (!jwt) return json({ error: "unauthorized" }, 401);
+    const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
+    if (userErr || !userData?.user) return json({ error: "unauthorized" }, 401);
+    const { data: roleRow } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!roleRow) return json({ error: "forbidden" }, 403);
+
     const body = await req.json();
     const { path, rival: rivalOverride, map: mapOverride, match_type: matchTypeOverride } = body ?? {};
     if (!path || typeof path !== "string") return json({ error: "path requerido" }, 400);
+
 
     // Skip any storage read — downloading/listing under concurrency exceeds the edge memory limit.
     const fileSize = 0;
