@@ -54,7 +54,7 @@ interface ParsedDemo {
 interface Job {
   id: string;
   fileName: string;
-  file: File;
+  file: File | null;
   stage: Stage;
   failedStage: Stage | null;
   error: string | null;
@@ -70,10 +70,59 @@ interface Job {
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
 const RETRY_ATTEMPT_OPTIONS = [2, 3, 4, 5] as const;
 const RETRIABLE_STAGES: Stage[] = ["parsing", "matching"];
+const STAGE_LABELS: Record<Stage, string> = {
+  queued: "En cola",
+  uploading: "Subiendo",
+  parsing: "Parseando",
+  matching: "Vinculando",
+  saving: "Guardando",
+  done: "Completado",
+  error: "Error",
+  cancelled: "Cancelado",
+};
+const JOBS_STORAGE_KEY = "demo-uploader:jobs";
+
+type StatusFilter = "all" | "queued" | "active" | "done" | "error" | "cancelled";
+type AttemptFilter = "all" | "first" | "retried";
+
+function serializeJobs(jobs: Job[]) {
+  return jobs.map((j) => ({
+    id: j.id,
+    fileName: j.fileName,
+    // Active/queued jobs can't survive a reload (File is gone); flag them as error.
+    stage: (["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage) ? "error" : j.stage) as Stage,
+    failedStage: ["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage) ? (j.stage as Stage) : j.failedStage,
+    error: ["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage)
+      ? "Interrumpido por recarga de la página — volvé a subir el archivo"
+      : j.error,
+    result: j.result,
+    attempt: j.attempt,
+    maxAttempts: j.maxAttempts,
+    startedAt: j.startedAt,
+    finishedAt: j.finishedAt,
+    durationMs: j.durationMs,
+  }));
+}
+
+function loadPersistedJobs(): Job[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(JOBS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Omit<Job, "file" | "abort">>;
+    return parsed.map((j) => ({
+      ...j,
+      file: null,
+      abort: new AbortController(),
+    }));
+  } catch {
+    return [];
+  }
+}
 
 export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) => void }) {
   const [dragOver, setDragOver] = useState(false);
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(() => loadPersistedJobs());
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -84,11 +133,24 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [paused, setPaused] = useLocalStorage<boolean>("demo-uploader:paused", false);
   const [errorJobId, setErrorJobId] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  // Search + filters
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
+
+  // Persist jobs (metadata + results) on every change
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(serializeJobs(jobs)));
+    } catch {
+      /* quota — ignore */
+    }
+  }, [jobs]);
 
   const updateJob = useCallback((id: string, patch: Partial<Job>) => {
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
