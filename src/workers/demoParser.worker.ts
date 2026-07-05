@@ -94,11 +94,13 @@ const ROUND_END_REASON: Record<number, string> = {
   12: "target_saved",
 };
 
+export type ParserStage = "read" | "bz2" | "parse" | "finalize";
+
 self.onmessage = async (ev: MessageEvent) => {
   const { file } = ev.data as { file: File };
   try {
-    const raw = await parseFile(file, (pct, label) => {
-      (self as unknown as Worker).postMessage({ type: "progress", pct, label });
+    const raw = await parseFile(file, (pct, label, stage) => {
+      (self as unknown as Worker).postMessage({ type: "progress", pct, label, stage });
     });
     (self as unknown as Worker).postMessage({ type: "done", data: raw });
   } catch (e) {
@@ -108,27 +110,27 @@ self.onmessage = async (ev: MessageEvent) => {
 
 async function parseFile(
   file: File,
-  onProgress: (pct: number, label: string) => void,
+  onProgress: (pct: number, label: string, stage: ParserStage) => void,
 ): Promise<RawParsedDemo> {
   const isBz2 = /\.bz2$/i.test(file.name);
   let bytes: Uint8Array;
 
   if (isBz2) {
-    onProgress(2, "Leyendo archivo comprimido");
+    onProgress(2, "Leyendo archivo comprimido", "read");
     const compressed = new Uint8Array(await file.arrayBuffer());
-    onProgress(5, "Descomprimiendo bz2 (puede tardar)");
+    onProgress(5, "Descomprimiendo bz2 (puede tardar)", "bz2");
     bytes = decompressBz2All(compressed, (done, total) => {
       // Map decompression progress into 5..45% of the overall bar.
       const inner = total > 0 ? done / total : 0;
-      onProgress(5 + Math.round(inner * 40), `Descomprimiendo bz2 (${fmtBytes(done)})`);
+      onProgress(5 + Math.round(inner * 40), `Descomprimiendo bz2 (${fmtBytes(done)})`, "bz2");
     });
   } else {
-    onProgress(5, "Leyendo demo");
+    onProgress(5, "Leyendo demo", "read");
     bytes = new Uint8Array(await file.arrayBuffer());
-    onProgress(45, "Demo cargada");
+    onProgress(45, "Demo cargada", "read");
   }
 
-  onProgress(50, "Parseando eventos");
+  onProgress(50, "Parseando eventos", "parse");
 
   // Load the deadem UMD lazily so any load error is reported through the
   // normal message channel instead of a bare worker `error` event.
