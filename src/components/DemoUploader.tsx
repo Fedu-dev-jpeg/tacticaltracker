@@ -521,7 +521,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               className="hidden"
               onChange={(e) => {
                 const fs = Array.from(e.target.files ?? []);
-                if (fs.length) queueFiles(fs);
+                if (fs.length) startJobs(fs);
                 e.currentTarget.value = "";
               }}
             />
