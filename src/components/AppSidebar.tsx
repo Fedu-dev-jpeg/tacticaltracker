@@ -23,6 +23,7 @@ import {
   Trophy,
   Award,
   Users,
+  ShieldCheck,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -115,6 +116,14 @@ export function AppSidebar() {
                     <NavLink to="/equipo" className="flex items-center gap-2">
                       <Users className="h-4 w-4" />
                       {!collapsed && <span>Equipo</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/auditoria")}>
+                    <NavLink to="/auditoria" className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4" />
+                      {!collapsed && <span>Auditoría</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
