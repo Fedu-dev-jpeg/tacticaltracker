@@ -293,7 +293,7 @@ function FullView({ data, meta, mode, storageKey, onBack }: { data: DemoData; me
       </div>
 
       {/* Round Analysis */}
-      <RoundsTimeline rounds={data.rounds} />
+      <RoundsTimeline rounds={data.rounds} storageKey={storageKey} />
 
       {/* Charts */}
       <PerformanceCharts data={data} />
