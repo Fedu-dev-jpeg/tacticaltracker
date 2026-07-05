@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import GameplanExport from "@/components/GameplanExport";
 import PlaybookImportDialog from "@/components/PlaybookImportDialog";
 import MatchView from "@/components/MatchView";
+import SteamAvatar from "@/components/SteamAvatar";
+import { useTeamMembers, TeamMember } from "@/hooks/useTeamMembers";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
