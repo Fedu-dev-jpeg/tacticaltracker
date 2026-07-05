@@ -93,27 +93,33 @@ export function normalizeMapName(raw: string): string {
 // responsive during bz2 decompression + event iteration on ~1 GB streams.
 export type ParserStage = "read" | "bz2" | "parse" | "finalize";
 export type ParserProgress = (pct: number, label: string, stage: ParserStage) => void;
+export type ParserLog = (scope: string, event: string, data: unknown, level: "info" | "warn" | "error" | "debug") => void;
 
 export function parseDemoFull(
   file: File,
   onProgress?: ParserProgress,
+  onLog?: ParserLog,
 ): Promise<RawParsedDemo> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../workers/demoParser.worker.ts", import.meta.url), { type: "module" });
     const cleanup = () => { try { worker.terminate(); } catch { /* noop */ } };
     worker.onerror = (e) => {
       cleanup();
+      onLog?.("worker", "onerror", { message: e.message, filename: e.filename, lineno: e.lineno }, "error");
       reject(new Error(`Worker error: ${e.message || "desconocido"}`));
     };
     worker.onmessage = (ev: MessageEvent) => {
-      const msg = ev.data as { type: string; pct?: number; label?: string; stage?: ParserStage; message?: string; data?: RawParsedDemo };
+      const msg = ev.data as { type: string; pct?: number; label?: string; stage?: ParserStage; message?: string; data?: RawParsedDemo; scope?: string; event?: string; level?: "info" | "warn" | "error" | "debug" };
       if (msg.type === "progress") {
         onProgress?.(msg.pct ?? 0, msg.label ?? "", msg.stage ?? "parse");
+      } else if (msg.type === "log") {
+        onLog?.(msg.scope ?? "worker", msg.event ?? "log", msg.data, msg.level ?? "info");
       } else if (msg.type === "done" && msg.data) {
         cleanup();
         resolve(msg.data);
       } else if (msg.type === "error") {
         cleanup();
+        onLog?.("worker", "message-error", { message: msg.message }, "error");
         reject(new Error(msg.message ?? "Error del worker"));
       }
     };
