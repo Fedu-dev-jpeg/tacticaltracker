@@ -30,11 +30,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { path } = await req.json();
+    const body = await req.json();
+    const { path, rival: rivalOverride, map: mapOverride, match_type: matchTypeOverride } = body ?? {};
     if (!path || typeof path !== "string") return json({ error: "path requerido" }, 400);
 
-    // Skip any storage read here — downloading or even listing under concurrency
-    // pushes the edge function past its memory limit. file_size is informational only.
+    // Skip any storage read — downloading/listing under concurrency exceeds the edge memory limit.
     const fileSize = 0;
 
     const rng = seededRng(hashString(path));
@@ -45,21 +45,24 @@ Deno.serve(async (req) => {
       .eq("is_coach", false);
     const roster = (teamRaw ?? []).filter((m) => m.steam_id);
 
-    // --- SIMULATED PARSE ---
-    const map = MAPS[Math.floor(rng() * MAPS.length)];
+    // --- SIMULATED PARSE (with user-provided overrides where available) ---
+    const map = (typeof mapOverride === "string" && mapOverride.trim())
+      ? mapOverride.trim()
+      : MAPS[Math.floor(rng() * MAPS.length)];
+    const matchType = (matchTypeOverride === "TRAINING" || matchTypeOverride === "OFFICIAL")
+      ? matchTypeOverride
+      : "OFFICIAL";
     const startingSide: "CT" | "TR" = rng() > 0.5 ? "CT" : "TR";
     const scoreUs = 6 + Math.floor(rng() * 10);
     const scoreThem = 6 + Math.floor(rng() * 10);
     const totalRounds = scoreUs + scoreThem;
-    const rival = RIVAL_NAMES[Math.floor(rng() * RIVAL_NAMES.length)];
+    const rival = (typeof rivalOverride === "string" && rivalOverride.trim())
+      ? rivalOverride.trim()
+      : RIVAL_NAMES[Math.floor(rng() * RIVAL_NAMES.length)];
     const rivalTags = RIVAL_TAGS[Math.floor(rng() * RIVAL_TAGS.length)];
 
-    // Build demo player rows for our roster
+    // Build demo player rows for our roster — no extra "guest" duplicate.
     const usPlayers = roster.map((m) => genPlayer(m.steam_id!, m.steam_tag ?? m.player_name, totalRounds, rng, ROLES, false));
-    if (roster.length > 0) {
-      const tagFallback = roster[0].steam_tag ?? roster[0].player_name;
-      usPlayers.push(genPlayer("76561190000000000", tagFallback, totalRounds, rng, ROLES, true));
-    }
 
     // Rival team players (not stored in player_stats — only inside demo_data)
     const themPlayers = rivalTags.map((tag, i) =>
