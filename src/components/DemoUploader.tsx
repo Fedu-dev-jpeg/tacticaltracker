@@ -214,6 +214,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       let current: Stage = "uploading";
       const t0 = Date.now();
       try {
+        if (!job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
         current = "uploading";
         updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
         const path = `${Date.now()}-${job.file.name}`;
