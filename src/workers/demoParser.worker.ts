@@ -367,9 +367,29 @@ async function parseFile(
     }
   });
 
-  // Match end payload sometimes carries the definitive scoreboard — capture it
-  // but we don't depend on it (we compute score from round_end events).
-  parser.registerPostInterceptor(InterceptorStage.MESSAGE_PACKET, () => { /* placeholder */ });
+  // CS2 game events do NOT include the round winner. Track it from
+  // CCSGameRulesProxy entity mutations: m_iRoundEndWinnerTeam (2=T, 3=CT)
+  // and m_eRoundEndReason. The values are set slightly before the
+  // round_officially_ended game event, so pending values are ready to consume.
+  parser.registerPostInterceptor(InterceptorStage.ENTITY_PACKET, (
+    _dp: unknown,
+    _mp: unknown,
+    events: Array<{ operation: unknown; entity: { class?: { name?: string } }; getChanges: () => Record<string, unknown> }>,
+  ) => {
+    for (const ev of events) {
+      if (ev.operation !== EntityOperation.UPDATE && ev.operation !== EntityOperation.CREATE) continue;
+      if (ev.entity?.class?.name !== 'CCSGameRulesProxy') continue;
+      const changes = ev.getChanges();
+      for (const k of Object.keys(changes)) gameRulesFieldsSeen.add(k);
+      const w = changes.m_iRoundEndWinnerTeam ?? changes['CCSGameRules.m_iRoundEndWinnerTeam'];
+      const r = changes.m_eRoundEndReason ?? changes['CCSGameRules.m_eRoundEndReason'];
+      if (w !== undefined && w !== null) {
+        const n = Number(w);
+        if (n === 2 || n === 3) pendingWinner = n;
+      }
+      if (r !== undefined && r !== null) pendingReason = Number(r);
+    }
+  });
 
   await parser.parse(stream);
   await parser.dispose();
