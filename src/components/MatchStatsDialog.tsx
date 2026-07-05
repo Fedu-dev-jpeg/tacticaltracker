@@ -241,7 +241,7 @@ function RolePills({ roles }: { roles: string[] }) {
   );
 }
 
-function FullView({ data, meta, mode, onBack }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; onBack: () => void }) {
+function FullView({ data, meta, mode, storageKey, onBack }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; storageKey: string; onBack: () => void }) {
   return (
     <div className="p-5 space-y-6">
       <div className="flex items-center justify-between gap-4">
