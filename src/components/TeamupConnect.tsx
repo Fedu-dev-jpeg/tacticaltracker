@@ -23,6 +23,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
   const [syncing, setSyncing] = useState(false);
   const [calKey, setCalKey] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [calPass, setCalPass] = useState("");
   const [integ, setInteg] = useState<Integ | null>(null);
 
   const userId = user?.id;
@@ -31,14 +32,16 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
     let cancelled = false;
     supabase
       .from("integrations")
-      .select("teamup_calendar_key, teamup_api_key, teamup_last_sync")
+      .select("teamup_calendar_key, teamup_api_key, teamup_password, teamup_last_sync")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
-        setInteg(data ?? null);
-        setCalKey(data?.teamup_calendar_key ?? "");
-        setApiKey(data?.teamup_api_key ?? "");
+        const d = data as (Integ & { teamup_password?: string | null }) | null;
+        setInteg(d ?? null);
+        setCalKey(d?.teamup_calendar_key ?? "");
+        setApiKey(d?.teamup_api_key ?? "");
+        setCalPass(d?.teamup_password ?? "");
         setLoading(false);
       });
     return () => {
@@ -55,6 +58,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
         user_id: user.id,
         teamup_calendar_key: calKey.trim() || null,
         teamup_api_key: apiKey.trim() || null,
+        teamup_password: calPass.trim() || null,
       },
       { onConflict: "user_id" },
     );
@@ -65,6 +69,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
       setInteg({ teamup_calendar_key: calKey, teamup_api_key: apiKey, teamup_last_sync: integ?.teamup_last_sync ?? null });
     }
   };
+
 
   const sync = async () => {
     setSyncing(true);
@@ -166,7 +171,21 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
                 className="font-mono text-xs"
               />
             </div>
+            <div className="sm:col-span-2">
+              <Label className="text-xs">Contraseña del calendario (opcional)</Label>
+              <Input
+                type="password"
+                value={calPass}
+                onChange={(e) => setCalPass(e.target.value)}
+                placeholder="Sólo si tu calendario de Teamup pide login"
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Si al sincronizar ves el error <span className="font-mono">login_required</span>, tu calendario está protegido: pegá acá la contraseña que usás para abrirlo en teamup.com.
+              </p>
+            </div>
           </div>
+
 
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={save} disabled={saving}>

@@ -99,6 +99,7 @@ export type Database = {
           teamup_api_key: string | null
           teamup_calendar_key: string | null
           teamup_last_sync: string | null
+          teamup_password: string | null
           updated_at: string
           user_id: string
         }
@@ -108,6 +109,7 @@ export type Database = {
           teamup_api_key?: string | null
           teamup_calendar_key?: string | null
           teamup_last_sync?: string | null
+          teamup_password?: string | null
           updated_at?: string
           user_id: string
         }
@@ -117,6 +119,7 @@ export type Database = {
           teamup_api_key?: string | null
           teamup_calendar_key?: string | null
           teamup_last_sync?: string | null
+          teamup_password?: string | null
           updated_at?: string
           user_id?: string
         }

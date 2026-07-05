@@ -1,0 +1,1 @@
+ALTER TABLE public.integrations ADD COLUMN IF NOT EXISTS teamup_password TEXT;
