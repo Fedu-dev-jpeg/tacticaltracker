@@ -54,6 +54,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [fileName, setFileName] = useState<string>("");
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [lastFile, setLastFile] = useState<File | null>(null);
+  const [failedStage, setFailedStage] = useState<Stage | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
 
