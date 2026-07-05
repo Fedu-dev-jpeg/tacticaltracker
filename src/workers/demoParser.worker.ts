@@ -314,29 +314,41 @@ async function parseFile(
         roundNumber += 1;
         currentRoundKills = [];
         currentRoundHasOpening = false;
-        // Snapshot side of every player at round 1 → team_first_half.
+        deathsCT = 0;
+        deathsT = 0;
+        bombExploded = false;
+        bombDefused = false;
         if (roundNumber === 1) snapshotPlayersFromStringTable();
         break;
       }
+      case "bomb_exploded": bombExploded = true; break;
+      case "bomb_defused": bombDefused = true; break;
       case "round_end":
       case "round_officially_ended":
       case "cs_win_panel_round":
       case "cs_win_panel_match": {
-        // In CS2 the game event carries no winner — read it from the
-        // CCSGameRulesProxy props captured by the ENTITY_PACKET interceptor.
         if (rounds.length >= roundNumber && roundNumber > 0) break; // dedupe
         let winnerNum = Number(event.winner ?? event.winner_team ?? event.final_event ?? NaN);
         if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner != null) winnerNum = pendingWinner;
+        // Fallback: deduce winner from bomb events + eliminations.
+        // 2 = TERRORIST, 3 = CT.
+        let fallback = false;
         if (winnerNum !== 2 && winnerNum !== 3) {
-          debugMissedRoundEnd = (debugMissedRoundEnd ?? 0) + 1;
-          break;
+          if (bombExploded) { winnerNum = 2; fallback = true; }
+          else if (bombDefused) { winnerNum = 3; fallback = true; }
+          else if (deathsT >= 5 && deathsCT < 5) { winnerNum = 3; fallback = true; }
+          else if (deathsCT >= 5 && deathsT < 5) { winnerNum = 2; fallback = true; }
+          else { winnerNum = 3; fallback = true; } // time expired, no plant → CT
+          fallbackUsed += 1;
         }
         const side: "CT" | "TERRORIST" = winnerNum === 3 ? "CT" : "TERRORIST";
         const reasonNum = Number(event.reason ?? pendingReason ?? 0);
         rounds.push({
           round_number: rounds.length + 1,
           winner_side: side,
-          end_reason: ROUND_END_REASON[reasonNum] ?? (side === "CT" ? "ct_elimination" : "t_elimination"),
+          end_reason: ROUND_END_REASON[reasonNum] ?? (fallback
+            ? (bombExploded ? "target_bombed" : bombDefused ? "bomb_defused" : side === "CT" ? "ct_elimination" : "t_elimination")
+            : (side === "CT" ? "ct_elimination" : "t_elimination")),
           is_pistol: rounds.length === 0 || rounds.length === 12,
           kills: currentRoundKills,
         });
@@ -344,6 +356,10 @@ async function parseFile(
         currentRoundHasOpening = false;
         pendingWinner = null;
         pendingReason = 0;
+        deathsCT = 0;
+        deathsT = 0;
+        bombExploded = false;
+        bombDefused = false;
         break;
       }
       case "player_death": {
@@ -364,6 +380,10 @@ async function parseFile(
         if (assister && Number(event.assister) !== Number(event.userid) && Number(event.assister) !== Number(event.attacker)) {
           assister.assists += 1;
         }
+        // Tally victim's side for fallback winner deduction.
+        const vTeam = getTeam(Number(event.userid));
+        if (vTeam === 3) deathsCT += 1;
+        else if (vTeam === 2) deathsT += 1;
         currentRoundHasOpening = true;
         currentRoundKills.push({
           attacker: attacker?.steamid ?? "",
@@ -379,7 +399,6 @@ async function parseFile(
       case "player_hurt": {
         const attacker = players.get(Number(event.attacker));
         const dmg = Number(event.dmg_health ?? 0);
-        // Clamp to 100 → treat overkill same as CS2 stat pages.
         if (attacker && Number(event.attacker) !== Number(event.userid)) {
           attacker.damage += Math.min(100, Math.max(0, dmg));
         }
@@ -402,8 +421,12 @@ async function parseFile(
       if (ev.entity?.class?.name !== 'CCSGameRulesProxy') continue;
       const changes = ev.getChanges();
       for (const k of Object.keys(changes)) gameRulesFieldsSeen.add(k);
-      const w = changes.m_iRoundEndWinnerTeam ?? changes['CCSGameRules.m_iRoundEndWinnerTeam'];
-      const r = changes.m_eRoundEndReason ?? changes['CCSGameRules.m_eRoundEndReason'];
+      // Field names differ by CS2 build — match any key containing the substring.
+      let w: unknown, r: unknown;
+      for (const [k, v] of Object.entries(changes)) {
+        if (w === undefined && /RoundEndWinnerTeam|m_iRoundWinner\b/i.test(k)) w = v;
+        if (r === undefined && /RoundEndReason/i.test(k)) r = v;
+      }
       if (w !== undefined && w !== null) {
         const n = Number(w);
         if (n === 2 || n === 3) pendingWinner = n;
