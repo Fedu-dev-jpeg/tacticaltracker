@@ -257,9 +257,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       } catch (e) {
         const err = e as Error;
         const t1 = Date.now();
+        const stageLabel = STAGE_LABELS[current] ?? current;
         if (err.name === "AbortError") {
           updateJob(job.id, { stage: "cancelled", failedStage: current, finishedAt: t1, durationMs: t1 - t0 });
-          toast.info(`Cancelada: ${job.fileName}`);
+          toast.info(`Cancelada: ${job.fileName}`, { description: `Detenida en ${stageLabel}` });
         } else {
           // Auto-retry only for parsing/matching stages
           const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
@@ -267,7 +268,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             const nextAttempt = job.attempt + 1;
             updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController(), startedAt: null });
             startedRef.current.delete(job.id);
-            toast.info(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`);
+            toast.warning(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`, { description: `Falló en ${stageLabel}: ${err.message}` });
             const backoff = 800 * job.attempt;
             const timer = window.setTimeout(() => {
               retryTimeoutsRef.current.delete(job.id);
@@ -275,7 +276,11 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             retryTimeoutsRef.current.set(job.id, timer);
           } else {
             updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message), finishedAt: t1, durationMs: t1 - t0 });
-            toast.error(`Falló ${job.fileName}`);
+            const jobId = job.id;
+            toast.error(`✖ Falló ${job.fileName} en ${stageLabel}`, {
+              description: err.message,
+              action: { label: "Ver detalle", onClick: () => setErrorJobId(jobId) },
+            });
           }
         }
       } finally {
