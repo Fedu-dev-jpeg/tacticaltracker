@@ -712,7 +712,7 @@ function JobRow({
               Ver detalles
             </Button>
           )}
-          {active && (
+          {(active || isQueued) && (
             <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={onCancel}>
               <Ban className="h-3 w-3 mr-1" /> Cancelar
             </Button>
