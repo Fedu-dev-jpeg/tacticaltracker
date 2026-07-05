@@ -51,6 +51,12 @@ interface ParsedDemo {
   demo_data?: DemoData;
 }
 
+interface DemoOverrides {
+  rival: string;
+  matchType: "OFFICIAL" | "TRAINING";
+  map: string;
+}
+
 interface Job {
   id: string;
   fileName: string;
@@ -65,8 +71,10 @@ interface Job {
   startedAt: number | null;
   finishedAt: number | null;
   durationMs: number | null;
+  overrides?: DemoOverrides;
 }
 
+const MAP_OPTIONS = ["Mirage", "Inferno", "Nuke", "Anubis", "Ancient", "Dust2", "Vertigo", "Overpass", "Train"] as const;
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
 const RETRY_ATTEMPT_OPTIONS = [2, 3, 4, 5] as const;
 const RETRIABLE_STAGES: Stage[] = ["parsing", "matching"];
