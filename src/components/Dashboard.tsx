@@ -4,7 +4,7 @@ import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "
 import { differenceInDays, startOfWeek, format } from "date-fns";
 import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend, ReferenceLine } from "recharts";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
