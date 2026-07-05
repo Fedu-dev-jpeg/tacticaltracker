@@ -46,12 +46,25 @@ const NAV = [
 ];
 
 export function AppSidebar() {
+export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { isAdmin, role } = useUserRole();
   const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "user";
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("team_members")
+      .select("steam_avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setAvatarUrl(data?.steam_avatar_url ?? null));
+  }, [user]);
 
   const isActive = (to: string) =>
     to === "/" ? pathname === "/" : pathname.startsWith(to);
