@@ -452,6 +452,7 @@ export default function Playbook() {
             tempPlayerDesc={tempPlayerDesc}
             setTempPlayerDesc={setTempPlayerDesc}
             strategies={strategies}
+            memberByName={memberByName}
           />
         </TabsContent>
 
