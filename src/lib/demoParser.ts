@@ -30,6 +30,34 @@ export interface ParsedDemoHeader {
   bytesRead: number;    // Bytes of the (possibly decompressed) stream we consumed
 }
 
+// Raw payload emitted by the Web Worker parser. Kept as `unknown` here to
+// avoid pulling worker-only types into main-thread bundles; the shape is
+// declared alongside the worker and re-validated on the edge function.
+export interface RawParsedDemo {
+  map: string;
+  server_name: string;
+  demo_version: string;
+  total_rounds: number;
+  score: { ct: number; t: number };
+  rounds: Array<{
+    round_number: number;
+    winner_side: "CT" | "TERRORIST";
+    end_reason: string;
+    is_pistol: boolean;
+    kills: Array<{
+      attacker: string; victim: string; assister: string | null;
+      weapon: string; headshot: boolean; is_opening: boolean; tick: number;
+    }>;
+  }>;
+  players: Array<{
+    steamid: string; userid: number; name: string;
+    team_first_half: "CT" | "TERRORIST" | null;
+    kills: number; deaths: number; assists: number; hs_kills: number; damage: number;
+    first_kills: number; first_deaths: number;
+  }>;
+  duration_ticks: number;
+}
+
 const MAGIC_CS2 = "PBDEMS2\0";
 
 // DEM_* command IDs we care about (from CDemoCmd enum).
@@ -59,6 +87,37 @@ export function normalizeMapName(raw: string): string {
   const stripped = lower.replace(/^(de|cs)_/, "");
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
+
+// ─── Full demo parser (browser Web Worker) ────────────────────────────────
+// Runs the real @deademx/cs2 parser inside a Worker so the main thread stays
+// responsive during bz2 decompression + event iteration on ~1 GB streams.
+export function parseDemoFull(
+  file: File,
+  onProgress?: (pct: number, label: string) => void,
+): Promise<RawParsedDemo> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("../workers/demoParser.worker.ts", import.meta.url), { type: "module" });
+    const cleanup = () => { try { worker.terminate(); } catch { /* noop */ } };
+    worker.onerror = (e) => {
+      cleanup();
+      reject(new Error(`Worker error: ${e.message || "desconocido"}`));
+    };
+    worker.onmessage = (ev: MessageEvent) => {
+      const msg = ev.data as { type: string; pct?: number; label?: string; message?: string; data?: RawParsedDemo };
+      if (msg.type === "progress") {
+        onProgress?.(msg.pct ?? 0, msg.label ?? "");
+      } else if (msg.type === "done" && msg.data) {
+        cleanup();
+        resolve(msg.data);
+      } else if (msg.type === "error") {
+        cleanup();
+        reject(new Error(msg.message ?? "Error del worker"));
+      }
+    };
+    worker.postMessage({ file });
+  });
+}
+
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
