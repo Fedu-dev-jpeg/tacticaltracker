@@ -137,6 +137,95 @@ export type Database = {
         }
         Relationships: []
       }
+      player_stats: {
+        Row: {
+          adr: number | null
+          assists: number | null
+          created_at: string
+          deaths: number | null
+          dr: number | null
+          fd: number | null
+          fk: number | null
+          flash_assists: number | null
+          hs_pct: number | null
+          id: string
+          k2: number | null
+          k3: number | null
+          k4: number | null
+          k5: number | null
+          kast_pct: number | null
+          kills: number | null
+          kr: number | null
+          match_id: string
+          rating: number | null
+          steam_id: string | null
+          steam_tag: string | null
+          updated_at: string
+          user_id: string | null
+          util_dmg: number | null
+        }
+        Insert: {
+          adr?: number | null
+          assists?: number | null
+          created_at?: string
+          deaths?: number | null
+          dr?: number | null
+          fd?: number | null
+          fk?: number | null
+          flash_assists?: number | null
+          hs_pct?: number | null
+          id?: string
+          k2?: number | null
+          k3?: number | null
+          k4?: number | null
+          k5?: number | null
+          kast_pct?: number | null
+          kills?: number | null
+          kr?: number | null
+          match_id: string
+          rating?: number | null
+          steam_id?: string | null
+          steam_tag?: string | null
+          updated_at?: string
+          user_id?: string | null
+          util_dmg?: number | null
+        }
+        Update: {
+          adr?: number | null
+          assists?: number | null
+          created_at?: string
+          deaths?: number | null
+          dr?: number | null
+          fd?: number | null
+          fk?: number | null
+          flash_assists?: number | null
+          hs_pct?: number | null
+          id?: string
+          k2?: number | null
+          k3?: number | null
+          k4?: number | null
+          k5?: number | null
+          kast_pct?: number | null
+          kills?: number | null
+          kr?: number | null
+          match_id?: string
+          rating?: number | null
+          steam_id?: string | null
+          steam_tag?: string | null
+          updated_at?: string
+          user_id?: string | null
+          util_dmg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_stats_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       strategies: {
         Row: {
           created_at: string
@@ -182,6 +271,45 @@ export type Database = {
         }
         Relationships: []
       }
+      team_members: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          is_coach: boolean
+          player_name: string
+          role_in_team: string | null
+          steam_id: string | null
+          steam_tag: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_coach?: boolean
+          player_name: string
+          role_in_team?: string | null
+          steam_id?: string | null
+          steam_tag?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_coach?: boolean
+          player_name?: string
+          role_in_team?: string | null
+          steam_id?: string | null
+          steam_tag?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       team_objectives: {
         Row: {
           completed: boolean
@@ -218,15 +346,116 @@ export type Database = {
         }
         Relationships: []
       }
+      tournament_maps: {
+        Row: {
+          created_at: string
+          id: string
+          map_name: string
+          played_at: string | null
+          result: string | null
+          score_them: number | null
+          score_us: number | null
+          tournament_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          map_name: string
+          played_at?: string | null
+          result?: string | null
+          score_them?: number | null
+          score_us?: number | null
+          tournament_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          map_name?: string
+          played_at?: string | null
+          result?: string | null
+          score_them?: number | null
+          score_us?: number | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_maps_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournaments: {
+        Row: {
+          created_at: string
+          format: string
+          id: string
+          name: string
+          notes: string | null
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          format?: string
+          id?: string
+          name: string
+          notes?: string | null
+          start_date: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          format?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "player" | "coach" | "admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -353,6 +582,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["player", "coach", "admin"],
+    },
   },
 } as const
