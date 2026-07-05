@@ -33,8 +33,17 @@ Deno.serve(async (req) => {
     const { path } = await req.json();
     if (!path || typeof path !== "string") return json({ error: "path requerido" }, 400);
 
-    const { data: file, error } = await admin.storage.from("demos").download(path);
-    if (error || !file) return json({ error: "Demo no encontrada: " + (error?.message ?? "unknown") }, 404);
+    // Fetch only file metadata (size) — downloading the whole .dem blows the edge function memory limit.
+    const lastSlash = path.lastIndexOf("/");
+    const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+    const name = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    const { data: listing, error: listErr } = await admin.storage
+      .from("demos")
+      .list(dir, { search: name, limit: 1 });
+    if (listErr || !listing || listing.length === 0) {
+      return json({ error: "Demo no encontrada: " + (listErr?.message ?? "not found") }, 404);
+    }
+    const fileSize = (listing[0].metadata as { size?: number } | null)?.size ?? 0;
 
     const rng = seededRng(hashString(path));
 
@@ -154,7 +163,7 @@ Deno.serve(async (req) => {
       status: "imported",
       simulated: true,
       match_id: matchRow.id,
-      file_size: file.size,
+      file_size: fileSize,
       map, rival,
       score_us: scoreUs, score_them: scoreThem,
       starting_side: startingSide,
