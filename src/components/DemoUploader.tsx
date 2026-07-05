@@ -918,7 +918,57 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         )}
       </CardContent>
       <ErrorDetailsDialog job={errorJob} onOpenChange={(open) => { if (!open) setErrorJobId(null); }} onRetry={() => { if (errorJob) { retryJob(errorJob.id); setErrorJobId(null); } }} />
+
+      <Dialog open={pendingFiles.length > 0} onOpenChange={(o) => { if (!o) setPendingFiles([]); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar datos de la demo</DialogTitle>
+            <DialogDescription>
+              {pendingFiles.length === 1
+                ? `Se aplicarán a: ${pendingFiles[0].name}`
+                : `Se aplicarán a las ${pendingFiles.length} demos seleccionadas.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="rival-input" className="text-xs">Equipo rival</Label>
+              <Input
+                id="rival-input"
+                autoFocus
+                placeholder="Ej: Team Nova"
+                value={overridesDraft.rival}
+                onChange={(e) => setOverridesDraft((d) => ({ ...d, rival: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmPending(); }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo de partido</Label>
+              <Select value={overridesDraft.matchType} onValueChange={(v) => setOverridesDraft((d) => ({ ...d, matchType: v as "OFFICIAL" | "TRAINING" }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OFFICIAL">Torneo / Oficial</SelectItem>
+                  <SelectItem value="TRAINING">Entrenamiento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mapa</Label>
+              <Select value={overridesDraft.map} onValueChange={(v) => setOverridesDraft((d) => ({ ...d, map: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MAP_OPTIONS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPendingFiles([])}>Cancelar</Button>
+            <Button onClick={confirmPending}>Subir {pendingFiles.length > 1 ? `${pendingFiles.length} demos` : "demo"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
+
   );
 }
 
