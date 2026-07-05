@@ -62,7 +62,10 @@ export default function Dashboard({ matches }: DashboardProps) {
   }, [user]);
   const winRate = getWinRate(matches);
   const streak = getStreak(matches);
-  const daysLeft = Math.max(0, differenceInDays(TOURNAMENT_DATE, new Date()));
+  const { tournaments } = useTournaments();
+  const upcoming = getUpcomingTournament(tournaments);
+  const upcomingDate = upcoming ? new Date(upcoming.start_date) : null;
+  const daysLeft = upcomingDate ? Math.max(0, differenceInDays(upcomingDate, new Date())) : null;
 
   // Objectives state
   const [objectives, setObjectives] = useState<TeamObjective[]>([]);
