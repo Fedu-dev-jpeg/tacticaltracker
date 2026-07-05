@@ -234,9 +234,13 @@ function MiniTeamTable({ label, players, totalRounds, className }: { label: stri
                 <td className={cn("px-2 py-2 text-right font-mono", pm >= 0 ? "text-emerald-400" : "text-red-400")}>
                   {pm >= 0 ? "+" : ""}{pm}
                 </td>
-                <td className="px-2 py-2 text-right font-mono">{p.stats.adr.toFixed(1)}</td>
-                <td className={cn("px-2 py-2 text-right font-mono", p.stats.kast < 60 ? "text-red-400" : "")}>{p.stats.kast.toFixed(0)}%</td>
-                <td className={cn("px-2 py-2 text-right font-mono", p.stats.rating >= 1.0 ? "text-emerald-400" : p.stats.rating >= 0.9 ? "" : "text-red-400")}>{p.stats.rating.toFixed(2)}</td>
+                <td className="px-2 py-2 text-right font-mono">{fmtAdr(p, totalRounds)}</td>
+                {(() => { const k = fmtKast(p); return (
+                  <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && p.stats.kast < 60 && "text-red-400")}>{k.text}</td>
+                ); })()}
+                {(() => { const r = fmtRating(p); return (
+                  <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && p.stats.rating >= 1.0 && "text-emerald-400", r.known && p.stats.rating < 0.9 && "text-red-400")}>{r.text}</td>
+                ); })()}
               </tr>
             );
           })}
