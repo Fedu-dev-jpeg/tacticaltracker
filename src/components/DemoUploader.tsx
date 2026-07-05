@@ -115,51 +115,89 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
 
   const currentPct = STAGES.find((s) => s.key === stage)?.pct ?? 0;
 
+  const runPipeline = useCallback(
+    async (file: File) => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setError(null);
+      setFailedStage(null);
+      setResult(null);
+      setFileName(file.name);
+      const throwIfAborted = () => {
+        if (controller.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
+      };
+      let current: Stage = "uploading";
+      try {
+        current = "uploading";
+        setStage(current);
+        const path = `${Date.now()}-${file.name}`;
+        const { error: upErr } = await supabase.storage.from("demos").upload(path, file, {
+          contentType: "application/octet-stream",
+        });
+        throwIfAborted();
+        if (upErr) throw new Error("Upload: " + upErr.message);
+
+        current = "parsing";
+        setStage(current);
+        await new Promise((r) => setTimeout(r, 400));
+        throwIfAborted();
+        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
+        throwIfAborted();
+        if (fnErr) throw new Error("Parser: " + fnErr.message);
+
+        current = "matching";
+        setStage(current);
+        await new Promise((r) => setTimeout(r, 300));
+        throwIfAborted();
+
+        current = "saving";
+        setStage(current);
+        await new Promise((r) => setTimeout(r, 250));
+        throwIfAborted();
+
+        setResult(data as ParsedDemo);
+        onParsed(data as ParsedDemo);
+        setStage("done");
+        toast.success("Demo importada correctamente");
+      } catch (e) {
+        const err = e as Error;
+        if (err.name === "AbortError") {
+          setStage("cancelled");
+          setFailedStage(current);
+          toast.info("Subida cancelada");
+        } else {
+          setStage("error");
+          setFailedStage(current);
+          setError(String(err.message));
+          toast.error("Falló el procesamiento");
+        }
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [onParsed],
+  );
+
   const handleFile = useCallback(
     async (file: File) => {
       if (!file.name.match(/\.(dem|dem\.bz2|bz2)$/i)) {
         toast.error("El archivo debe ser .dem o .dem.bz2");
         return;
       }
-      setError(null);
-      setResult(null);
-      setFileName(file.name);
-      try {
-        setStage("uploading");
-        const path = `${Date.now()}-${file.name}`;
-        const { error: upErr } = await supabase.storage.from("demos").upload(path, file, {
-          contentType: "application/octet-stream",
-        });
-        if (upErr) throw new Error("Upload: " + upErr.message);
-
-        setStage("parsing");
-        // Small delay so the user sees the parsing stage
-        await new Promise((r) => setTimeout(r, 400));
-        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
-        if (fnErr) throw new Error("Parser: " + fnErr.message);
-
-        setStage("matching");
-        await new Promise((r) => setTimeout(r, 300));
-        setStage("saving");
-        await new Promise((r) => setTimeout(r, 250));
-        setResult(data as ParsedDemo);
-        onParsed(data as ParsedDemo);
-        setStage("done");
-        toast.success("Demo importada correctamente");
-      } catch (e) {
-        setStage("error");
-        setError(String((e as Error).message));
-        toast.error("Falló el procesamiento");
-      }
+      setLastFile(file);
+      await runPipeline(file);
     },
-    [onParsed],
+    [runPipeline],
   );
 
-  const stageActive = (key: Stage) => {
-    if (stage === "done") return true;
-    const order = STAGES.map((s) => s.key);
-    return order.indexOf(key) <= order.indexOf(stage);
-  };
+  const cancelUpload = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const retryUpload = useCallback(() => {
+    if (!lastFile) return;
+    runPipeline(lastFile);
+  }, [lastFile, runPipeline]);
 
   return (
     <Card className="border-border">
