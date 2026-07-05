@@ -87,6 +87,8 @@ export default function MatchStatsDialog({
   mode?: "live" | "stored";
 }) {
   const [full, setFull] = useState(false);
+  // Stable storage key per demo so filters/highlights survive dialog reopens
+  const storageKey = `stats-filters:${data.map}|${data.rival}|${data.score_us}-${data.score_them}|${data.total_rounds}`;
 
   return (
     <Dialog>
@@ -97,11 +99,11 @@ export default function MatchStatsDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className={cn("bg-background border-border p-0", full ? "max-w-6xl max-h-[92vh] overflow-y-auto" : "max-w-3xl")}>
+      <DialogContent className={cn("bg-background border-border p-0", full ? "max-w-6xl max-h-[92vh] overflow-y-auto" : "max-w-3xl max-h-[92vh] overflow-y-auto")}>
         {!full ? (
-          <MiniView data={data} meta={meta} mode={mode} onFull={() => setFull(true)} />
+          <MiniView data={data} meta={meta} mode={mode} storageKey={storageKey} onFull={() => setFull(true)} />
         ) : (
-          <FullView data={data} meta={meta} mode={mode} onBack={() => setFull(false)} />
+          <FullView data={data} meta={meta} mode={mode} storageKey={storageKey} onBack={() => setFull(false)} />
         )}
       </DialogContent>
     </Dialog>
