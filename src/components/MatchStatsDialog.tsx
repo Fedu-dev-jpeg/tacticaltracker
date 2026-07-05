@@ -308,18 +308,18 @@ function FullView({ demo, meta, mode, storageKey, onBack }: { demo: DemoData; me
             <TabsTrigger value="t">T Side</TabsTrigger>
           </TabsList>
           <TabsContent value="both" className="mt-4 space-y-4">
-            <FullTeamTable label={demo.match.teams.team2.name} players={team2All} />
-            <FullTeamTable label={demo.match.teams.team1.name} players={team1All} />
+            <FullTeamTable label={displayTeamName(demo.match.teams.team2.name, "Equipo 2")} players={team2All} totalRounds={demo.match.total_rounds} />
+            <FullTeamTable label={displayTeamName(demo.match.teams.team1.name, "Equipo 1")} players={team1All} totalRounds={demo.match.total_rounds} />
           </TabsContent>
           <TabsContent value="ct" className="mt-4 space-y-4">
             <SideBadgeNote demo={demo} side="CT" />
-            <FullTeamTable label={`${demo.match.teams.team2.name} · CT (${demo.match.teams.team2.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team2All} />
-            <FullTeamTable label={`${demo.match.teams.team1.name} · CT (${demo.match.teams.team1.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team1All} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team2.name, "Equipo 2")} · CT (${demo.match.teams.team2.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team2All} totalRounds={demo.match.total_rounds} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team1.name, "Equipo 1")} · CT (${demo.match.teams.team1.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team1All} totalRounds={demo.match.total_rounds} />
           </TabsContent>
           <TabsContent value="t" className="mt-4 space-y-4">
             <SideBadgeNote demo={demo} side="TERRORIST" />
-            <FullTeamTable label={`${demo.match.teams.team2.name} · T (${demo.match.teams.team2.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team2All} />
-            <FullTeamTable label={`${demo.match.teams.team1.name} · T (${demo.match.teams.team1.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team1All} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team2.name, "Equipo 2")} · T (${demo.match.teams.team2.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team2All} totalRounds={demo.match.total_rounds} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team1.name, "Equipo 1")} · T (${demo.match.teams.team1.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team1All} totalRounds={demo.match.total_rounds} />
           </TabsContent>
         </Tabs>
       </div>
