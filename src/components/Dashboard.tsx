@@ -4,7 +4,7 @@ import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "
 import { differenceInDays, startOfWeek, format } from "date-fns";
 import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend, ReferenceLine } from "recharts";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -113,17 +113,37 @@ export default function Dashboard({ matches }: DashboardProps) {
   const worstMap = [...mapData].filter((m) => m.played > 0).sort((a, b) => a.winRate - b.winRate)[0];
 
   const pistolData = [
-    { name: "CT Pistol", value: getPistolRate(matches, "CT") },
-    { name: "TR Pistol", value: getPistolRate(matches, "TR") },
-    { name: "CT 2nd Rnd", value: getConversionRate(matches, "CT") },
-    { name: "TR 2nd Rnd", value: getConversionRate(matches, "TR") },
+    { name: "CT Pistol", value: getPistolRate(matches, "CT"), side: "CT" },
+    { name: "TR Pistol", value: getPistolRate(matches, "TR"), side: "TR" },
+    { name: "CT 2nd Rd", value: getConversionRate(matches, "CT"), side: "CT" },
+    { name: "TR 2nd Rd", value: getConversionRate(matches, "TR"), side: "TR" },
   ];
 
   const weeklyData = getWeeklyTrend(matches);
 
+  // Result trend: recent matches diff (+1 win / -1 loss cumulative)
+  const trendMatches = [...matches]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(-12);
+  let running = 0;
+  const trendData = trendMatches.map((m, i) => {
+    running += isWin(m) ? 1 : -1;
+    return { idx: i + 1, diff: running, win: isWin(m) };
+  });
+  const wlDiff = trendData.length ? trendData[trendData.length - 1].diff : 0;
+  const wins = matches.filter(isWin).length;
+  const losses = matches.length - wins;
+  // longest streak
+  let longest = 0, cur = 0, curType: "W" | "L" | null = null;
+  [...matches].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).forEach((m) => {
+    const t = isWin(m) ? "W" : "L";
+    if (t === curType) cur++; else { curType = t; cur = 1; }
+    if (cur > longest) longest = cur;
+  });
+
   const last10 = [...matches].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
 
-  const COLORS = { win: "#70AD47", loss: "#e74c3c", primary: "#1F4E79", accent: "#0088FF" };
+  const COLORS = { win: "#22c55e", loss: "#ef4444", ct: "#3b82f6", tr: "#d4a017", accent: "#ED7D31" };
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -187,51 +207,46 @@ export default function Dashboard({ matches }: DashboardProps) {
         )}
       </div>
 
-      {/* Map Win Rate */}
-      <div className="bg-card rounded-lg border border-border p-6 card-glow">
-        <h3 className="text-lg font-heading font-bold mb-4">Win Rate por Mapa</h3>
-        {matches.length === 0 ? (
-          <p className="text-muted-foreground text-sm text-center py-8">Sin datos aún. ¡Registra tu primer treino!</p>
-        ) : (
-          <>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Map Win Rate — grouped Victorias / Derrotas */}
+        <div className="bg-card rounded-lg border border-border p-6 card-glow">
+          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-3">Win Rate por Mapa</h3>
+          {matches.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-8">Sin datos aún. ¡Registrá tu primer treino!</p>
+          ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mapData}>
+                <BarChart data={mapData.filter((d) => d.played > 0)} barCategoryGap="30%">
+                  <CartesianGrid stroke="hsl(220 16% 18%)" vertical={false} />
                   <XAxis dataKey="name" stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis stroke="hsl(215 15% 55%)" fontSize={12} domain={[0, 100]} />
+                  <YAxis stroke="hsl(215 15% 55%)" fontSize={12} allowDecimals={false} />
                   <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Bar dataKey="winRate" name="Win %" radius={[6, 6, 0, 0]}>
-                    {mapData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.winRate >= 50 ? COLORS.win : COLORS.loss} />
-                    ))}
-                  </Bar>
+                  <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" />
+                  <Bar dataKey="wins" name="Victorias" fill={COLORS.win} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="losses" name="Derrotas" fill={COLORS.loss} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex flex-wrap gap-4 mt-4 text-sm">
-              {bestMap && <span className="text-success">💪 Más fuerte: {bestMap.name} ({bestMap.winRate}%)</span>}
-              {worstMap && worstMap !== bestMap && <span className="text-destructive">⚠️ A mejorar: {worstMap.name} ({worstMap.winRate}%)</span>}
-            </div>
-          </>
-        )}
-      </div>
+          )}
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pistol */}
+        {/* Pistol — horizontal single-series with side colors */}
         <div className="bg-card rounded-lg border border-border p-6 card-glow">
-          <h3 className="text-lg font-heading font-bold mb-4">Pistol & Conversión</h3>
+          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-3">Pistol & Conversión</h3>
           {matches.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-8">Sin datos</p>
           ) : (
-            <div className="h-56">
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={pistolData} layout="vertical">
+                <BarChart data={pistolData} layout="vertical" barCategoryGap="30%">
+                  <CartesianGrid stroke="hsl(220 16% 18%)" horizontal={false} />
                   <XAxis type="number" domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
                   <YAxis type="category" dataKey="name" stroke="hsl(215 15% 55%)" fontSize={11} width={80} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Bar dataKey="value" name="%" radius={[0, 6, 6, 0]}>
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} formatter={(v: number) => `${v}%`} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" payload={[{ value: "Win Rate %", type: "square", color: COLORS.ct }]} />
+                  <Bar dataKey="value" name="Win Rate %" radius={[0, 2, 2, 0]}>
                     {pistolData.map((entry, i) => (
-                      <Cell key={i} fill={i < 2 ? COLORS.primary : COLORS.accent} />
+                      <Cell key={i} fill={entry.side === "CT" ? COLORS.ct : COLORS.tr} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -239,57 +254,110 @@ export default function Dashboard({ matches }: DashboardProps) {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Weekly Trend */}
-        <div className="bg-card rounded-lg border border-border p-6 card-glow">
-          <h3 className="text-lg font-heading font-bold mb-4">Tendencia Semanal</h3>
-          {weeklyData.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-8">Sin datos</p>
-          ) : (
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 16% 18%)" />
-                  <XAxis dataKey="week" stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Line type="monotone" dataKey="winRate" stroke={COLORS.accent} strokeWidth={3} dot={{ fill: COLORS.accent, r: 5 }} name="Win %" />
-                </LineChart>
-              </ResponsiveContainer>
+      {/* Tendencia de Resultados */}
+      <div className="bg-card rounded-lg border border-border p-6 card-glow">
+        <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-3">Tendencia de Resultados</h3>
+        {trendData.length === 0 ? (
+          <p className="text-muted-foreground text-sm text-center py-8">Sin datos</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr,220px] gap-6 items-center">
+            <div>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.6} />
+                        <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="hsl(220 16% 18%)" vertical={false} />
+                    <XAxis dataKey="idx" hide />
+                    <YAxis stroke="hsl(215 15% 55%)" fontSize={12} allowDecimals={false} />
+                    <ReferenceLine y={0} stroke="hsl(215 15% 45%)" strokeDasharray="2 2" />
+                    <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
+                    <Area type="monotone" dataKey="diff" stroke={COLORS.accent} strokeWidth={3} fill="url(#trendFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Segmented W/L strip */}
+              <div className="flex gap-1 mt-2">
+                {trendData.map((d, i) => (
+                  <div
+                    key={i}
+                    className="h-1.5 flex-1 rounded-full"
+                    style={{ backgroundColor: d.win ? COLORS.win : COLORS.loss }}
+                    title={d.win ? "Win" : "Loss"}
+                  />
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+            {/* Side panel */}
+            <div className="space-y-4 border-l border-border/60 pl-6">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-md bg-success/20 text-success text-xs font-bold">W {wins}</span>
+                <span className="text-muted-foreground">/</span>
+                <span className="px-2 py-0.5 rounded-md bg-destructive/20 text-destructive text-xs font-bold">L {losses}</span>
+              </div>
+              <div className={cn("h-16 w-16 rounded-full border-4 flex items-center justify-center font-heading font-bold text-2xl", wlDiff >= 0 ? "border-success text-success" : "border-destructive text-destructive")}>
+                {wlDiff >= 0 ? `+${wlDiff}` : wlDiff}
+              </div>
+              <div className="text-xs space-y-1">
+                <div className="flex justify-between"><span className="text-muted-foreground">Diferencia W/L</span><span className={cn("font-bold", wlDiff >= 0 ? "text-success" : "text-destructive")}>{wlDiff >= 0 ? `+${wlDiff}` : wlDiff}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Racha más larga 🔥</span><span className="font-bold text-foreground">{longest}</span></div>
+              </div>
+              {(bestMap || worstMap) && (
+                <div className="pt-3 border-t border-border/60 text-[11px] space-y-1">
+                  {bestMap && <div className="text-success">💪 {bestMap.name} · {bestMap.winRate}%</div>}
+                  {worstMap && worstMap !== bestMap && <div className="text-destructive">⚠️ {worstMap.name} · {worstMap.winRate}%</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Last 10 */}
       <div className="bg-card rounded-lg border border-border p-6 card-glow">
-        <h3 className="text-lg font-heading font-bold mb-4">Últimos 10 Partidos</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground">Últimos 10 Partidos</h3>
+        </div>
         {last10.length === 0 ? (
           <p className="text-muted-foreground text-sm text-center py-8">Sin partidos registrados</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="text-left py-2 px-2">Fecha</th>
-                  <th className="text-left py-2 px-2">Mapa</th>
-                  <th className="text-left py-2 px-2">Rival</th>
-                  <th className="text-center py-2 px-2">Score</th>
-                  <th className="text-center py-2 px-2">W/L</th>
-                  <th className="text-left py-2 px-2">Registró</th>
+                <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground">
+                  <th className="text-left py-2 px-2 font-heading">Fecha</th>
+                  <th className="text-left py-2 px-2 font-heading">Tipo</th>
+                  <th className="text-left py-2 px-2 font-heading">Mapa</th>
+                  <th className="text-left py-2 px-2 font-heading">Rival</th>
+                  <th className="text-center py-2 px-2 font-heading">Score</th>
+                  <th className="text-center py-2 px-2 font-heading">WR vs Rival</th>
+                  <th className="text-center py-2 px-2 font-heading">CT P</th>
+                  <th className="text-center py-2 px-2 font-heading">TR P</th>
                 </tr>
               </thead>
               <tbody>
                 {last10.map((m) => {
                   const win = isWin(m);
+                  const rivalMatches = m.rival ? matches.filter((x) => x.rival?.toLowerCase() === m.rival?.toLowerCase()) : [];
+                  const wrRival = rivalMatches.length ? getWinRate(rivalMatches) : null;
+                  const ctPistol = (m as unknown as { ct_pistol?: boolean }).ct_pistol;
+                  const trPistol = (m as unknown as { tr_pistol?: boolean }).tr_pistol;
                   return (
-                    <tr key={m.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                      <td className="py-2 px-2">{format(new Date(m.date), "dd/MM")}</td>
-                      <td className="py-2 px-2">{m.map}</td>
-                      <td className="py-2 px-2 text-muted-foreground">{m.rival || "—"}</td>
-                      <td className="text-center py-2 px-2 font-mono font-semibold">{m.scoreUs}-{m.scoreThem}</td>
-                      <td className={cn("text-center py-2 px-2 font-bold", win ? "text-success" : "text-destructive")}>{win ? "W" : "L"}</td>
-                      <td className="py-2 px-2 text-xs text-muted-foreground">{m.recorded_by || "—"}</td>
+                    <tr key={m.id} className="border-b border-border/40 hover:bg-secondary/20 transition-colors">
+                      <td className="py-2.5 px-2 text-xs text-muted-foreground">{format(new Date(m.date), "dd/MM/yy")}</td>
+                      <td className="py-2.5 px-2"><span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold uppercase">{(m as unknown as { type?: string }).type || "treino"}</span></td>
+                      <td className="py-2.5 px-2 flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent" />{m.map}</td>
+                      <td className="py-2.5 px-2 font-semibold">{m.rival || "—"}</td>
+                      <td className={cn("text-center py-2.5 px-2 font-mono font-bold", win ? "text-success" : "text-destructive")}>{m.scoreUs}-{m.scoreThem}</td>
+                      <td className="text-center py-2.5 px-2 text-xs text-muted-foreground">{wrRival !== null ? `${wrRival}%` : "—"}</td>
+                      <td className="text-center py-2.5 px-2">{ctPistol === undefined ? <span className="text-muted-foreground">—</span> : <span className={cn("inline-block h-2.5 w-2.5 rounded-full", ctPistol ? "bg-success" : "bg-destructive")} />}</td>
+                      <td className="text-center py-2.5 px-2">{trPistol === undefined ? <span className="text-muted-foreground">—</span> : <span className={cn("inline-block h-2.5 w-2.5 rounded-full", trPistol ? "bg-success" : "bg-destructive")} />}</td>
                     </tr>
                   );
                 })}
