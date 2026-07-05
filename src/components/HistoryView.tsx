@@ -2,13 +2,14 @@ import { useState, useMemo } from "react";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType } from "@/types/match";
 import { isWin } from "@/hooks/useMatches";
 import { format } from "date-fns";
-import { Download, Trash2, Search, Pencil, X } from "lucide-react";
+import { Download, Trash2, Search, Pencil, X, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import TrainingForm from "@/components/TrainingForm";
+import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 
 interface HistoryProps {
   matches: Match[];
@@ -195,6 +196,22 @@ export default function HistoryView({ matches, onDelete, onUpdate, onExport, onI
                   <td className={cn("text-center py-2.5 px-3 text-xs", m.trPistol === "WIN" ? "text-success" : "text-destructive")}>{m.trPistol === "WIN" ? "✓" : "✗"}</td>
                   <td className="py-2.5 px-3">
                     <div className="flex items-center justify-center gap-2">
+                      {m.demo_data ? (
+                        <MatchStatsDialog
+                          data={m.demo_data as DemoData}
+                          mode="stored"
+                          meta={{ date: m.date, matchType: m.type, rival: m.rival, savedAt: m.date }}
+                          trigger={
+                            <button className="text-muted-foreground hover:text-accent transition-colors" title="Ver stats (demo parseada)">
+                              <BarChart3 className="h-4 w-4" />
+                            </button>
+                          }
+                        />
+                      ) : (
+                        <button disabled className="text-muted-foreground/40 cursor-not-allowed" title="Sin demo parseada">
+                          <BarChart3 className="h-4 w-4" />
+                        </button>
+                      )}
                       <button onClick={() => setEditingMatch(m)} className="text-muted-foreground hover:text-accent transition-colors" title="Editar">
                         <Pencil className="h-4 w-4" />
                       </button>

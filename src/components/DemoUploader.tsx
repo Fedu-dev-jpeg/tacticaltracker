@@ -1,18 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus } from "lucide-react";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 
-type Stage = "idle" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error";
+type Stage = "idle" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
 const STAGES: { key: Stage; label: string; icon: React.ElementType; pct: number }[] = [
   { key: "uploading", label: "Subiendo demo", icon: CloudUpload, pct: 20 },
@@ -54,6 +54,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [fileName, setFileName] = useState<string>("");
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [lastFile, setLastFile] = useState<File | null>(null);
+  const [failedStage, setFailedStage] = useState<Stage | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
 
@@ -112,51 +115,89 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
 
   const currentPct = STAGES.find((s) => s.key === stage)?.pct ?? 0;
 
+  const runPipeline = useCallback(
+    async (file: File) => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setError(null);
+      setFailedStage(null);
+      setResult(null);
+      setFileName(file.name);
+      const throwIfAborted = () => {
+        if (controller.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
+      };
+      let current: Stage = "uploading";
+      try {
+        current = "uploading";
+        setStage(current);
+        const path = `${Date.now()}-${file.name}`;
+        const { error: upErr } = await supabase.storage.from("demos").upload(path, file, {
+          contentType: "application/octet-stream",
+        });
+        throwIfAborted();
+        if (upErr) throw new Error("Upload: " + upErr.message);
+
+        current = "parsing";
+        setStage(current);
+        await new Promise((r) => setTimeout(r, 400));
+        throwIfAborted();
+        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
+        throwIfAborted();
+        if (fnErr) throw new Error("Parser: " + fnErr.message);
+
+        current = "matching";
+        setStage(current);
+        await new Promise((r) => setTimeout(r, 300));
+        throwIfAborted();
+
+        current = "saving";
+        setStage(current);
+        await new Promise((r) => setTimeout(r, 250));
+        throwIfAborted();
+
+        setResult(data as ParsedDemo);
+        onParsed(data as ParsedDemo);
+        setStage("done");
+        toast.success("Demo importada correctamente");
+      } catch (e) {
+        const err = e as Error;
+        if (err.name === "AbortError") {
+          setStage("cancelled");
+          setFailedStage(current);
+          toast.info("Subida cancelada");
+        } else {
+          setStage("error");
+          setFailedStage(current);
+          setError(String(err.message));
+          toast.error("Falló el procesamiento");
+        }
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [onParsed],
+  );
+
   const handleFile = useCallback(
     async (file: File) => {
       if (!file.name.match(/\.(dem|dem\.bz2|bz2)$/i)) {
         toast.error("El archivo debe ser .dem o .dem.bz2");
         return;
       }
-      setError(null);
-      setResult(null);
-      setFileName(file.name);
-      try {
-        setStage("uploading");
-        const path = `${Date.now()}-${file.name}`;
-        const { error: upErr } = await supabase.storage.from("demos").upload(path, file, {
-          contentType: "application/octet-stream",
-        });
-        if (upErr) throw new Error("Upload: " + upErr.message);
-
-        setStage("parsing");
-        // Small delay so the user sees the parsing stage
-        await new Promise((r) => setTimeout(r, 400));
-        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
-        if (fnErr) throw new Error("Parser: " + fnErr.message);
-
-        setStage("matching");
-        await new Promise((r) => setTimeout(r, 300));
-        setStage("saving");
-        await new Promise((r) => setTimeout(r, 250));
-        setResult(data as ParsedDemo);
-        onParsed(data as ParsedDemo);
-        setStage("done");
-        toast.success("Demo importada correctamente");
-      } catch (e) {
-        setStage("error");
-        setError(String((e as Error).message));
-        toast.error("Falló el procesamiento");
-      }
+      setLastFile(file);
+      await runPipeline(file);
     },
-    [onParsed],
+    [runPipeline],
   );
 
-  const stageActive = (key: Stage) => {
-    if (stage === "done") return true;
-    const order = STAGES.map((s) => s.key);
-    return order.indexOf(key) <= order.indexOf(stage);
-  };
+  const cancelUpload = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const retryUpload = useCallback(() => {
+    if (!lastFile) return;
+    runPipeline(lastFile);
+  }, [lastFile, runPipeline]);
 
   return (
     <Card className="border-border">
@@ -226,37 +267,72 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         {/* Progress area */}
         {stage !== "idle" && (
           <div className="rounded-md border border-border bg-card/40 p-3 space-y-3">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between text-xs gap-3">
+              <div className="flex items-center gap-2 min-w-0">
                 {stage === "error" ? (
-                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                ) : stage === "cancelled" ? (
+                  <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
                 ) : stage === "done" ? (
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                 ) : (
-                  <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                  <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
                 )}
-                <span className={cn(stage === "error" && "text-destructive", stage === "done" && "text-success")}>
-                  {stage === "error" ? error : STAGES.find((s) => s.key === stage)?.label}
+                <span className={cn("truncate", stage === "error" && "text-destructive", stage === "cancelled" && "text-muted-foreground", stage === "done" && "text-success")}>
+                  {stage === "error"
+                    ? `Falló en "${STAGES.find((s) => s.key === failedStage)?.label ?? "el proceso"}": ${error}`
+                    : stage === "cancelled"
+                      ? `Cancelado en "${STAGES.find((s) => s.key === failedStage)?.label ?? "el proceso"}"`
+                      : STAGES.find((s) => s.key === stage)?.label}
                 </span>
               </div>
-              {fileName && <span className="text-muted-foreground text-[10px] truncate max-w-[200px]">{fileName}</span>}
+              <div className="flex items-center gap-2 shrink-0">
+                {fileName && <span className="text-muted-foreground text-[10px] truncate max-w-[160px]">{fileName}</span>}
+                {(stage === "uploading" || stage === "parsing" || stage === "matching" || stage === "saving") && (
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={cancelUpload}>
+                    <Ban className="h-3 w-3 mr-1" /> Cancelar
+                  </Button>
+                )}
+                {(stage === "error" || stage === "cancelled") && lastFile && (
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10" onClick={retryUpload}>
+                    <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
+                  </Button>
+                )}
+              </div>
             </div>
-            <Progress value={stage === "error" ? 0 : currentPct} className="h-1.5" />
+            <Progress value={stage === "error" || stage === "cancelled" ? currentPct : currentPct} className="h-1.5" />
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               {STAGES.map((s) => {
-                const active = stageActive(s.key);
+                const order = STAGES.map((x) => x.key);
+                const stageIdx = order.indexOf(stage);
+                const sIdx = order.indexOf(s.key);
+                const done = stage === "done" ? true : sIdx < stageIdx;
                 const isCurrent = stage === s.key;
+                const isFailed = (stage === "error" || stage === "cancelled") && failedStage === s.key;
                 const Icon = s.icon;
                 return (
                   <div
                     key={s.key}
                     className={cn(
                       "flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded border transition-colors",
-                      active ? "border-accent/40 bg-accent/10 text-accent" : "border-border bg-muted/20 text-muted-foreground",
-                      isCurrent && stage !== "done" && "animate-pulse",
+                      isFailed
+                        ? "border-destructive/60 bg-destructive/10 text-destructive"
+                        : done
+                          ? "border-success/40 bg-success/10 text-success"
+                          : isCurrent
+                            ? "border-accent/50 bg-accent/10 text-accent animate-pulse"
+                            : "border-border bg-muted/20 text-muted-foreground",
                     )}
                   >
-                    <Icon className="h-3 w-3 shrink-0" />
+                    {isFailed ? (
+                      <XCircle className="h-3 w-3 shrink-0" />
+                    ) : done ? (
+                      <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    ) : isCurrent ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                    ) : (
+                      <Icon className="h-3 w-3 shrink-0" />
+                    )}
                     <span className="truncate">{s.label}</span>
                   </div>
                 );

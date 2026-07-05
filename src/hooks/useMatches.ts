@@ -107,6 +107,7 @@ function dbToMatch(row: Record<string, unknown>): Match {
     startingSide: row.starting_side as Match["startingSide"],
     notes: row.notes as string,
     recorded_by: (row.recorded_by as string) || "",
+    demo_data: (row.demo_data as unknown) ?? null,
   };
 }
 
