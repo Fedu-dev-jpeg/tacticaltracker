@@ -171,7 +171,21 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
                 className="font-mono text-xs"
               />
             </div>
+            <div className="sm:col-span-2">
+              <Label className="text-xs">Contraseña del calendario (opcional)</Label>
+              <Input
+                type="password"
+                value={calPass}
+                onChange={(e) => setCalPass(e.target.value)}
+                placeholder="Sólo si tu calendario de Teamup pide login"
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Si al sincronizar ves el error <span className="font-mono">login_required</span>, tu calendario está protegido: pegá acá la contraseña que usás para abrirlo en teamup.com.
+              </p>
+            </div>
           </div>
+
 
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={save} disabled={saving}>
