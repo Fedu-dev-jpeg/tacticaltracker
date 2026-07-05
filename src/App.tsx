@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AppShell from "@/components/AppShell";
 import Dashboard from "@/components/Dashboard";
-import TrainingForm from "@/components/TrainingForm";
+import Registrar from "@/pages/Registrar";
 import Analysis from "@/components/Analysis";
 import HistoryView from "@/components/HistoryView";
 import Agenda from "@/components/Agenda";
@@ -33,7 +33,7 @@ function Routed() {
       <Route
         path="/registrar"
         element={
-          <TrainingForm
+          <Registrar
             onSubmit={(m) => {
               addMatch(m);
               navigate("/");
