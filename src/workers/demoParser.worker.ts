@@ -161,18 +161,19 @@ async function parseFile(
 
   // Load the deadem UMD lazily so any load error is reported through the
   // normal message channel instead of a bare worker `error` event.
-  const { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType } = await loadDeadem();
+  const { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType, EntityOperation } = await loadDeadem();
 
   // Feed the parser a WHATWG stream backed by the in-memory bytes.
   const blob = new Blob([bytes.buffer as ArrayBuffer]);
   const stream = blob.stream();
 
   const parser = new Parser(new ParserConfiguration({
-    // Frequent yields = responsive worker + progress ticks.
-    breakInterval: 200,
-    // Skip entity packets entirely — we only need game events, string tables
-    // and the demo header. Roughly 6-8× faster than the default config.
-    messagePacketTypesExclude: [ MessagePacketType.SVC_PACKET_ENTITIES ],
+    breakInterval: 500,
+    // In CS2 the round winner and end reason live on CCSGameRulesProxy entity
+    // props (m_iRoundEndWinnerTeam / m_eRoundEndReason), NOT on the game event
+    // payload. Decoding just that one class keeps us fast (~4-6× vs full) while
+    // preserving the data we need to score rounds.
+    entityClasses: [ 'CCSGameRulesProxy' ],
   }));
 
   // ── State collected during parsing ─────────────────────────────────────
