@@ -3,6 +3,7 @@ import { Match, MAPS, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
 import { differenceInDays, startOfWeek, format } from "date-fns";
 import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,6 +46,16 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
 export default function Dashboard({ matches }: DashboardProps) {
   const { user } = useAuth();
   const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Jugador";
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("team_members")
+      .select("steam_avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setAvatarUrl(data?.steam_avatar_url ?? null));
+  }, [user]);
   const winRate = getWinRate(matches);
   const streak = getStreak(matches);
   const daysLeft = Math.max(0, differenceInDays(TOURNAMENT_DATE, new Date()));
@@ -118,9 +129,12 @@ export default function Dashboard({ matches }: DashboardProps) {
     <div className="space-y-6 animate-slide-up">
       {/* Welcome */}
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg gradient-accent">
-          <User className="h-5 w-5 text-accent-foreground" />
-        </div>
+        <Avatar className="h-11 w-11 border-2 border-accent/40">
+          <AvatarImage src={avatarUrl ?? undefined} alt={playerName} />
+          <AvatarFallback className="bg-accent/20 text-accent">
+            <User className="h-5 w-5" />
+          </AvatarFallback>
+        </Avatar>
         <div>
           <h2 className="text-xl font-heading font-bold">Qué onda, <span className="text-accent">{playerName}</span> 🔥</h2>
           <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
