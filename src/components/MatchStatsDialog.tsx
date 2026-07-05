@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { BarChart3, User, Users, Bomb, Skull, Clock, Shield } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { BarChart3, User, Users, Bomb, Skull, Clock, Shield, Download, FileJson, FileSpreadsheet, Filter, X, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { exportEconomyCSV, exportFullJSON, exportRoundsCSV, exportRoundsJSON } from "@/lib/exportStats";
 
 interface PlayerBlob {
   tag: string;
