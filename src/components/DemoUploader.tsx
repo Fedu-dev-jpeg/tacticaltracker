@@ -57,7 +57,13 @@ interface Job {
   error: string | null;
   result: ParsedDemo | null;
   abort: AbortController;
+  attempt: number; // 1-indexed current attempt
+  maxAttempts: number;
 }
+
+const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
+const RETRY_ATTEMPT_OPTIONS = [2, 3, 4, 5] as const;
+const RETRIABLE_STAGES: Stage[] = ["parsing", "matching"];
 
 export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) => void }) {
   const [dragOver, setDragOver] = useState(false);
