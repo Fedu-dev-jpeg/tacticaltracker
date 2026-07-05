@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
+import TournamentCountdown from "@/components/TournamentCountdown";
 
 interface DashboardProps {
   matches: Match[];
