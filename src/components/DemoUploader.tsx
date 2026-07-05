@@ -419,6 +419,20 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const globalPct = totalCount > 0 ? Math.round((finishedCount / totalCount) * 100) : 0;
   const errorJob = errorJobId ? jobs.find((j) => j.id === errorJobId) ?? null : null;
 
+  const filteredJobs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return jobs.filter((j) => {
+      if (q && !j.fileName.toLowerCase().includes(q)) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "active" && !["uploading", "parsing", "matching", "saving"].includes(j.stage)) return false;
+        if (statusFilter !== "active" && j.stage !== statusFilter) return false;
+      }
+      if (attemptFilter === "first" && j.attempt > 1) return false;
+      if (attemptFilter === "retried" && j.attempt <= 1) return false;
+      return true;
+    });
+  }, [jobs, search, statusFilter, attemptFilter]);
+
   // Tick every second while there is work in flight (for ETA display)
   useEffect(() => {
     if (activeCount === 0 && queuedCount === 0) return;
