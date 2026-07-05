@@ -336,6 +336,31 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const finishedCount = doneCount + errorCount + cancelledCount;
   const totalCount = jobs.length;
   const globalPct = totalCount > 0 ? Math.round((finishedCount / totalCount) * 100) : 0;
+  const errorJob = errorJobId ? jobs.find((j) => j.id === errorJobId) ?? null : null;
+
+  // Tick every second while there is work in flight (for ETA display)
+  useEffect(() => {
+    if (activeCount === 0 && queuedCount === 0) return;
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [activeCount, queuedCount]);
+
+  // ETA: use avg duration of finished jobs (fallback to elapsed of running jobs) divided by concurrency.
+  const eta = useMemo(() => {
+    const remaining = activeCount + queuedCount;
+    if (remaining === 0 || paused) return null;
+    const finishedDurations = jobs.filter((j) => j.durationMs != null && (j.stage === "done" || j.stage === "error" || j.stage === "cancelled")).map((j) => j.durationMs as number);
+    const runningElapsed = jobs.filter((j) => j.startedAt && ["uploading","parsing","matching","saving"].includes(j.stage)).map((j) => nowTick - (j.startedAt as number));
+    const samples = finishedDurations.length > 0 ? finishedDurations : runningElapsed;
+    if (samples.length === 0) return null;
+    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const conc = Math.max(1, Math.min(maxConcurrent, activeCount || maxConcurrent));
+    // subtract already-elapsed portion of active jobs from the projected remaining time
+    const elapsedActive = runningElapsed.reduce((a, b) => a + Math.min(b, avg), 0);
+    const totalWork = avg * remaining;
+    const etaMs = Math.max(0, (totalWork - elapsedActive) / conc);
+    return etaMs;
+  }, [jobs, activeCount, queuedCount, maxConcurrent, nowTick, paused]);
 
   return (
     <Card className="border-border">
