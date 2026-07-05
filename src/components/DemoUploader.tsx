@@ -180,13 +180,53 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           updateJob(job.id, { stage: "cancelled", failedStage: current });
           toast.info(`Cancelada: ${job.fileName}`);
         } else {
-          updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
-          toast.error(`Falló ${job.fileName}`);
+          // Auto-retry only for parsing/matching stages
+          const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
+          if (canAutoRetry) {
+            const nextAttempt = job.attempt + 1;
+            updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController() });
+            startedRef.current.delete(job.id);
+            toast.info(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`);
+            const backoff = 800 * job.attempt;
+            const timer = window.setTimeout(() => {
+              retryTimeoutsRef.current.delete(job.id);
+            }, backoff);
+            retryTimeoutsRef.current.set(job.id, timer);
+          } else {
+            updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
+            toast.error(`Falló ${job.fileName}`);
+          }
         }
+      } finally {
+        // free the slot regardless of outcome
+        startedRef.current.delete(job.id);
       }
     },
-    [onParsed, updateJob],
+    [onParsed, updateJob, autoRetry],
   );
+
+  // Scheduler: pick up "queued" jobs whenever a slot is free
+  useEffect(() => {
+    const runningIds = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).map((j) => j.id);
+    // ensure ref reflects actual running set
+    runningIds.forEach((id) => startedRef.current.add(id));
+    const freeSlots = Math.max(0, maxConcurrent - runningIds.length);
+    if (freeSlots === 0) return;
+    const pending = jobs.filter((j) => j.stage === "queued" && !startedRef.current.has(j.id));
+    for (const j of pending.slice(0, freeSlots)) {
+      startedRef.current.add(j.id);
+      // delay slightly so backoff timers can elapse; runPipeline sets stage
+      window.setTimeout(() => runPipeline(j), 50);
+    }
+  }, [jobs, maxConcurrent, runPipeline]);
+
+  // Clean up pending retry timers on unmount
+  useEffect(() => {
+    return () => {
+      retryTimeoutsRef.current.forEach((t) => window.clearTimeout(t));
+      retryTimeoutsRef.current.clear();
+    };
+  }, []);
 
   const startJobs = useCallback(
     (files: File[]) => {
@@ -203,47 +243,54 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${f.name}`,
         fileName: f.name,
         file: f,
-        stage: "uploading",
+        stage: "queued",
         failedStage: null,
         error: null,
         result: null,
         abort: new AbortController(),
+        attempt: 1,
+        maxAttempts: autoRetry ? maxAttempts : 1,
       }));
       setJobs((prev) => [...prev, ...newJobs]);
-      // fire in parallel
-      newJobs.forEach((j) => runPipeline(j));
+      // scheduler effect will pick them up
     },
-    [runPipeline],
+    [autoRetry, maxAttempts],
   );
 
   const cancelJob = useCallback((id: string) => {
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
       j?.abort.abort();
+      // if it was queued (not yet running), transition it to cancelled directly
+      if (j && j.stage === "queued") {
+        return prev.map((x) => (x.id === id ? { ...x, stage: "cancelled" as Stage, failedStage: x.failedStage ?? "queued" } : x));
+      }
       return prev;
     });
   }, []);
 
-  const retryJob = useCallback(
-    (id: string) => {
-      setJobs((prev) => {
-        const j = prev.find((x) => x.id === id);
-        if (!j) return prev;
-        const fresh: Job = { ...j, stage: "uploading", failedStage: null, error: null, result: null, abort: new AbortController() };
-        // run outside of setState
-        queueMicrotask(() => runPipeline(fresh));
-        return prev.map((x) => (x.id === id ? fresh : x));
-      });
-    },
-    [runPipeline],
-  );
+  const retryJob = useCallback((id: string) => {
+    setJobs((prev) => {
+      const j = prev.find((x) => x.id === id);
+      if (!j) return prev;
+      startedRef.current.delete(id);
+      return prev.map((x) =>
+        x.id === id
+          ? { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1 }
+          : x,
+      );
+    });
+  }, [autoRetry, maxAttempts]);
 
   const removeJob = useCallback((id: string) => {
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
-      if (j && (j.stage === "uploading" || j.stage === "parsing" || j.stage === "matching" || j.stage === "saving")) {
+      if (j && (j.stage === "uploading" || j.stage === "parsing" || j.stage === "matching" || j.stage === "saving" || j.stage === "queued")) {
         j.abort.abort();
       }
+      startedRef.current.delete(id);
+      const t = retryTimeoutsRef.current.get(id);
+      if (t) { window.clearTimeout(t); retryTimeoutsRef.current.delete(id); }
       return prev.filter((x) => x.id !== id);
     });
   }, []);
@@ -253,7 +300,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   }, []);
 
   const activeCount = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).length;
-  const finishedCount = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.stage)).length;
+  const queuedCount = jobs.filter((j) => j.stage === "queued").length;
+  const doneCount = jobs.filter((j) => j.stage === "done").length;
+  const errorCount = jobs.filter((j) => j.stage === "error").length;
+  const cancelledCount = jobs.filter((j) => j.stage === "cancelled").length;
+  const finishedCount = doneCount + errorCount + cancelledCount;
+  const totalCount = jobs.length;
+  const globalPct = totalCount > 0 ? Math.round((finishedCount / totalCount) * 100) : 0;
 
   return (
     <Card className="border-border">
