@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { Match, MAPS, TOURNAMENT_DATE } from "@/types/match";
+import { useState, useEffect, useMemo } from "react";
+import { Match, MAPS, MATCH_TYPES, MapName, MatchType, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
 import { differenceInDays, startOfWeek, format } from "date-fns";
-import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2, BarChart3 } from "lucide-react";
+import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2, BarChart3, Filter } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend, ReferenceLine } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend, ReferenceLine, LabelList } from "recharts";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
