@@ -511,7 +511,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               e.preventDefault();
               setDragOver(false);
               const fs = Array.from(e.dataTransfer.files ?? []);
-              if (fs.length) queueFiles(fs);
+              if (fs.length) startJobs(fs);
             }}
           >
             <input
