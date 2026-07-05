@@ -147,9 +147,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
-  // Pre-upload confirmation dialog
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [overridesDraft, setOverridesDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
+  // Post-parse review dialog: show detected map/rival tags/players and let user confirm/fix.
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
+  const [savingReview, setSavingReview] = useState(false);
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
@@ -267,13 +268,15 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         updateJob(job.id, { stage: "done", result: parsed, finishedAt: t1, durationMs: t1 - t0 });
         setResult(parsed);
         onParsed(parsed);
-        const summaryBits: string[] = [];
-        if (parsed.map) summaryBits.push(parsed.map);
-        if (parsed.rival) summaryBits.push(`vs ${parsed.rival}`);
-        if (parsed.score_us != null && parsed.score_them != null) summaryBits.push(`${parsed.score_us}-${parsed.score_them}`);
-        toast.success(`✔ Demo importada: ${job.fileName}`, {
-          description: summaryBits.length > 0 ? summaryBits.join(" · ") : `Completada en ${Math.round((t1 - t0) / 1000)}s`,
+        // Auto-open review dialog so the user can confirm/fix rival, map and type.
+        setReviewDraft({
+          rival: parsed.rival && parsed.rival !== "Sin definir" ? parsed.rival : "",
+          matchType: "OFFICIAL",
+          map: parsed.map ?? "Mirage",
         });
+        setReviewJobId(job.id);
+        toast.success(`✔ Demo parseada: ${job.fileName} — revisá los datos detectados`);
+
       } catch (e) {
         const err = e as Error;
         const t1 = Date.now();
@@ -368,25 +371,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     [autoRetry, maxAttempts],
   );
 
-  // Ask user to confirm rival / tipo / mapa before queueing.
-  const queueFiles = useCallback((files: File[]) => {
-    const valid = files.filter((f) => f.name.match(/\.(dem|dem\.bz2|bz2)$/i));
-    const invalid = files.filter((f) => !f.name.match(/\.(dem|dem\.bz2|bz2)$/i));
-    invalid.forEach((f) => toast.error(`Ignorado: ${f.name} (no es .dem)`));
-    if (valid.length === 0) return;
-    setOverridesDraft({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
-    setPendingFiles(valid);
-  }, []);
-
-  const confirmPending = useCallback(() => {
-    const rival = overridesDraft.rival.trim();
-    if (!rival) {
-      toast.error("Ingresá el nombre del equipo rival");
-      return;
-    }
-    startJobs(pendingFiles, { ...overridesDraft, rival });
-    setPendingFiles([]);
-  }, [overridesDraft, pendingFiles, startJobs]);
 
   const cancelJob = useCallback((id: string) => {
     setJobs((prev) => {
@@ -529,7 +513,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               e.preventDefault();
               setDragOver(false);
               const fs = Array.from(e.dataTransfer.files ?? []);
-              if (fs.length) queueFiles(fs);
+              if (fs.length) startJobs(fs);
             }}
           >
             <input
@@ -539,7 +523,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               className="hidden"
               onChange={(e) => {
                 const fs = Array.from(e.target.files ?? []);
-                if (fs.length) queueFiles(fs);
+                if (fs.length) startJobs(fs);
                 e.currentTarget.value = "";
               }}
             />
@@ -919,55 +903,121 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       </CardContent>
       <ErrorDetailsDialog job={errorJob} onOpenChange={(open) => { if (!open) setErrorJobId(null); }} onRetry={() => { if (errorJob) { retryJob(errorJob.id); setErrorJobId(null); } }} />
 
-      <Dialog open={pendingFiles.length > 0} onOpenChange={(o) => { if (!o) setPendingFiles([]); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirmar datos de la demo</DialogTitle>
-            <DialogDescription>
-              {pendingFiles.length === 1
-                ? `Se aplicarán a: ${pendingFiles[0].name}`
-                : `Se aplicarán a las ${pendingFiles.length} demos seleccionadas.`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="rival-input" className="text-xs">Equipo rival</Label>
-              <Input
-                id="rival-input"
-                autoFocus
-                placeholder="Ej: Team Nova"
-                value={overridesDraft.rival}
-                onChange={(e) => setOverridesDraft((d) => ({ ...d, rival: e.target.value }))}
-                onKeyDown={(e) => { if (e.key === "Enter") confirmPending(); }}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Tipo de partido</Label>
-              <Select value={overridesDraft.matchType} onValueChange={(v) => setOverridesDraft((d) => ({ ...d, matchType: v as "OFFICIAL" | "TRAINING" }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OFFICIAL">Torneo / Oficial</SelectItem>
-                  <SelectItem value="TRAINING">Entrenamiento</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Mapa</Label>
-              <Select value={overridesDraft.map} onValueChange={(v) => setOverridesDraft((d) => ({ ...d, map: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {MAP_OPTIONS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingFiles([])}>Cancelar</Button>
-            <Button onClick={confirmPending}>Subir {pendingFiles.length > 1 ? `${pendingFiles.length} demos` : "demo"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {(() => {
+        const reviewJob = reviewJobId ? jobs.find((j) => j.id === reviewJobId) ?? null : null;
+        const parsed = reviewJob?.result ?? null;
+        const rivalTags = parsed?.demo_data?.team_them?.players?.map((p) => p.tag) ?? [];
+        const usPlayers = parsed?.players ?? [];
+        const closeReview = () => { if (!savingReview) setReviewJobId(null); };
+        const saveReview = async () => {
+          if (!parsed?.match_id) { setReviewJobId(null); return; }
+          const rival = reviewDraft.rival.trim();
+          if (!rival) { toast.error("Ingresá el nombre del equipo rival"); return; }
+          if (rival.length > 100) { toast.error("Nombre del rival muy largo (máx 100)"); return; }
+          setSavingReview(true);
+          const { error } = await supabase
+            .from("matches")
+            .update({ rival, map: reviewDraft.map, type: reviewDraft.matchType })
+            .eq("id", parsed.match_id);
+          setSavingReview(false);
+          if (error) { toast.error("No se pudo guardar: " + error.message); return; }
+          // reflect changes locally
+          if (reviewJob) {
+            const nextResult: ParsedDemo = { ...parsed, rival, map: reviewDraft.map };
+            updateJob(reviewJob.id, { result: nextResult });
+            setResult(nextResult);
+          }
+          toast.success(`✔ Datos confirmados: ${rival} · ${reviewDraft.map}`);
+          setReviewJobId(null);
+        };
+        return (
+          <Dialog open={!!reviewJob} onOpenChange={(o) => { if (!o) closeReview(); }}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Revisá los datos detectados</DialogTitle>
+                <DialogDescription>
+                  {reviewJob?.fileName} — confirmá o corregí antes de guardar definitivamente.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Mapa detectado</Label>
+                  <Select value={reviewDraft.map} onValueChange={(v) => setReviewDraft((d) => ({ ...d, map: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MAP_OPTIONS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tipo de partido</Label>
+                  <Select value={reviewDraft.matchType} onValueChange={(v) => setReviewDraft((d) => ({ ...d, matchType: v as "OFFICIAL" | "TRAINING" }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="OFFICIAL">Torneo / Oficial</SelectItem>
+                      <SelectItem value="TRAINING">Entrenamiento</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-1">
+                  <Label className="text-xs">Marcador</Label>
+                  <div className="h-9 px-3 rounded-md border border-border bg-muted/30 flex items-center text-sm">
+                    {parsed?.score_us ?? "-"} <span className="text-muted-foreground mx-1">·</span> {parsed?.score_them ?? "-"}
+                    {parsed?.starting_side && <Badge variant="outline" className="ml-auto text-[10px]">Empezamos {parsed.starting_side}</Badge>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">Jugadores del equipo rival detectados</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {rivalTags.length > 0 ? rivalTags.map((t, i) => (
+                    <Badge key={i} variant="secondary" className="font-mono text-[11px]">{t}</Badge>
+                  )) : <span className="text-xs text-muted-foreground">Sin tags detectados</span>}
+                </div>
+                <div className="space-y-1.5 pt-1">
+                  <Label htmlFor="review-rival" className="text-xs">Nombre del equipo rival</Label>
+                  <Input
+                    id="review-rival"
+                    autoFocus
+                    maxLength={100}
+                    placeholder="Escribí el nombre del clan/equipo"
+                    value={reviewDraft.rival}
+                    onChange={(e) => setReviewDraft((d) => ({ ...d, rival: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border overflow-hidden">
+                <div className="px-3 py-2 bg-muted/30 text-xs font-medium text-muted-foreground">
+                  Nuestros jugadores ({usPlayers.length})
+                </div>
+                <div className="divide-y divide-border">
+                  {usPlayers.map((p) => (
+                    <div key={p.steam_id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                      <span className="font-mono">{p.steam_tag}</span>
+                      <span className="text-muted-foreground truncate">→ {p.matched_player_name ?? "sin vincular"}</span>
+                      <span className="ml-auto tabular-nums">{p.kills}/{p.deaths}/{p.assists}</span>
+                      <span className="tabular-nums text-muted-foreground w-14 text-right">ADR {p.adr}</span>
+                      <span className="tabular-nums text-accent w-12 text-right">{p.rating}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="ghost" onClick={closeReview} disabled={savingReview}>Revisar después</Button>
+                <Button onClick={saveReview} disabled={savingReview}>
+                  {savingReview ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Guardando…</> : "Confirmar y guardar"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </Card>
+
 
   );
 }

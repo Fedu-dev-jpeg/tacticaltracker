@@ -56,9 +56,10 @@ Deno.serve(async (req) => {
     const scoreUs = 6 + Math.floor(rng() * 10);
     const scoreThem = 6 + Math.floor(rng() * 10);
     const totalRounds = scoreUs + scoreThem;
+    // Rival name: prefer the override (user confirmation). Leave empty for the review step.
     const rival = (typeof rivalOverride === "string" && rivalOverride.trim())
       ? rivalOverride.trim()
-      : RIVAL_NAMES[Math.floor(rng() * RIVAL_NAMES.length)];
+      : "Sin definir";
     const rivalTags = RIVAL_TAGS[Math.floor(rng() * RIVAL_TAGS.length)];
 
     // Build demo player rows for our roster — no extra "guest" duplicate.
