@@ -370,16 +370,21 @@ async function parseFile(
   await parser.parse(stream);
   await parser.dispose();
 
+  const tParseEnd = performance.now();
+  wlog("worker:parse", "parser-finished", {
+    ticks_seen: lastTick,
+    total_players_in_user_info: players.size,
+    total_event_types: eventCounts.size,
+    elapsed_ms_since_worker_start: Math.round(performance.now()),
+  });
+
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
 
-  // Post-filter: drop coaches only. CS2's user_info string table has no
-  // explicit coach flag, but pracc / matchmaking coaches almost always use
-  // names prefixed with "COACH" / "coach". Keep every other real SteamID —
-  // including players with all-zero stats — so the roster reflects the actual
-  // 5v5 (players who disconnected early or had a quiet match must still show).
+  // Post-filter: drop coaches only.
   const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
   const activePlayers = [...players.values()].filter((p) => !COACH_RE.test(p.name ?? ""));
+  const droppedCoaches = [...players.values()].filter((p) => COACH_RE.test(p.name ?? "")).map((p) => p.name);
 
   // Derive score from rounds.
   let ct = 0, t = 0;
@@ -391,15 +396,27 @@ async function parseFile(
   // but couldn't attribute a winner to. Helps triage 0-0 scores.
   const topEvents = [...eventCounts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 15);
-  console.log("[demo-parser worker] event summary", {
-    rounds: rounds.length,
-    score: { ct, t },
+    .slice(0, 30);
+  wlog("worker:parse", "event-summary", {
+    map: mapName,
+    server: serverName,
+    demo_version: demoVersion,
+    rounds_captured: rounds.length,
+    score_ct_t: { ct, t },
     players_kept: activePlayers.length,
     players_dropped: players.size - activePlayers.length,
+    dropped_coaches: droppedCoaches,
     missed_round_ends: debugMissedRoundEnd,
     top_events: Object.fromEntries(topEvents),
+    total_event_types: eventCounts.size,
+    parse_ms: Math.round(tParseEnd - performance.now()) * -1,
   });
+  wlog("worker:parse", "players-snapshot", activePlayers.map((p) => ({
+    steamid: p.steamid, name: p.name,
+    k: p.kills, d: p.deaths, a: p.assists,
+    hs: p.hs_kills, dmg: p.damage,
+    fk: p.first_kills, fd: p.first_deaths,
+  })));
 
   onProgress(98, "Consolidando resultado", "finalize");
 
