@@ -80,18 +80,35 @@ export default function MatchStatsDialog({
   );
 }
 
+function displayTeamName(name: string | undefined | null, fallback: string): string {
+  const n = (name ?? "").trim();
+  if (!n || /^sin definir$/i.test(n) || n === "?") return fallback;
+  return n;
+}
+
+function fmtScore(demo: DemoData): { t1: string; t2: string; known: boolean } {
+  const t1 = demo.match.score.team1;
+  const t2 = demo.match.score.team2;
+  const rounds = demo.match.total_rounds;
+  if (rounds <= 0 && t1 === 0 && t2 === 0) return { t1: "—", t2: "—", known: false };
+  return { t1: String(t1), t2: String(t2), known: true };
+}
+
 function ScoreHeader({ demo }: { demo: DemoData }) {
+  const s = fmtScore(demo);
+  const team1Name = displayTeamName(demo.match.teams.team1.name, "Equipo 1");
+  const team2Name = displayTeamName(demo.match.teams.team2.name, "Equipo 2");
   return (
     <div className="flex items-center justify-center gap-6 py-4 border-y border-border">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-xs">?</div>
-        <span>{demo.match.teams.team1.name}</span>
+        <span>{team1Name}</span>
       </div>
-      <div className="font-heading text-3xl font-bold tabular-nums">
-        {demo.match.score.team1} - {demo.match.score.team2}
+      <div className={cn("font-heading text-3xl font-bold tabular-nums", !s.known && "text-muted-foreground")}>
+        {s.t1} - {s.t2}
       </div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>{demo.match.teams.team2.name}</span>
+        <span>{team2Name}</span>
         <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-xs">?</div>
       </div>
     </div>
@@ -157,8 +174,8 @@ function MiniView({ demo, meta, mode, storageKey, onFull }: { demo: DemoData; me
           <Button variant="outline" size="sm" onClick={onFull}>View Full Stats</Button>
         </div>
       </div>
-      <MiniTeamTable label={demo.match.teams.team2.name} players={team2} totalRounds={demo.match.total_rounds} />
-      <MiniTeamTable label={demo.match.teams.team1.name} players={team1} totalRounds={demo.match.total_rounds} className="mt-3" />
+      <MiniTeamTable label={displayTeamName(demo.match.teams.team2.name, "Equipo 2")} players={team2} totalRounds={demo.match.total_rounds} />
+      <MiniTeamTable label={displayTeamName(demo.match.teams.team1.name, "Equipo 1")} players={team1} totalRounds={demo.match.total_rounds} className="mt-3" />
       <RoundsTimeline demo={demo} storageKey={storageKey} compact />
     </div>
   );
@@ -166,6 +183,23 @@ function MiniView({ demo, meta, mode, storageKey, onFull }: { demo: DemoData; me
 
 function plusMinus(p: DemoPlayer) { return p.stats.kills - p.stats.deaths; }
 function kda(p: DemoPlayer) { return `${p.stats.kills}/${p.stats.deaths}/${p.stats.assists}`; }
+function fmtAdr(p: DemoPlayer, totalRounds: number): string {
+  // Defensive: legacy payloads sometimes stored raw total damage in `adr`.
+  // Recompute from damage/rounds when the stored value looks like total damage
+  // (implausibly high). If we don't know round count, show a dash.
+  if (!totalRounds || totalRounds <= 0) return "—";
+  const stored = p.stats.adr;
+  const raw = p.stats.damage;
+  const val = stored > 200 && raw > 0 ? raw / totalRounds : stored;
+  if (!Number.isFinite(val) || val <= 0) return "—";
+  return val.toFixed(1);
+}
+function fmtKast(p: DemoPlayer): { text: string; known: boolean } {
+  return p.stats.kast > 0 ? { text: `${p.stats.kast.toFixed(0)}%`, known: true } : { text: "—", known: false };
+}
+function fmtRating(p: DemoPlayer): { text: string; known: boolean } {
+  return p.stats.rating > 0 ? { text: p.stats.rating.toFixed(2), known: true } : { text: "—", known: false };
+}
 
 function MiniTeamTable({ label, players, totalRounds, className }: { label: string; players: DemoPlayer[]; totalRounds: number; className?: string }) {
   return (
@@ -200,9 +234,13 @@ function MiniTeamTable({ label, players, totalRounds, className }: { label: stri
                 <td className={cn("px-2 py-2 text-right font-mono", pm >= 0 ? "text-emerald-400" : "text-red-400")}>
                   {pm >= 0 ? "+" : ""}{pm}
                 </td>
-                <td className="px-2 py-2 text-right font-mono">{p.stats.adr.toFixed(1)}</td>
-                <td className={cn("px-2 py-2 text-right font-mono", p.stats.kast < 60 ? "text-red-400" : "")}>{p.stats.kast.toFixed(0)}%</td>
-                <td className={cn("px-2 py-2 text-right font-mono", p.stats.rating >= 1.0 ? "text-emerald-400" : p.stats.rating >= 0.9 ? "" : "text-red-400")}>{p.stats.rating.toFixed(2)}</td>
+                <td className="px-2 py-2 text-right font-mono">{fmtAdr(p, totalRounds)}</td>
+                {(() => { const k = fmtKast(p); return (
+                  <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && p.stats.kast < 60 && "text-red-400")}>{k.text}</td>
+                ); })()}
+                {(() => { const r = fmtRating(p); return (
+                  <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && p.stats.rating >= 1.0 && "text-emerald-400", r.known && p.stats.rating < 0.9 && "text-red-400")}>{r.text}</td>
+                ); })()}
               </tr>
             );
           })}
@@ -270,18 +308,18 @@ function FullView({ demo, meta, mode, storageKey, onBack }: { demo: DemoData; me
             <TabsTrigger value="t">T Side</TabsTrigger>
           </TabsList>
           <TabsContent value="both" className="mt-4 space-y-4">
-            <FullTeamTable label={demo.match.teams.team2.name} players={team2All} />
-            <FullTeamTable label={demo.match.teams.team1.name} players={team1All} />
+            <FullTeamTable label={displayTeamName(demo.match.teams.team2.name, "Equipo 2")} players={team2All} totalRounds={demo.match.total_rounds} />
+            <FullTeamTable label={displayTeamName(demo.match.teams.team1.name, "Equipo 1")} players={team1All} totalRounds={demo.match.total_rounds} />
           </TabsContent>
           <TabsContent value="ct" className="mt-4 space-y-4">
             <SideBadgeNote demo={demo} side="CT" />
-            <FullTeamTable label={`${demo.match.teams.team2.name} · CT (${demo.match.teams.team2.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team2All} />
-            <FullTeamTable label={`${demo.match.teams.team1.name} · CT (${demo.match.teams.team1.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team1All} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team2.name, "Equipo 2")} · CT (${demo.match.teams.team2.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team2All} totalRounds={demo.match.total_rounds} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team1.name, "Equipo 1")} · CT (${demo.match.teams.team1.first_half_side === "CT" ? "1er tiempo" : "2do tiempo"})`} players={team1All} totalRounds={demo.match.total_rounds} />
           </TabsContent>
           <TabsContent value="t" className="mt-4 space-y-4">
             <SideBadgeNote demo={demo} side="TERRORIST" />
-            <FullTeamTable label={`${demo.match.teams.team2.name} · T (${demo.match.teams.team2.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team2All} />
-            <FullTeamTable label={`${demo.match.teams.team1.name} · T (${demo.match.teams.team1.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team1All} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team2.name, "Equipo 2")} · T (${demo.match.teams.team2.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team2All} totalRounds={demo.match.total_rounds} />
+            <FullTeamTable label={`${displayTeamName(demo.match.teams.team1.name, "Equipo 1")} · T (${demo.match.teams.team1.first_half_side === "TERRORIST" ? "1er tiempo" : "2do tiempo"})`} players={team1All} totalRounds={demo.match.total_rounds} />
           </TabsContent>
         </Tabs>
       </div>
@@ -302,7 +340,7 @@ function SideBadgeNote({ demo, side }: { demo: DemoData; side: Side }) {
   );
 }
 
-function FullTeamTable({ label, players }: { label: string; players: DemoPlayer[] }) {
+function FullTeamTable({ label, players, totalRounds = 0 }: { label: string; players: DemoPlayer[]; totalRounds?: number }) {
   return (
     <div>
       <div className="text-sm font-heading font-bold mb-2 flex items-center gap-2">
@@ -334,15 +372,19 @@ function FullTeamTable({ label, players }: { label: string; players: DemoPlayer[
               return (
                 <tr key={p.steamid} className="border-t border-border/40">
                   <td className="px-3 py-2 flex items-center gap-2">
-                    <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{p.name[0]}</AvatarFallback></Avatar>
+                    <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{(p.name ?? "?")[0]}</AvatarFallback></Avatar>
                     <span>{p.name}</span>
                   </td>
                   <td className="px-3 py-2"><RolePill role={p.role_deduced} /></td>
                   <td className="px-2 py-2 text-right font-mono">{kda(p)}</td>
                   <td className={cn("px-2 py-2 text-right font-mono", pm >= 0 ? "text-emerald-400" : "text-red-400")}>{pm >= 0 ? "+" : ""}{pm}</td>
-                  <td className="px-2 py-2 text-right font-mono">{p.stats.adr.toFixed(1)}</td>
-                  <td className={cn("px-2 py-2 text-right font-mono", p.stats.kast < 60 ? "text-red-400" : "")}>{p.stats.kast.toFixed(0)}%</td>
-                  <td className={cn("px-2 py-2 text-right font-mono", p.stats.rating >= 1.0 ? "text-emerald-400" : p.stats.rating >= 0.9 ? "" : "text-red-400")}>{p.stats.rating.toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right font-mono">{fmtAdr(p, totalRounds)}</td>
+                  {(() => { const k = fmtKast(p); return (
+                    <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && p.stats.kast < 60 && "text-red-400")}>{k.text}</td>
+                  ); })()}
+                  {(() => { const r = fmtRating(p); return (
+                    <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && p.stats.rating >= 1.0 && "text-emerald-400", r.known && p.stats.rating < 0.9 && "text-red-400")}>{r.text}</td>
+                  ); })()}
                   <td className="px-2 py-2 text-right font-mono">{p.stats.hs_kills}</td>
                   <td className="px-2 py-2 text-right font-mono">{p.stats.damage}</td>
                   <td className="px-2 py-2 text-right font-mono">{p.stats.first_kills}/{p.stats.first_deaths}</td>
@@ -380,6 +422,15 @@ function RoundsTimeline({ demo, storageKey, compact }: { demo: DemoData; storage
   const { side, result, reasons, onlyPistol, onlyClutch } = filters;
   const reasonSet = useMemo(() => new Set<EndReason>(reasons), [reasons]);
   const rounds = demo.rounds;
+
+  if (!rounds || rounds.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border p-4 text-center">
+        <h3 className="font-heading font-bold text-sm">{compact ? "Round Timeline" : "Round Analysis"}</h3>
+        <p className="text-xs text-muted-foreground mt-1">Pendiente de parser completo — el análisis por rounds aún no está disponible para esta demo.</p>
+      </div>
+    );
+  }
 
   const matches = useMemo(() => {
     const set = new Set<number>();

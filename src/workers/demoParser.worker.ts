@@ -332,12 +332,13 @@ async function parseFile(
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
 
-  // Post-filter: drop coaches / no-shows. A CS2 coach shows up in user_info
-  // but never fires player_death / player_hurt as attacker or victim, so their
-  // K/D/A/damage stay at zero. Anyone with truly no participation is dropped.
-  const activePlayers = [...players.values()].filter((p) =>
-    p.kills > 0 || p.deaths > 0 || p.assists > 0 || p.damage > 0 || p.first_kills > 0 || p.first_deaths > 0,
-  );
+  // Post-filter: drop coaches only. CS2's user_info string table has no
+  // explicit coach flag, but pracc / matchmaking coaches almost always use
+  // names prefixed with "COACH" / "coach". Keep every other real SteamID —
+  // including players with all-zero stats — so the roster reflects the actual
+  // 5v5 (players who disconnected early or had a quiet match must still show).
+  const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
+  const activePlayers = [...players.values()].filter((p) => !COACH_RE.test(p.name ?? ""));
 
   // Derive score from rounds.
   let ct = 0, t = 0;
