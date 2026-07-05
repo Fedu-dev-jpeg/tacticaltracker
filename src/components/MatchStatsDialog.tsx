@@ -192,7 +192,7 @@ function MiniTeamTable({ label, players, totalRounds, className }: { label: stri
             return (
               <tr key={p.steamid} className="border-t border-border/40">
                 <td className="px-3 py-2 flex items-center gap-2">
-                  <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{p.name[0]}</AvatarFallback></Avatar>
+                  <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{(p.name ?? "?")[0]}</AvatarFallback></Avatar>
                   <span>{p.name}</span>
                 </td>
                 <td className="px-3 py-2"><RolePill role={p.role_deduced} /></td>
