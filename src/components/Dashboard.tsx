@@ -112,7 +112,7 @@ export default function Dashboard({ matches }: DashboardProps) {
 
   const last10 = [...matches].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
 
-  const COLORS = { win: "#70AD47", loss: "#e74c3c", primary: "#1F4E79", accent: "#ED7D31" };
+  const COLORS = { win: "#70AD47", loss: "#e74c3c", primary: "#1F4E79", accent: "#0088FF" };
 
   return (
     <div className="space-y-6 animate-slide-up">

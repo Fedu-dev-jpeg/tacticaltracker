@@ -76,7 +76,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
           </span>
           <span className="text-[#888] text-xs min-w-[60px]">{s.type}</span>
           <span className="text-white font-bold text-sm flex-1">{s.name}</span>
-          <span className="text-[#ED7D31] font-semibold text-sm">
+          <span className="text-[#0088FF] font-semibold text-sm">
             {s.playerRoles[player]}
           </span>
           {isExpanded ? <ChevronUp className="h-4 w-4 text-[#555]" /> : <ChevronDown className="h-4 w-4 text-[#555]" />}
@@ -95,7 +95,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
                     className={cn(
                       "text-xs px-2 py-1 rounded border",
                       p === player
-                        ? "bg-[#ED7D31]/20 border-[#ED7D31]/50 text-[#ED7D31] font-bold"
+                        ? "bg-[#0088FF]/20 border-[#0088FF]/50 text-[#0088FF] font-bold"
                         : "bg-[#222] border-[#444] text-[#999]"
                     )}
                   >
@@ -105,7 +105,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
             </div>
 
             {s.notes && (
-              <p className="text-[#999] text-xs border-l-2 border-[#ED7D31] pl-2 italic">
+              <p className="text-[#999] text-xs border-l-2 border-[#0088FF] pl-2 italic">
                 {s.notes}
               </p>
             )}
@@ -120,7 +120,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
       {/* Header bar */}
       <div className="sticky top-0 z-10 bg-[#111] border-b border-[#333] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="bg-[#ED7D31] text-black font-black text-xs px-3 py-1 rounded">
+          <div className="bg-[#0088FF] text-black font-black text-xs px-3 py-1 rounded">
             MATCH VIEW
           </div>
           <span className="text-white font-bold text-lg">{player}</span>
@@ -132,7 +132,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border",
               displayMode === "all"
-                ? "border-[#ED7D31]/50 bg-[#ED7D31]/10 text-[#ED7D31]"
+                ? "border-[#0088FF]/50 bg-[#0088FF]/10 text-[#0088FF]"
                 : "border-[#444] bg-[#222] text-[#888] hover:text-white"
             )}
           >
@@ -159,7 +159,7 @@ export default function MatchView({ strategies, player, playerDescription, onClo
               className={cn(
                 "px-4 py-2.5 text-sm font-bold transition-colors border-b-2 -mb-px whitespace-nowrap",
                 activeMap === map
-                  ? "border-[#ED7D31] text-[#ED7D31]"
+                  ? "border-[#0088FF] text-[#0088FF]"
                   : "border-transparent text-[#666] hover:text-[#aaa]"
               )}
             >

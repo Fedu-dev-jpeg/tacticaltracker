@@ -11,6 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType, Side, WinLoss } from "@/types/match";
 import { toast } from "sonner";
+import DemoUploader from "@/components/DemoUploader";
 
 interface TrainingFormProps {
   onSubmit: (match: Omit<Match, "id">) => void;
@@ -106,7 +107,16 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto animate-slide-up">
+    <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl mx-auto animate-slide-up">
+      <DemoUploader
+        onParsed={(d) => {
+          if (d.map && (MAPS as string[]).includes(d.map)) setMap(d.map as MapName);
+          if (typeof d.score_us === "number") setScoreUs(String(d.score_us));
+          if (typeof d.score_them === "number") setScoreThem(String(d.score_them));
+          if (d.rival) setRival(d.rival);
+          if (d.starting_side === "CT" || d.starting_side === "TR") setStartingSide(d.starting_side);
+        }}
+      />
       <div className="bg-card rounded-lg border border-border p-6 card-glow space-y-6">
         <h2 className="text-xl font-heading font-bold flex items-center gap-2">
           <Plus className="h-5 w-5 text-accent" />
