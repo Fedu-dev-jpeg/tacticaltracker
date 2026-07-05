@@ -30,7 +30,7 @@ export default defineTool({
       return { content: [{ type: "text", text: "Not authenticated" }], isError: true };
     let query = db(ctx)
       .from("team_members")
-      .select("player_name, steam_tag, role, is_coach, steam_id");
+      .select("player_name, steam_tag, role_in_team, is_coach, steam_id");
     if (!include_coaches) query = query.eq("is_coach", false);
     const { data, error } = await query.order("is_coach", { ascending: true });
     if (error)
