@@ -299,23 +299,19 @@ async function parseFile(
       }
       case "round_end":
       case "round_officially_ended":
-      case "cs_win_panel_round": {
-        // `round_end` fires when the outcome is decided; `round_officially_ended`
-        // fires at freeze time after; `cs_win_panel_round` shows the summary
-        // panel. Some CS2 demos ship only one of these — accept whichever wins
-        // first for a given round number and dedupe by round index.
-        if (rounds.length >= roundNumber && roundNumber > 0) break; // already recorded
-        // Valve CSTeam enum: 2 = T, 3 = CT. Some events use `final_event` /
-        // `winner_team` instead of `winner`.
-        const winnerRaw = event.winner ?? event.winner_team ?? event.final_event;
-        const winnerNum = Number(winnerRaw);
-        // If we can't tell, skip — better no round than a wrong one.
+      case "cs_win_panel_round":
+      case "cs_win_panel_match": {
+        // In CS2 the game event carries no winner — read it from the
+        // CCSGameRulesProxy props captured by the ENTITY_PACKET interceptor.
+        if (rounds.length >= roundNumber && roundNumber > 0) break; // dedupe
+        let winnerNum = Number(event.winner ?? event.winner_team ?? event.final_event ?? NaN);
+        if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner != null) winnerNum = pendingWinner;
         if (winnerNum !== 2 && winnerNum !== 3) {
           debugMissedRoundEnd = (debugMissedRoundEnd ?? 0) + 1;
           break;
         }
         const side: "CT" | "TERRORIST" = winnerNum === 3 ? "CT" : "TERRORIST";
-        const reasonNum = Number(event.reason ?? 0);
+        const reasonNum = Number(event.reason ?? pendingReason ?? 0);
         rounds.push({
           round_number: rounds.length + 1,
           winner_side: side,
@@ -325,6 +321,8 @@ async function parseFile(
         });
         currentRoundKills = [];
         currentRoundHasOpening = false;
+        pendingWinner = null;
+        pendingReason = 0;
         break;
       }
       case "player_death": {
