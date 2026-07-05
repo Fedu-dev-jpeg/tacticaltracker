@@ -1,20 +1,20 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban } from "lucide-react";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 
-type Stage = "idle" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
+type Stage = "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
-const STAGES: { key: Stage; label: string; icon: React.ElementType; pct: number }[] = [
+const STAGES: { key: Exclude<Stage, "error" | "cancelled">; label: string; icon: React.ElementType; pct: number }[] = [
   { key: "uploading", label: "Subiendo demo", icon: CloudUpload, pct: 20 },
   { key: "parsing", label: "Parseando rounds y economía", icon: Cpu, pct: 55 },
   { key: "matching", label: "Vinculando jugadores por SteamID", icon: Link2, pct: 80 },
@@ -46,19 +46,29 @@ interface ParsedDemo {
   demo_data?: DemoData;
 }
 
+interface Job {
+  id: string;
+  fileName: string;
+  file: File;
+  stage: Stage;
+  failedStage: Stage | null;
+  error: string | null;
+  result: ParsedDemo | null;
+  abort: AbortController;
+}
+
 export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) => void }) {
-  const [stage, setStage] = useState<Stage>("idle");
   const [dragOver, setDragOver] = useState(false);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [result, setResult] = useState<ParsedDemo | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>("");
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
-  const [lastFile, setLastFile] = useState<File | null>(null);
-  const [failedStage, setFailedStage] = useState<Stage | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
+
+  const updateJob = useCallback((id: string, patch: Partial<Job>) => {
+    setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
+  }, []);
 
   const assignManualLink = async (p: ParsedPlayer) => {
     const memberId = manualLinks[p.steam_id];
@@ -69,7 +79,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     const member = players.find((m) => m.id === memberId);
     if (!member) return;
     setAssigning(p.steam_id);
-    // 1) update player_stats row
     const { error: updErr } = await supabase
       .from("player_stats")
       .update({ user_id: member.user_id })
@@ -80,7 +89,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       toast.error("No se pudo asignar: " + updErr.message);
       return;
     }
-    // 2) opportunistically patch team_member for future auto-linking
     const patch: { steam_id?: string; steam_tag?: string } = {};
     const looksLikeSteamId = /^7656119\d{10}$/.test(p.steam_id);
     if (looksLikeSteamId && !member.steam_id) patch.steam_id = p.steam_id;
@@ -88,7 +96,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     if (Object.keys(patch).length > 0) {
       await supabase.from("team_members").update(patch).eq("id", memberId);
     }
-    // 3) update local result to reflect the link
     setResult((prev) => {
       if (!prev?.players) return prev;
       return {
@@ -113,32 +120,24 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     toast.success(`Vinculado a ${member.player_name}`);
   };
 
-  const currentPct = STAGES.find((s) => s.key === stage)?.pct ?? 0;
-
   const runPipeline = useCallback(
-    async (file: File) => {
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setError(null);
-      setFailedStage(null);
-      setResult(null);
-      setFileName(file.name);
+    async (job: Job) => {
       const throwIfAborted = () => {
-        if (controller.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
+        if (job.abort.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
       };
       let current: Stage = "uploading";
       try {
         current = "uploading";
-        setStage(current);
-        const path = `${Date.now()}-${file.name}`;
-        const { error: upErr } = await supabase.storage.from("demos").upload(path, file, {
+        updateJob(job.id, { stage: current });
+        const path = `${Date.now()}-${job.file.name}`;
+        const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file, {
           contentType: "application/octet-stream",
         });
         throwIfAborted();
         if (upErr) throw new Error("Upload: " + upErr.message);
 
         current = "parsing";
-        setStage(current);
+        updateJob(job.id, { stage: current });
         await new Promise((r) => setTimeout(r, 400));
         throwIfAborted();
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
@@ -146,65 +145,112 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         if (fnErr) throw new Error("Parser: " + fnErr.message);
 
         current = "matching";
-        setStage(current);
+        updateJob(job.id, { stage: current });
         await new Promise((r) => setTimeout(r, 300));
         throwIfAborted();
 
         current = "saving";
-        setStage(current);
+        updateJob(job.id, { stage: current });
         await new Promise((r) => setTimeout(r, 250));
         throwIfAborted();
 
-        setResult(data as ParsedDemo);
-        onParsed(data as ParsedDemo);
-        setStage("done");
-        toast.success("Demo importada correctamente");
+        const parsed = data as ParsedDemo;
+        updateJob(job.id, { stage: "done", result: parsed });
+        setResult(parsed);
+        onParsed(parsed);
+        toast.success(`Demo importada: ${job.fileName}`);
       } catch (e) {
         const err = e as Error;
         if (err.name === "AbortError") {
-          setStage("cancelled");
-          setFailedStage(current);
-          toast.info("Subida cancelada");
+          updateJob(job.id, { stage: "cancelled", failedStage: current });
+          toast.info(`Cancelada: ${job.fileName}`);
         } else {
-          setStage("error");
-          setFailedStage(current);
-          setError(String(err.message));
-          toast.error("Falló el procesamiento");
+          updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
+          toast.error(`Falló ${job.fileName}`);
         }
-      } finally {
-        abortRef.current = null;
       }
     },
-    [onParsed],
+    [onParsed, updateJob],
   );
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      if (!file.name.match(/\.(dem|dem\.bz2|bz2)$/i)) {
-        toast.error("El archivo debe ser .dem o .dem.bz2");
-        return;
+  const startJobs = useCallback(
+    (files: File[]) => {
+      const valid: File[] = [];
+      for (const f of files) {
+        if (!f.name.match(/\.(dem|dem\.bz2|bz2)$/i)) {
+          toast.error(`Ignorado: ${f.name} (no es .dem)`);
+          continue;
+        }
+        valid.push(f);
       }
-      setLastFile(file);
-      await runPipeline(file);
+      if (valid.length === 0) return;
+      const newJobs: Job[] = valid.map((f) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${f.name}`,
+        fileName: f.name,
+        file: f,
+        stage: "uploading",
+        failedStage: null,
+        error: null,
+        result: null,
+        abort: new AbortController(),
+      }));
+      setJobs((prev) => [...prev, ...newJobs]);
+      // fire in parallel
+      newJobs.forEach((j) => runPipeline(j));
     },
     [runPipeline],
   );
 
-  const cancelUpload = useCallback(() => {
-    abortRef.current?.abort();
+  const cancelJob = useCallback((id: string) => {
+    setJobs((prev) => {
+      const j = prev.find((x) => x.id === id);
+      j?.abort.abort();
+      return prev;
+    });
   }, []);
 
-  const retryUpload = useCallback(() => {
-    if (!lastFile) return;
-    runPipeline(lastFile);
-  }, [lastFile, runPipeline]);
+  const retryJob = useCallback(
+    (id: string) => {
+      setJobs((prev) => {
+        const j = prev.find((x) => x.id === id);
+        if (!j) return prev;
+        const fresh: Job = { ...j, stage: "uploading", failedStage: null, error: null, result: null, abort: new AbortController() };
+        // run outside of setState
+        queueMicrotask(() => runPipeline(fresh));
+        return prev.map((x) => (x.id === id ? fresh : x));
+      });
+    },
+    [runPipeline],
+  );
+
+  const removeJob = useCallback((id: string) => {
+    setJobs((prev) => {
+      const j = prev.find((x) => x.id === id);
+      if (j && (j.stage === "uploading" || j.stage === "parsing" || j.stage === "matching" || j.stage === "saving")) {
+        j.abort.abort();
+      }
+      return prev.filter((x) => x.id !== id);
+    });
+  }, []);
+
+  const clearCompleted = useCallback(() => {
+    setJobs((prev) => prev.filter((j) => j.stage !== "done" && j.stage !== "error" && j.stage !== "cancelled"));
+  }, []);
+
+  const activeCount = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).length;
+  const finishedCount = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.stage)).length;
 
   return (
     <Card className="border-border">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <FileArchive className="h-4 w-4 text-accent" />
-          Importar Demo (.dem)
+          Importar Demos (.dem)
+          {activeCount > 0 && (
+            <Badge className="bg-accent/20 text-accent border-accent/30 ml-2">
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" /> {activeCount} en curso
+            </Badge>
+          )}
           {result?.demo_data && (
             <div className="ml-auto">
               <MatchStatsDialog data={result.demo_data} />
@@ -224,26 +270,28 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f) handleFile(f);
+              const fs = Array.from(e.dataTransfer.files ?? []);
+              if (fs.length) startJobs(fs);
             }}
           >
             <input
               type="file"
               accept=".dem,.bz2"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
+                const fs = Array.from(e.target.files ?? []);
+                if (fs.length) startJobs(fs);
+                e.currentTarget.value = "";
               }}
             />
             <Upload className="h-10 w-10 mx-auto text-accent mb-3" />
-            <div className="text-sm font-medium mb-1">Arrastrá el .dem acá</div>
+            <div className="text-sm font-medium mb-1">Arrastrá una o varias .dem acá</div>
             <div className="text-xs text-muted-foreground mb-4">
-              Vinculación automática por <span className="text-accent">SteamID64</span> · fallback por steam tag
+              Se procesan en paralelo · vinculación por <span className="text-accent">SteamID64</span> · fallback por tag
             </div>
             <Button type="button" variant="default" size="sm" className="pointer-events-none">
-              Seleccionar archivo .dem / .dem.bz2
+              Seleccionar archivos .dem / .dem.bz2
             </Button>
           </label>
 
@@ -257,87 +305,35 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 >
                   <BarChart3 className="h-6 w-6 text-accent" />
                   <div className="text-xs font-heading font-bold text-accent">Stats</div>
-                  <div className="text-[10px] text-muted-foreground text-center">Ver estadísticas de la demo</div>
+                  <div className="text-[10px] text-muted-foreground text-center">Última demo importada</div>
                 </button>
               }
             />
           )}
         </div>
 
-        {/* Progress area */}
-        {stage !== "idle" && (
-          <div className="rounded-md border border-border bg-card/40 p-3 space-y-3">
-            <div className="flex items-center justify-between text-xs gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                {stage === "error" ? (
-                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                ) : stage === "cancelled" ? (
-                  <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
-                ) : stage === "done" ? (
-                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                ) : (
-                  <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
-                )}
-                <span className={cn("truncate", stage === "error" && "text-destructive", stage === "cancelled" && "text-muted-foreground", stage === "done" && "text-success")}>
-                  {stage === "error"
-                    ? `Falló en "${STAGES.find((s) => s.key === failedStage)?.label ?? "el proceso"}": ${error}`
-                    : stage === "cancelled"
-                      ? `Cancelado en "${STAGES.find((s) => s.key === failedStage)?.label ?? "el proceso"}"`
-                      : STAGES.find((s) => s.key === stage)?.label}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {fileName && <span className="text-muted-foreground text-[10px] truncate max-w-[160px]">{fileName}</span>}
-                {(stage === "uploading" || stage === "parsing" || stage === "matching" || stage === "saving") && (
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={cancelUpload}>
-                    <Ban className="h-3 w-3 mr-1" /> Cancelar
-                  </Button>
-                )}
-                {(stage === "error" || stage === "cancelled") && lastFile && (
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10" onClick={retryUpload}>
-                    <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
-                  </Button>
-                )}
-              </div>
+        {/* Jobs list */}
+        {jobs.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground uppercase tracking-widest">
+              <span>Cola de importación · {jobs.length}</span>
+              {finishedCount > 0 && (
+                <button onClick={clearCompleted} className="normal-case tracking-normal hover:text-destructive flex items-center gap-1">
+                  <Trash2 className="h-3 w-3" /> Limpiar completadas
+                </button>
+              )}
             </div>
-            <Progress value={stage === "error" || stage === "cancelled" ? currentPct : currentPct} className="h-1.5" />
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-              {STAGES.map((s) => {
-                const order = STAGES.map((x) => x.key);
-                const stageIdx = order.indexOf(stage);
-                const sIdx = order.indexOf(s.key);
-                const done = stage === "done" ? true : sIdx < stageIdx;
-                const isCurrent = stage === s.key;
-                const isFailed = (stage === "error" || stage === "cancelled") && failedStage === s.key;
-                const Icon = s.icon;
-                return (
-                  <div
-                    key={s.key}
-                    className={cn(
-                      "flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded border transition-colors",
-                      isFailed
-                        ? "border-destructive/60 bg-destructive/10 text-destructive"
-                        : done
-                          ? "border-success/40 bg-success/10 text-success"
-                          : isCurrent
-                            ? "border-accent/50 bg-accent/10 text-accent animate-pulse"
-                            : "border-border bg-muted/20 text-muted-foreground",
-                    )}
-                  >
-                    {isFailed ? (
-                      <XCircle className="h-3 w-3 shrink-0" />
-                    ) : done ? (
-                      <CheckCircle2 className="h-3 w-3 shrink-0" />
-                    ) : isCurrent ? (
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                    ) : (
-                      <Icon className="h-3 w-3 shrink-0" />
-                    )}
-                    <span className="truncate">{s.label}</span>
-                  </div>
-                );
-              })}
-            </div>
+            {jobs.map((j) => (
+              <JobRow
+                key={j.id}
+                job={j}
+                onCancel={() => cancelJob(j.id)}
+                onRetry={() => retryJob(j.id)}
+                onRemove={() => removeJob(j.id)}
+                onOpen={() => j.result && setResult(j.result)}
+                isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
+              />
+            ))}
           </div>
         )}
 
@@ -475,6 +471,128 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function JobRow({
+  job,
+  onCancel,
+  onRetry,
+  onRemove,
+  onOpen,
+  isSelected,
+}: {
+  job: Job;
+  onCancel: () => void;
+  onRetry: () => void;
+  onRemove: () => void;
+  onOpen: () => void;
+  isSelected: boolean;
+}) {
+  const active = job.stage === "uploading" || job.stage === "parsing" || job.stage === "matching" || job.stage === "saving";
+  const currentPct = STAGES.find((s) => s.key === (job.stage === "error" || job.stage === "cancelled" ? job.failedStage : job.stage))?.pct ?? 0;
+
+  return (
+    <div className={cn(
+      "rounded-md border p-3 space-y-2 transition-colors",
+      isSelected ? "border-accent/60 bg-accent/5" : "border-border bg-card/40",
+    )}>
+      <div className="flex items-center justify-between text-xs gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {job.stage === "error" ? (
+            <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          ) : job.stage === "cancelled" ? (
+            <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
+          ) : job.stage === "done" ? (
+            <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+          ) : (
+            <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
+          )}
+          <span className="truncate font-medium">{job.fileName}</span>
+          <span className={cn(
+            "truncate text-muted-foreground text-[10px] hidden sm:inline",
+            job.stage === "error" && "text-destructive",
+            job.stage === "done" && "text-success",
+          )}>
+            {job.stage === "error"
+              ? `Falló en "${STAGES.find((s) => s.key === job.failedStage)?.label ?? "el proceso"}": ${job.error}`
+              : job.stage === "cancelled"
+                ? `Cancelado en "${STAGES.find((s) => s.key === job.failedStage)?.label ?? "el proceso"}"`
+                : STAGES.find((s) => s.key === job.stage)?.label}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {job.stage === "done" && job.result?.demo_data && (
+            <MatchStatsDialog
+              data={job.result.demo_data}
+              trigger={
+                <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10">
+                  <BarChart3 className="h-3 w-3 mr-1" /> Stats
+                </Button>
+              }
+            />
+          )}
+          {job.stage === "done" && !isSelected && (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={onOpen}>
+              Ver detalles
+            </Button>
+          )}
+          {active && (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={onCancel}>
+              <Ban className="h-3 w-3 mr-1" /> Cancelar
+            </Button>
+          )}
+          {(job.stage === "error" || job.stage === "cancelled") && (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10" onClick={onRetry}>
+              <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
+            </Button>
+          )}
+          {!active && (
+            <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1" title="Quitar de la lista">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      <Progress value={currentPct} className="h-1.5" />
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+        {STAGES.map((s) => {
+          const order = STAGES.map((x) => x.key);
+          const stageIdx = order.indexOf(job.stage as typeof s.key);
+          const sIdx = order.indexOf(s.key);
+          const done = job.stage === "done" ? true : sIdx < stageIdx;
+          const isCurrent = job.stage === s.key;
+          const isFailed = (job.stage === "error" || job.stage === "cancelled") && job.failedStage === s.key;
+          const Icon = s.icon;
+          return (
+            <div
+              key={s.key}
+              className={cn(
+                "flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded border transition-colors",
+                isFailed
+                  ? "border-destructive/60 bg-destructive/10 text-destructive"
+                  : done
+                    ? "border-success/40 bg-success/10 text-success"
+                    : isCurrent
+                      ? "border-accent/50 bg-accent/10 text-accent animate-pulse"
+                      : "border-border bg-muted/20 text-muted-foreground",
+              )}
+            >
+              {isFailed ? (
+                <XCircle className="h-3 w-3 shrink-0" />
+              ) : done ? (
+                <CheckCircle2 className="h-3 w-3 shrink-0" />
+              ) : isCurrent ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+              ) : (
+                <Icon className="h-3 w-3 shrink-0" />
+              )}
+              <span className="truncate">{s.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
