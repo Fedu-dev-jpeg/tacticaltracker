@@ -124,6 +124,10 @@ async function parseFile(
 
   onProgress(50, "Parseando eventos");
 
+  // Load the deadem UMD lazily so any load error is reported through the
+  // normal message channel instead of a bare worker `error` event.
+  const { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType } = await loadDeadem();
+
   // Feed the parser a WHATWG stream backed by the in-memory bytes.
   const blob = new Blob([bytes.buffer as ArrayBuffer]);
   const stream = blob.stream();
