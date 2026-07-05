@@ -14,11 +14,11 @@ import MatchView from "@/components/MatchView";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
-  Froud: "Lurker · DTT y ST",
-  Fedu: "Soporte · IGL",
-  Hanzo: "AWPer principal",
-  Diuva: "Star Player",
-  Gyer: "Ancla",
+  Boke: "",
+  Kud: "",
+  Koda: "",
+  Ray: "",
+  Fedu: "IGL · Soporte",
 };
 
 // Legacy localStorage keys for migration
@@ -52,16 +52,7 @@ const CODEWORDS = [
 ];
 
 function getDefaultStrategies(): Strategy[] {
-  return [
-    { id: "def-1", map: "Nuke", side: "TR", type: "Default", name: "Lobby Split", description: "Default con control de lobby. Hanzo lobby, Froud AWP outside, Diuva door/silo, Gyer rotador, Fedu soporte.", playerRoles: { Hanzo: "Lobby", Froud: "AWP", Diuva: "Outside", Gyer: "Door/Silo", Fedu: "Rotador" }, notes: "Ganar info de ramp antes de commitear", link: "", status: "Ready" },
-    { id: "def-2", map: "Nuke", side: "CT", type: "Default", name: "Ramp Control", description: "Setup CT con foco en mantener ramp. Diuva ramp, Hanzo A anchor, Froud door/main, Fedu outside, Froud AWP.", playerRoles: { Diuva: "Ramp", Hanzo: "A Anchor", Froud: "AWP", Fedu: "Outside", Gyer: "Door/Main" }, notes: "Rotación rápida si pierden ramp", link: "", status: "Ready" },
-    { id: "def-3", map: "Inferno", side: "TR", type: "Default", name: "Banana Aggro", description: "Control agresivo de banana con Hanzo aggro y Fedu soporte. AWP Froud desde T spawn.", playerRoles: { Hanzo: "Banana Aggro", Fedu: "Banana Supp", Froud: "AWP", Gyer: "Boiler", Diuva: "Apps" }, notes: "Molly car, smoke CT, progresar con flashes", link: "", status: "Ready" },
-    { id: "def-4", map: "Ancient", side: "TR", type: "Exec", name: "B Split Mid", description: "Split B desde mid. Diuva outside B, Gyer mid aggro, Froud AWP, Hanzo outside A como lurk.", playerRoles: { Diuva: "Outside B", Gyer: "Mid Aggro", Froud: "AWP", Hanzo: "Outside A", Fedu: "Roamer" }, notes: "Timing importante con smokes de mid", link: "", status: "Draft" },
-    { id: "def-5", map: "Anubis", side: "CT", type: "Retake", name: "B Retake 3-man", description: "Retake B con 3 jugadores desde mid y connector. Utility coordinada.", playerRoles: { Froud: "AWP Mid", Hanzo: "Entry", Diuva: "Soporte", Fedu: "Anchor A", Gyer: "Info Canal" }, notes: "No retakear sin al menos 2 flashes", link: "", status: "Draft" },
-    { id: "def-6", map: "Nuke", side: "TR", type: "Pistol", name: "Lobby Rush", description: "Rush rápido por lobby con flashes coordinadas.", playerRoles: { Hanzo: "Entry", Froud: "Flash", Diuva: "Second", Gyer: "Trade", Fedu: "Lurk Outside" }, notes: "Timing con la primera flash es clave", link: "", status: "Ready" },
-    { id: "def-7", map: "Nuke", side: "CT", type: "Pistol", name: "Stack Ramp", description: "3 jugadores ramp para ganar control agresivo.", playerRoles: { Diuva: "Ramp Entry", Hanzo: "Flash", Froud: "Heaven AWP", Fedu: "Outside", Gyer: "Ramp Support" }, notes: "Si pierden ramp retomar con utility", link: "", status: "Probado" },
-    { id: "def-8", map: "Inferno", side: "CT", type: "Default", name: "B Anchor + Apps", description: "Setup clásico con Diuva pit, Hanzo apps hold.", playerRoles: { Diuva: "Pit", Hanzo: "Apps", Froud: "AWP Mid", Fedu: "B Anchor", Gyer: "Short" }, notes: "Rotación por CT spawn si pierden banana", link: "", status: "Ready" },
-  ];
+  return [];
 }
 
 function dbRowToStrategy(row: any): Strategy {
@@ -113,23 +104,9 @@ export default function Playbook() {
     const { data, error } = await supabase.from("strategies").select("*");
     if (error) {
       console.error("Error loading strategies:", error);
-      // Fallback to localStorage if DB is empty or errors
-      const local = localStorage.getItem(STORAGE_KEY);
-      setStrategies(local ? JSON.parse(local) : getDefaultStrategies());
-    } else if (data.length === 0) {
-      // Seed defaults into DB
-      const defaults = getDefaultStrategies();
-      const rows = defaults.map((s) => ({
-        id: crypto.randomUUID(),
-        map: s.map, side: s.side, type: s.type, name: s.name,
-        description: s.description, player_roles: s.playerRoles as any,
-        notes: s.notes, link: s.link, status: s.status,
-      }));
-      await supabase.from("strategies").insert(rows);
-      const { data: seeded } = await supabase.from("strategies").select("*");
-      setStrategies((seeded || []).map(dbRowToStrategy));
+      setStrategies([]);
     } else {
-      setStrategies(data.map(dbRowToStrategy));
+      setStrategies((data || []).map(dbRowToStrategy));
     }
     setLoading(false);
   }, []);

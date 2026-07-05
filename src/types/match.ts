@@ -26,5 +26,5 @@ export interface Match {
 
 export const MAPS: MapName[] = ["Nuke", "Ancient", "Anubis", "Inferno"];
 export const MATCH_TYPES: MatchType[] = ["Treino", "Scrim", "Oficial"];
-export const PLAYERS = ["Froud", "Fedu", "Hanzo", "Diuva", "Gyer", "Pank", "Ian"];
+export const PLAYERS = ["Boke", "Kud", "Koda", "Ray", "Fedu"];
 export const TOURNAMENT_DATE = new Date("2026-04-25T15:00:00");
