@@ -279,6 +279,7 @@ export type Database = {
           is_coach: boolean
           player_name: string
           role_in_team: string | null
+          steam_avatar_url: string | null
           steam_id: string | null
           steam_tag: string | null
           updated_at: string
@@ -291,6 +292,7 @@ export type Database = {
           is_coach?: boolean
           player_name: string
           role_in_team?: string | null
+          steam_avatar_url?: string | null
           steam_id?: string | null
           steam_tag?: string | null
           updated_at?: string
@@ -303,6 +305,7 @@ export type Database = {
           is_coach?: boolean
           player_name?: string
           role_in_team?: string | null
+          steam_avatar_url?: string | null
           steam_id?: string | null
           steam_tag?: string | null
           updated_at?: string
