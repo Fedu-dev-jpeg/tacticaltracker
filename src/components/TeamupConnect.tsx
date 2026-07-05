@@ -25,20 +25,27 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
   const [apiKey, setApiKey] = useState("");
   const [integ, setInteg] = useState<Integ | null>(null);
 
+  const userId = user?.id;
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
+    let cancelled = false;
     supabase
       .from("integrations")
       .select("teamup_calendar_key, teamup_api_key, teamup_last_sync")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
+        if (cancelled) return;
         setInteg(data ?? null);
         setCalKey(data?.teamup_calendar_key ?? "");
         setApiKey(data?.teamup_api_key ?? "");
         setLoading(false);
       });
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
 
   const save = async () => {
     if (!user) return;
