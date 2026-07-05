@@ -724,7 +724,73 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           </div>
         )}
       </CardContent>
+      <ErrorDetailsDialog job={errorJob} onOpenChange={(open) => { if (!open) setErrorJobId(null); }} onRetry={() => { if (errorJob) { retryJob(errorJob.id); setErrorJobId(null); } }} />
     </Card>
+  );
+}
+
+function formatEta(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return `${m}m ${String(r).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+function ErrorDetailsDialog({ job, onOpenChange, onRetry }: { job: Job | null; onOpenChange: (open: boolean) => void; onRetry: () => void }) {
+  const open = !!job;
+  const stageLabel = job ? (STAGES.find((s) => s.key === job.failedStage)?.label ?? job.failedStage ?? "—") : "";
+  const log = job
+    ? [
+        `Archivo: ${job.fileName}`,
+        `Etapa: ${stageLabel}`,
+        `Intento: ${job.attempt}/${job.maxAttempts}`,
+        `Fecha: ${new Date().toISOString()}`,
+        "",
+        "Error:",
+        job.error ?? "(sin mensaje)",
+      ].join("\n")
+    : "";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-destructive" /> Detalle del error
+          </DialogTitle>
+          <DialogDescription>
+            {job ? (
+              <>Falló durante <span className="text-destructive font-medium">{stageLabel}</span> · intento {job.attempt}/{job.maxAttempts}</>
+            ) : null}
+          </DialogDescription>
+        </DialogHeader>
+        {job && (
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground">Archivo</div>
+            <div className="font-mono text-xs bg-muted/30 rounded p-2 break-all">{job.fileName}</div>
+            <div className="text-xs text-muted-foreground">Log</div>
+            <pre className="text-[11px] bg-muted/30 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{log}</pre>
+          </div>
+        )}
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(log); toast.success("Log copiado al portapapeles"); }
+              catch { toast.error("No se pudo copiar el log"); }
+            }}
+          >
+            <Copy className="h-3 w-3 mr-1" /> Copiar log
+          </Button>
+          <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" onClick={onRetry}>
+            <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
