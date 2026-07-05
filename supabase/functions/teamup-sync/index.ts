@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     const calKey = integ.teamup_calendar_key;
     const apiKey = integ.teamup_api_key;
     const calPass = (integ as { teamup_password?: string | null }).teamup_password ?? "";
-    const teamupHeaders: Record<string, string> = { "Teamup-Token": apiKey };
+    const teamupHeaders: Record<string, string> = teamupHeaders;
     if (calPass) teamupHeaders["Teamup-Password"] = calPass;
 
 
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       const start = new Date(today.getTime() - 30 * 86400_000).toISOString().slice(0, 10);
       const end = new Date(today.getTime() + 90 * 86400_000).toISOString().slice(0, 10);
       const url = `${TEAMUP_BASE}/${calKey}/events?startDate=${start}&endDate=${end}`;
-      const res = await fetch(url, { headers: { "Teamup-Token": apiKey } });
+      const res = await fetch(url, { headers: teamupHeaders });
       if (!res.ok) return json({ error: `Teamup pull: ${res.status} ${await res.text()}` }, 502);
       const payload = await res.json();
       const events = (payload.events ?? []) as Array<{
@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
 
       // Teamup requires at least one subcalendar. Fetch the list once and use the first.
       const subs = await fetch(`${TEAMUP_BASE}/${calKey}/subcalendars`, {
-        headers: { "Teamup-Token": apiKey },
+        headers: teamupHeaders,
       }).then((r) => r.json()).catch(() => ({ subcalendars: [] }));
       const firstSub = subs.subcalendars?.[0]?.id;
       if (firstSub) payload.subcalendar_ids = [firstSub];
@@ -124,13 +124,13 @@ Deno.serve(async (req) => {
       if (ev.teamup_event_id) {
         res = await fetch(`${TEAMUP_BASE}/${calKey}/events/${ev.teamup_event_id}`, {
           method: "PUT",
-          headers: { "Teamup-Token": apiKey, "Content-Type": "application/json" },
+          headers: { ...teamupHeaders, "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, id: ev.teamup_event_id, version: undefined }),
         });
       } else {
         res = await fetch(`${TEAMUP_BASE}/${calKey}/events`, {
           method: "POST",
-          headers: { "Teamup-Token": apiKey, "Content-Type": "application/json" },
+          headers: { ...teamupHeaders, "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       }
@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
       if (!teamupId) return json({ error: "teamup_event_id requerido" }, 400);
       const res = await fetch(`${TEAMUP_BASE}/${calKey}/events/${teamupId}`, {
         method: "DELETE",
-        headers: { "Teamup-Token": apiKey },
+        headers: teamupHeaders,
       });
       if (!res.ok && res.status !== 404) {
         return json({ error: `Teamup delete: ${res.status} ${await res.text()}` }, 502);
