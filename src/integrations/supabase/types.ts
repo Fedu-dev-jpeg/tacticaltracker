@@ -124,6 +124,7 @@ export type Database = {
       }
       matches: {
         Row: {
+          confirmed: boolean
           created_at: string
           ct_finalizacion: string
           ct_pistol: string
@@ -147,6 +148,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          confirmed?: boolean
           created_at?: string
           ct_finalizacion?: string
           ct_pistol?: string
@@ -170,6 +172,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          confirmed?: boolean
           created_at?: string
           ct_finalizacion?: string
           ct_pistol?: string
@@ -230,6 +233,7 @@ export type Database = {
           kr: number | null
           match_id: string
           rating: number | null
+          role: string | null
           steam_id: string | null
           steam_tag: string | null
           updated_at: string
@@ -256,6 +260,7 @@ export type Database = {
           kr?: number | null
           match_id: string
           rating?: number | null
+          role?: string | null
           steam_id?: string | null
           steam_tag?: string | null
           updated_at?: string
@@ -282,6 +287,7 @@ export type Database = {
           kr?: number | null
           match_id?: string
           rating?: number | null
+          role?: string | null
           steam_id?: string | null
           steam_tag?: string | null
           updated_at?: string
