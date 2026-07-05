@@ -387,22 +387,22 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         const t1 = Date.now();
         const stageLabel = STAGE_LABELS[current] ?? current;
         if (err.name === "AbortError") {
+          demoLog(job.id, "uploader", "cancelled", { stage: current, elapsed_ms: t1 - t0 }, "warn");
           updateJob(job.id, { stage: "cancelled", failedStage: current, finishedAt: t1, durationMs: t1 - t0 });
           toast.info(`Cancelada: ${job.fileName}`, { description: `Detenida en ${stageLabel}` });
         } else {
-          // Auto-retry only for parsing/matching stages
           const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
           if (canAutoRetry) {
             const nextAttempt = job.attempt + 1;
+            demoLog(job.id, "uploader", "retry-scheduled", { stage: current, attempt: job.attempt, nextAttempt, error: err.message }, "warn");
             updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController(), startedAt: null });
             startedRef.current.delete(job.id);
             toast.warning(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`, { description: `Falló en ${stageLabel}: ${err.message}` });
             const backoff = 800 * job.attempt;
-            const timer = window.setTimeout(() => {
-              retryTimeoutsRef.current.delete(job.id);
-            }, backoff);
+            const timer = window.setTimeout(() => { retryTimeoutsRef.current.delete(job.id); }, backoff);
             retryTimeoutsRef.current.set(job.id, timer);
           } else {
+            demoLog(job.id, "uploader", "failed", { stage: current, message: err.message, stack: err.stack, elapsed_ms: t1 - t0 }, "error");
             updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message), finishedAt: t1, durationMs: t1 - t0 });
             const jobId = job.id;
             toast.error(`✖ Falló ${job.fileName} en ${stageLabel}`, {
