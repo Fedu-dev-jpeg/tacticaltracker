@@ -15,6 +15,7 @@ import MapView from "@/components/MapView";
 import Torneos from "./pages/Torneos";
 import Awards from "./pages/Awards";
 import Equipo from "./pages/Equipo";
+import Auditoria from "./pages/Auditoria";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import { useMatches } from "@/hooks/useMatches";
@@ -59,6 +60,7 @@ function Routed() {
       <Route path="/awards" element={<Awards />} />
       <Route path="/mapas" element={<MapView matches={matches} />} />
       <Route path="/equipo" element={<Equipo />} />
+      <Route path="/auditoria" element={<Auditoria />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
