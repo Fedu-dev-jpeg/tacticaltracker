@@ -22,8 +22,67 @@ export default function MapView({ matches }: MapViewProps) {
   // Recurring notes
   const allNotes = mapMatches.filter((m) => m.notes).map((m) => m.notes);
 
+  const overview = MAPS.map((map) => {
+    const mm = matches.filter((m) => m.map === map);
+    const w = mm.filter(isWin).length;
+    const l = mm.length - w;
+    const wr = getWinRate(mm);
+    return { map, played: mm.length, w, l, wr };
+  });
+  const maxPlayed = Math.max(1, ...overview.map((o) => o.played));
+
   return (
     <div className="space-y-6 animate-slide-up">
+      {/* Per-map overview */}
+      <div className="bg-card rounded-lg border border-border p-6 card-glow">
+        <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground mb-4">
+          Resumen por mapa
+        </h3>
+        <div className="space-y-3">
+          {overview.map((o) => {
+            const wPct = o.played ? (o.w / o.played) * 100 : 0;
+            const lPct = o.played ? (o.l / o.played) * 100 : 0;
+            const playedPct = (o.played / maxPlayed) * 100;
+            const wrColor = o.wr >= 60 ? "bg-success" : o.wr >= 45 ? "bg-accent" : "bg-destructive";
+            const wrText = o.wr >= 60 ? "text-success" : o.wr >= 45 ? "text-accent" : "text-destructive";
+            return (
+              <button
+                key={o.map}
+                onClick={() => setSelectedMap(o.map)}
+                className={cn(
+                  "w-full grid grid-cols-[110px,50px,1fr,1fr,70px] items-center gap-3 rounded-md border p-3 text-left transition-colors",
+                  selectedMap === o.map ? "border-accent bg-accent/5" : "border-border hover:border-muted-foreground/40",
+                )}
+              >
+                <div className="font-heading font-bold text-sm">{o.map}</div>
+                <div className="text-xs text-muted-foreground tabular-nums">{o.played}p</div>
+                {/* Games played bar */}
+                <div className="h-2 rounded-full bg-muted/40 overflow-hidden" title={`${o.played} partidos`}>
+                  <div className="h-full bg-accent/70" style={{ width: `${playedPct}%` }} />
+                </div>
+                {/* W/L split bar */}
+                {o.played === 0 ? (
+                  <div className="h-2 rounded-full bg-muted/40" />
+                ) : (
+                  <div className="h-2 rounded-full overflow-hidden flex" title={`${o.w}W · ${o.l}L`}>
+                    <div className="h-full bg-success" style={{ width: `${wPct}%` }} />
+                    <div className="h-full bg-destructive" style={{ width: `${lPct}%` }} />
+                  </div>
+                )}
+                <div className={cn("text-right font-heading font-bold text-sm tabular-nums", o.played ? wrText : "text-muted-foreground")}>
+                  {o.played ? `${o.wr}%` : "—"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-center gap-4 mt-4 text-[10px] uppercase tracking-widest text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full bg-accent/70" /> Volumen</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" /> Wins</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-destructive" /> Losses</span>
+        </div>
+      </div>
+
       {/* Map selector */}
       <div className="flex gap-2 flex-wrap">
         {MAPS.map((map) => {
