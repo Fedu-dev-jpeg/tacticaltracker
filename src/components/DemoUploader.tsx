@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat, Pause, Play, Copy, Timer } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat, Pause, Play, Copy, Timer, Search, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,7 +54,7 @@ interface ParsedDemo {
 interface Job {
   id: string;
   fileName: string;
-  file: File;
+  file: File | null;
   stage: Stage;
   failedStage: Stage | null;
   error: string | null;
@@ -69,10 +70,59 @@ interface Job {
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
 const RETRY_ATTEMPT_OPTIONS = [2, 3, 4, 5] as const;
 const RETRIABLE_STAGES: Stage[] = ["parsing", "matching"];
+const STAGE_LABELS: Record<Stage, string> = {
+  queued: "En cola",
+  uploading: "Subiendo",
+  parsing: "Parseando",
+  matching: "Vinculando",
+  saving: "Guardando",
+  done: "Completado",
+  error: "Error",
+  cancelled: "Cancelado",
+};
+const JOBS_STORAGE_KEY = "demo-uploader:jobs";
+
+type StatusFilter = "all" | "queued" | "active" | "done" | "error" | "cancelled";
+type AttemptFilter = "all" | "first" | "retried";
+
+function serializeJobs(jobs: Job[]) {
+  return jobs.map((j) => ({
+    id: j.id,
+    fileName: j.fileName,
+    // Active/queued jobs can't survive a reload (File is gone); flag them as error.
+    stage: (["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage) ? "error" : j.stage) as Stage,
+    failedStage: ["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage) ? (j.stage as Stage) : j.failedStage,
+    error: ["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage)
+      ? "Interrumpido por recarga de la página — volvé a subir el archivo"
+      : j.error,
+    result: j.result,
+    attempt: j.attempt,
+    maxAttempts: j.maxAttempts,
+    startedAt: j.startedAt,
+    finishedAt: j.finishedAt,
+    durationMs: j.durationMs,
+  }));
+}
+
+function loadPersistedJobs(): Job[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(JOBS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Omit<Job, "file" | "abort">>;
+    return parsed.map((j) => ({
+      ...j,
+      file: null,
+      abort: new AbortController(),
+    }));
+  } catch {
+    return [];
+  }
+}
 
 export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) => void }) {
   const [dragOver, setDragOver] = useState(false);
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(() => loadPersistedJobs());
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -83,11 +133,24 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [paused, setPaused] = useLocalStorage<boolean>("demo-uploader:paused", false);
   const [errorJobId, setErrorJobId] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  // Search + filters
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
+
+  // Persist jobs (metadata + results) on every change
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(serializeJobs(jobs)));
+    } catch {
+      /* quota — ignore */
+    }
+  }, [jobs]);
 
   const updateJob = useCallback((id: string, patch: Partial<Job>) => {
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
@@ -151,6 +214,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       let current: Stage = "uploading";
       const t0 = Date.now();
       try {
+        if (!job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
         current = "uploading";
         updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
         const path = `${Date.now()}-${job.file.name}`;
@@ -183,13 +247,20 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         updateJob(job.id, { stage: "done", result: parsed, finishedAt: t1, durationMs: t1 - t0 });
         setResult(parsed);
         onParsed(parsed);
-        toast.success(`Demo importada: ${job.fileName}`);
+        const summaryBits: string[] = [];
+        if (parsed.map) summaryBits.push(parsed.map);
+        if (parsed.rival) summaryBits.push(`vs ${parsed.rival}`);
+        if (parsed.score_us != null && parsed.score_them != null) summaryBits.push(`${parsed.score_us}-${parsed.score_them}`);
+        toast.success(`✔ Demo importada: ${job.fileName}`, {
+          description: summaryBits.length > 0 ? summaryBits.join(" · ") : `Completada en ${Math.round((t1 - t0) / 1000)}s`,
+        });
       } catch (e) {
         const err = e as Error;
         const t1 = Date.now();
+        const stageLabel = STAGE_LABELS[current] ?? current;
         if (err.name === "AbortError") {
           updateJob(job.id, { stage: "cancelled", failedStage: current, finishedAt: t1, durationMs: t1 - t0 });
-          toast.info(`Cancelada: ${job.fileName}`);
+          toast.info(`Cancelada: ${job.fileName}`, { description: `Detenida en ${stageLabel}` });
         } else {
           // Auto-retry only for parsing/matching stages
           const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
@@ -197,7 +268,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             const nextAttempt = job.attempt + 1;
             updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController(), startedAt: null });
             startedRef.current.delete(job.id);
-            toast.info(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`);
+            toast.warning(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`, { description: `Falló en ${stageLabel}: ${err.message}` });
             const backoff = 800 * job.attempt;
             const timer = window.setTimeout(() => {
               retryTimeoutsRef.current.delete(job.id);
@@ -205,7 +276,11 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             retryTimeoutsRef.current.set(job.id, timer);
           } else {
             updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message), finishedAt: t1, durationMs: t1 - t0 });
-            toast.error(`Falló ${job.fileName}`);
+            const jobId = job.id;
+            toast.error(`✖ Falló ${job.fileName} en ${stageLabel}`, {
+              description: err.message,
+              action: { label: "Ver detalle", onClick: () => setErrorJobId(jobId) },
+            });
           }
         }
       } finally {
@@ -285,9 +360,11 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   }, []);
 
   const retryJob = useCallback((id: string) => {
+    let blocked = false;
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
       if (!j) return prev;
+      if (!j.file) { blocked = true; return prev; }
       startedRef.current.delete(id);
       return prev.map((x) =>
         x.id === id
@@ -295,13 +372,16 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           : x,
       );
     });
+    if (blocked) toast.error("Archivo no disponible tras recargar. Subilo de nuevo desde la zona de drop.");
   }, [autoRetry, maxAttempts]);
 
   const retryAllErrors = useCallback(() => {
+    let skipped = 0;
     setJobs((prev) => {
       let count = 0;
       const next = prev.map((x) => {
         if (x.stage !== "error") return x;
+        if (!x.file) { skipped++; return x; }
         startedRef.current.delete(x.id);
         count++;
         return { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null };
@@ -309,6 +389,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       if (count > 0) toast.info(`Reintentando ${count} demo${count === 1 ? "" : "s"} con error`);
       return next;
     });
+    if (skipped > 0) toast.warning(`${skipped} demo${skipped === 1 ? "" : "s"} requieren volver a subir el archivo (perdido tras recarga)`);
   }, [autoRetry, maxAttempts]);
 
   const removeJob = useCallback((id: string) => {
@@ -337,6 +418,20 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const totalCount = jobs.length;
   const globalPct = totalCount > 0 ? Math.round((finishedCount / totalCount) * 100) : 0;
   const errorJob = errorJobId ? jobs.find((j) => j.id === errorJobId) ?? null : null;
+
+  const filteredJobs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return jobs.filter((j) => {
+      if (q && !j.fileName.toLowerCase().includes(q)) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "active" && !["uploading", "parsing", "matching", "saving"].includes(j.stage)) return false;
+        if (statusFilter !== "active" && j.stage !== statusFilter) return false;
+      }
+      if (attemptFilter === "first" && j.attempt > 1) return false;
+      if (attemptFilter === "retried" && j.attempt <= 1) return false;
+      return true;
+    });
+  }, [jobs, search, statusFilter, attemptFilter]);
 
   // Tick every second while there is work in flight (for ETA display)
   useEffect(() => {
@@ -568,7 +663,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         {/* Jobs list */}
         {jobs.length > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground uppercase tracking-widest">
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground uppercase tracking-widest gap-2">
               <span>Cola de importación · {jobs.length}</span>
               {finishedCount > 0 && (
                 <button onClick={clearCompleted} className="normal-case tracking-normal hover:text-destructive flex items-center gap-1">
@@ -576,18 +671,75 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 </button>
               )}
             </div>
-            {jobs.map((j) => (
-              <JobRow
-                key={j.id}
-                job={j}
-                onCancel={() => cancelJob(j.id)}
-                onRetry={() => retryJob(j.id)}
-                onRemove={() => removeJob(j.id)}
-                onOpen={() => j.result && setResult(j.result)}
-                onShowError={() => setErrorJobId(j.id)}
-                isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
-              />
-            ))}
+
+            {/* Search + filters */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar por nombre de archivo…"
+                  className="h-8 pl-7 text-xs"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-destructive"
+                    aria-label="Limpiar búsqueda"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+                  <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Todos ({jobs.length})</SelectItem>
+                    <SelectItem value="queued" className="text-xs">En cola ({queuedCount})</SelectItem>
+                    <SelectItem value="active" className="text-xs">En curso ({activeCount})</SelectItem>
+                    <SelectItem value="done" className="text-xs">Listas ({doneCount})</SelectItem>
+                    <SelectItem value="error" className="text-xs">Con error ({errorCount})</SelectItem>
+                    <SelectItem value="cancelled" className="text-xs">Canceladas ({cancelledCount})</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={attemptFilter} onValueChange={(v) => setAttemptFilter(v as AttemptFilter)}>
+                  <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Todos los intentos</SelectItem>
+                    <SelectItem value="first" className="text-xs">Primer intento</SelectItem>
+                    <SelectItem value="retried" className="text-xs">Con reintentos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {filteredJobs.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-6 border border-dashed border-border rounded-md">
+                Ningún job coincide con los filtros actuales
+              </div>
+            ) : (
+              filteredJobs.map((j) => (
+                <JobRow
+                  key={j.id}
+                  job={j}
+                  onCancel={() => cancelJob(j.id)}
+                  onRetry={() => retryJob(j.id)}
+                  onRemove={() => removeJob(j.id)}
+                  onOpen={() => j.result && setResult(j.result)}
+                  onShowError={() => setErrorJobId(j.id)}
+                  isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
+                />
+              ))
+            )}
+            {filteredJobs.length > 0 && filteredJobs.length !== jobs.length && (
+              <div className="text-[10px] text-muted-foreground text-center">
+                Mostrando {filteredJobs.length} de {jobs.length}
+              </div>
+            )}
           </div>
         )}
 
