@@ -16,7 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { parseDemoHeader } from "@/lib/demoParser";
+import { parseDemoFull } from "@/lib/demoParser";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
@@ -231,22 +231,26 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       try {
         if (!job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
 
-        // 0. Read map from the demo header locally BEFORE uploading. Cheap
-        //    (only reads the first ~4 MB compressed / 512 KB decompressed) and
-        //    lets us pass the real map to the edge function so it never has
-        //    to guess. Score/stats stay manual until we have a WASM parser.
+        // 1. Parse the demo end-to-end in a Web Worker (bz2 decompress + game
+        //    events). This yields the real map / score / K-D-A directly from
+        //    the .dem — no more simulator on the server.
         current = "parsing";
         updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
-        let detectedMap: string | undefined;
+        let rawParsed: Awaited<ReturnType<typeof parseDemoFull>> | null = null;
         try {
-          const header = await parseDemoHeader(job.file);
-          detectedMap = header.map;
-        } catch (headerErr) {
-          // Non-fatal: fall back to user-provided/simulator map. Log for visibility.
-          console.warn(`[demo-parser] header falló para ${job.fileName}:`, headerErr);
+          rawParsed = await parseDemoFull(job.file, (pct, label) => {
+            // Surface progress into the job label so the UI shows real-time %.
+            updateJob(job.id, { error: `${label} (${pct}%)` });
+          });
+          // Clear the transient progress label once parsing finishes.
+          updateJob(job.id, { error: null });
+        } catch (parseErr) {
+          throw new Error("Parser local: " + (parseErr as Error).message);
         }
         throwIfAborted();
 
+        // 2. Upload the raw .dem to storage for archival (async — errors here
+        //    are non-fatal because we already parsed everything we need).
         current = "uploading";
         updateJob(job.id, { stage: current });
         const path = `${Date.now()}-${job.file.name}`;
@@ -254,9 +258,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           contentType: "application/octet-stream",
         });
         throwIfAborted();
-        if (upErr) throw new Error("Upload: " + upErr.message);
+        if (upErr) console.warn(`[demo-upload] storage falló para ${job.fileName}: ${upErr.message}`);
 
-        current = "parsing";
+        // 3. Hand the parsed payload to the edge function → validate + insert.
+        current = "matching";
         updateJob(job.id, { stage: current });
         throwIfAborted();
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
@@ -264,13 +269,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             path,
             rival: job.overrides?.rival,
             match_type: job.overrides?.matchType,
-            // Prefer the map we just read from the demo header. Fall back to
-            // whatever the user set in the pre-upload override.
-            map: detectedMap ?? job.overrides?.map,
+            map: job.overrides?.map, // user override — server prefers parsed value
+            parsed: rawParsed,
           },
         });
         throwIfAborted();
         if (fnErr) throw new Error("Parser: " + fnErr.message);
+
 
         current = "matching";
         updateJob(job.id, { stage: current });
