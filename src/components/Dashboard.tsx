@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
+import TournamentCountdown from "@/components/TournamentCountdown";
 
 interface DashboardProps {
   matches: Match[];
@@ -159,7 +160,10 @@ export default function Dashboard({ matches }: DashboardProps) {
         <div>
           <h2 className="text-xl font-heading font-bold">Qué onda, <span className="text-accent">{playerName}</span> 🔥</h2>
           <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
-        </div>
+      </div>
+
+      {/* Countdown */}
+      <TournamentCountdown />
       </div>
 
       {/* Summary */}
