@@ -161,9 +161,14 @@ async function parseFile(
   let lastTick = 0;
   let progressPct = 50;
   let bytesProcessed = 0;
+  const eventCounts = new Map<string, number>();
+  let debugMissedRoundEnd = 0;
 
   // Snapshot user_info string table into `players` (lazy — only after
   // string tables have been populated by the parser).
+  // We skip bots, GOTV/SourceTV relays and any entry without a real SteamID.
+  // Coaches are filtered later (post-parse) based on zero match participation
+  // because user_info alone doesn't distinguish them from active players.
   const snapshotPlayersFromStringTable = () => {
     const demo = parser.getDemo();
     const userInfo = demo?.stringTableContainer?.getByName?.(StringTableType.USER_INFO.name);
@@ -172,12 +177,22 @@ async function parseFile(
       const v = entry.value;
       if (!v || !Number.isInteger(v.userid)) continue;
       if (players.has(v.userid)) continue;
+
+      // Reject fake players (bots) and any HLTV/SourceTV relay slot.
+      if (v.fakeplayer === true || v.ishltv === true || v.is_hltv === true) continue;
+      const name: string = v.name ?? "";
+      if (/^(gotv|sourcetv|hltv)\b/i.test(name.trim())) continue;
+
       // xuid is a BigInt SteamID64 in @deademx/cs2. Fallback to any variant name.
-      const steamid = String(v.xuid ?? v.steamid ?? v.userid);
+      const xuidStr = v.xuid != null ? String(v.xuid) : "";
+      const steamid = xuidStr || String(v.steamid ?? v.userid);
+      // Real SteamID64 starts with 76561; reject slots that don't have one.
+      if (!/^7656119\d{10}$/.test(steamid)) continue;
+
       players.set(v.userid, {
         steamid,
         userid: v.userid,
-        name: v.name ?? "unknown",
+        name: name || "unknown",
         team_first_half: null,
         kills: 0, deaths: 0, assists: 0, hs_kills: 0, damage: 0,
         first_kills: 0, first_deaths: 0,
@@ -223,6 +238,9 @@ async function parseFile(
     if (!desc) return;
     const event = zipEvent(desc, raw.keys);
 
+    // Debug: tally every event name we see so we can diagnose missing scores.
+    eventCounts.set(desc.name, (eventCounts.get(desc.name) ?? 0) + 1);
+
     switch (desc.name) {
       case "round_start": {
         roundNumber += 1;
@@ -232,9 +250,24 @@ async function parseFile(
         if (roundNumber === 1) snapshotPlayersFromStringTable();
         break;
       }
-      case "round_end": {
-        // event.winner: 2 = T, 3 = CT (Valve CSTeam enum).
-        const side: "CT" | "TERRORIST" = event.winner === 3 ? "CT" : "TERRORIST";
+      case "round_end":
+      case "round_officially_ended":
+      case "cs_win_panel_round": {
+        // `round_end` fires when the outcome is decided; `round_officially_ended`
+        // fires at freeze time after; `cs_win_panel_round` shows the summary
+        // panel. Some CS2 demos ship only one of these — accept whichever wins
+        // first for a given round number and dedupe by round index.
+        if (rounds.length >= roundNumber && roundNumber > 0) break; // already recorded
+        // Valve CSTeam enum: 2 = T, 3 = CT. Some events use `final_event` /
+        // `winner_team` instead of `winner`.
+        const winnerRaw = event.winner ?? event.winner_team ?? event.final_event;
+        const winnerNum = Number(winnerRaw);
+        // If we can't tell, skip — better no round than a wrong one.
+        if (winnerNum !== 2 && winnerNum !== 3) {
+          debugMissedRoundEnd = (debugMissedRoundEnd ?? 0) + 1;
+          break;
+        }
+        const side: "CT" | "TERRORIST" = winnerNum === 3 ? "CT" : "TERRORIST";
         const reasonNum = Number(event.reason ?? 0);
         rounds.push({
           round_number: rounds.length + 1,
@@ -299,11 +332,32 @@ async function parseFile(
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
 
+  // Post-filter: drop coaches / no-shows. A CS2 coach shows up in user_info
+  // but never fires player_death / player_hurt as attacker or victim, so their
+  // K/D/A/damage stay at zero. Anyone with truly no participation is dropped.
+  const activePlayers = [...players.values()].filter((p) =>
+    p.kills > 0 || p.deaths > 0 || p.assists > 0 || p.damage > 0 || p.first_kills > 0 || p.first_deaths > 0,
+  );
+
   // Derive score from rounds.
   let ct = 0, t = 0;
   for (const r of rounds) {
     if (r.winner_side === "CT") ct += 1; else t += 1;
   }
+
+  // Diagnostic log: the top event names + count of round_end packets we saw
+  // but couldn't attribute a winner to. Helps triage 0-0 scores.
+  const topEvents = [...eventCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+  console.log("[demo-parser worker] event summary", {
+    rounds: rounds.length,
+    score: { ct, t },
+    players_kept: activePlayers.length,
+    players_dropped: players.size - activePlayers.length,
+    missed_round_ends: debugMissedRoundEnd,
+    top_events: Object.fromEntries(topEvents),
+  });
 
   onProgress(98, "Consolidando resultado", "finalize");
 
@@ -314,7 +368,7 @@ async function parseFile(
     total_rounds: rounds.length,
     score: { ct, t },
     rounds,
-    players: [ ...players.values() ],
+    players: activePlayers,
     duration_ticks: lastTick,
   };
 }
