@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BookOpen, Plus, Trash2, ChevronDown, ChevronUp, Shield, Sword, Link as LinkIcon, FileDown, Check, Copy, Pencil, MessageSquare, User, X, List, LayoutGrid, Monitor, Users, ScrollText, Settings2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import GameplanExport from "@/components/GameplanExport";
+import PlaybookImportDialog from "@/components/PlaybookImportDialog";
 import MatchView from "@/components/MatchView";
 import { toast } from "sonner";
 
