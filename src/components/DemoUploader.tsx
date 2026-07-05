@@ -1287,6 +1287,26 @@ function JobRow({
               <AlertCircle className="h-3 w-3 mr-1" /> Ver error
             </Button>
           )}
+          <Button
+            size="sm" variant="outline"
+            className="h-6 px-2 text-[10px]"
+            title="Descargar log completo (.txt)"
+            onClick={() => downloadJobLog(job.id)}
+          >
+            <FileArchive className="h-3 w-3 mr-1" /> Log
+          </Button>
+          <Button
+            size="sm" variant="outline"
+            className="h-6 px-2 text-[10px]"
+            title="Copiar log al portapapeles"
+            onClick={async () => {
+              const ok = await copyJobLog(job.id);
+              if (ok) toast.success("Log copiado al portapapeles");
+              else toast.error("No se pudo copiar — descargalo con el botón Log");
+            }}
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
           {!active && (
             <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1" title="Quitar de la lista">
               <Trash2 className="h-3 w-3" />
