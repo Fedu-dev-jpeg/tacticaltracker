@@ -167,7 +167,7 @@ function ExportMenu({ data, meta }: { data: DemoData; meta?: MatchStatsMeta }) {
   );
 }
 
-function MiniView({ data, meta, mode, onFull }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; onFull: () => void }) {
+function MiniView({ data, meta, mode, storageKey, onFull }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; storageKey: string; onFull: () => void }) {
   return (
     <div className="p-5 space-y-3">
       <DialogHeader className="mb-1">
@@ -184,6 +184,7 @@ function MiniView({ data, meta, mode, onFull }: { data: DemoData; meta?: MatchSt
       </div>
       <MiniTeamTable label={data.team_them.name} players={data.team_them.players} />
       <MiniTeamTable label={data.team_us.name} players={data.team_us.players} className="mt-3" />
+      <RoundsTimeline rounds={data.rounds} storageKey={storageKey} compact />
     </div>
   );
 }
