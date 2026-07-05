@@ -392,6 +392,7 @@ export default function Playbook() {
           submitLabel="Guardar Cambios"
           onSubmit={saveEdit}
           onCancel={() => setEditingStrat(null)}
+          memberByName={memberByName}
         />
       )}
 
