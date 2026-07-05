@@ -224,39 +224,56 @@ class WireReader {
 }
 
 // ─── bz2 partial decompression ────────────────────────────────────────────
-// Bunzip.decode allocates the full output buffer up front, so for a 1 GB
-// demo it would OOM. We hand it a fixed-size sink and stop as soon as we
-// have enough bytes for the header.
-
-function decompressBz2Partial(compressed: Uint8Array, maxOutBytes: number): Uint8Array {
-  // seek-bzip exposes a low-level API but its high-level decode() is fine
-  // when we pre-allocate the target buffer at the exact size we want.
-  // If the first block is smaller than maxOutBytes we still get useful data.
-  const out = new Uint8Array(maxOutBytes);
-  let written = 0;
-  try {
-    Bunzip.decode(compressed, {
-      write(chunk: Uint8Array) {
-        const remaining = maxOutBytes - written;
-        if (remaining <= 0) throw new Bz2EnoughError();
-        const take = Math.min(chunk.length, remaining);
-        out.set(chunk.subarray(0, take), written);
-        written += take;
-        if (written >= maxOutBytes) throw new Bz2EnoughError();
-      },
-    });
-  } catch (e) {
-    if (!(e instanceof Bz2EnoughError)) {
-      // seek-bzip sometimes throws when its input slice ends mid-block; that
-      // is fine if we already got what we need.
-      if (written === 0) throw new Error("bz2: " + (e as Error).message);
-    }
-  }
-  return out.subarray(0, written);
-}
+// seek-bzip's `Bunzip.decode(input, output)` accepts either:
+//   - a Buffer/Uint8Array to fill exactly (throws if size mismatches), or
+//   - a Stream-like object with `writeByte(b)` and optionally `write(buf,off,len)`.
+// We use the stream shape with an early-abort throw so we never allocate
+// the full 1 GB uncompressed demo — we stop as soon as we have enough bytes
+// for the header (~512 KB is plenty).
 
 class Bz2EnoughError extends Error {
   constructor() { super("__bz2_enough__"); }
+}
+
+function decompressBz2Partial(compressed: Uint8Array, maxOutBytes: number): Uint8Array {
+  const out = new Uint8Array(maxOutBytes);
+  let written = 0;
+
+  const sink = {
+    writeByte(b: number) {
+      if (written >= maxOutBytes) throw new Bz2EnoughError();
+      out[written++] = b;
+    },
+    // Fast-path when seek-bzip calls write() with a chunk instead of byte-by-byte.
+    write(buffer: Uint8Array, offset: number, length: number): number {
+      const remaining = maxOutBytes - written;
+      if (remaining <= 0) throw new Bz2EnoughError();
+      const take = Math.min(length, remaining);
+      out.set(buffer.subarray(offset, offset + take), written);
+      written += take;
+      if (written >= maxOutBytes) throw new Bz2EnoughError();
+      return take;
+    },
+    flush() { /* no-op */ },
+  };
+
+  try {
+    Bunzip.decode(compressed, sink);
+  } catch (e) {
+    if (e instanceof Bz2EnoughError) {
+      // Expected: we stopped decompression on purpose.
+    } else if (written > 0) {
+      // seek-bzip can throw at end-of-input when we sliced mid-block; that's
+      // fine as long as we already extracted enough bytes for the header.
+    } else {
+      throw new Error("bz2: " + (e as Error).message);
+    }
+  }
+
+  if (written === 0) {
+    throw new Error("bz2: no se pudo descomprimir ningún byte (¿archivo corrupto?)");
+  }
+  return out.subarray(0, written);
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────
