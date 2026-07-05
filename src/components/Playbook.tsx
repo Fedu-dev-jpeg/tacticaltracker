@@ -68,7 +68,8 @@ function dbRowToStrategy(row: any): Strategy {
     notes: row.notes || "",
     link: row.link || "",
     status: row.status as Strategy["status"],
-  };
+    book: row.book || "estrategias",
+  } as Strategy & { book: string };
 }
 
 function sortByType(strats: Strategy[]): Strategy[] {
