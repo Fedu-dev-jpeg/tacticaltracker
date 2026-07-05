@@ -161,6 +161,8 @@ async function parseFile(
   let lastTick = 0;
   let progressPct = 50;
   let bytesProcessed = 0;
+  const eventCounts = new Map<string, number>();
+  let debugMissedRoundEnd = 0;
 
   // Snapshot user_info string table into `players` (lazy — only after
   // string tables have been populated by the parser).
