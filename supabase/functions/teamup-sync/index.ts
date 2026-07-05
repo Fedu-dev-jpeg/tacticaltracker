@@ -80,30 +80,48 @@ Deno.serve(async (req) => {
       }>;
 
       let imported = 0;
+      const errors: string[] = [];
       for (const ev of events) {
         const startDt = new Date(ev.start_dt);
         const endDt = new Date(ev.end_dt);
-        const date = startDt.toISOString().slice(0, 10);
-        const time_start = startDt.toISOString().slice(11, 16);
-        const time_end = endDt.toISOString().slice(11, 16);
+        // Use local date/time preserving Teamup's timezone offset instead of UTC.
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const localFmt = (d: Date, offsetMin: number) => {
+          const shifted = new Date(d.getTime() + offsetMin * 60_000);
+          return {
+            date: `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`,
+            time: `${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`,
+          };
+        };
+        // Extract offset from ISO string like "-03:00" or "+02:00"
+        const m = ev.start_dt.match(/([+-])(\d{2}):(\d{2})$/);
+        const offMin = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) * 60 + parseInt(m[3])) : 0;
+        const s = localFmt(startDt, offMin);
+        const e = localFmt(endDt, offMin);
         const { error } = await admin.from("agenda_events").upsert(
           {
             teamup_event_id: ev.id,
             title: ev.title ?? "(sin título)",
             description: (ev.notes ?? "").replace(/<[^>]*>/g, ""),
-            date,
-            time_start,
-            time_end,
+            date: s.date,
+            time_start: s.time,
+            time_end: e.time,
             event_type: "training",
             created_by: "teamup",
           },
           { onConflict: "teamup_event_id" },
         );
-        if (!error) imported++;
+        if (error) {
+          errors.push(`${ev.id}: ${error.message}`);
+          console.error("upsert error", ev.id, error);
+        } else {
+          imported++;
+        }
       }
 
       await admin.from("integrations").update({ teamup_last_sync: new Date().toISOString() }).eq("user_id", userId);
-      return json({ ok: true, imported, total: events.length, range: { start, end } });
+      return json({ ok: true, imported, total: events.length, range: { start, end }, errors });
+
     }
 
     if (action === "push") {
