@@ -425,6 +425,28 @@ export default function Playbook() {
           playerDescriptions={playerDescriptions}
         />
       )}
+        </TabsContent>
+
+        <TabsContent value="individual" className="mt-0">
+          <IndividualCoreTab
+            playerDescriptions={playerDescriptions}
+            savePlayerDesc={savePlayerDesc}
+            editingPlayerDesc={editingPlayerDesc}
+            setEditingPlayerDesc={setEditingPlayerDesc}
+            tempPlayerDesc={tempPlayerDesc}
+            setTempPlayerDesc={setTempPlayerDesc}
+            strategies={strategies}
+          />
+        </TabsContent>
+
+        <TabsContent value="protocolos" className="mt-0">
+          <BookList book="protocolos" strategies={strategies} setStrategies={setStrategies} title="Protocolos" description="Reglas y procedimientos del equipo (economía, timeouts, comms, etc.)" />
+        </TabsContent>
+
+        <TabsContent value="setups" className="mt-0">
+          <BookList book="setups" strategies={strategies} setStrategies={setStrategies} title="Setups" description="Formaciones y utility fijas por mapa / lado" />
+        </TabsContent>
+      </Tabs>
 
       <GameplanExport
         open={showExportDialog}
