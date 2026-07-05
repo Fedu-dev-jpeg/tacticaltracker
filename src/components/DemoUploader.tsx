@@ -800,6 +800,7 @@ function JobRow({
   onRetry,
   onRemove,
   onOpen,
+  onShowError,
   isSelected,
 }: {
   job: Job;
@@ -807,6 +808,7 @@ function JobRow({
   onRetry: () => void;
   onRemove: () => void;
   onOpen: () => void;
+  onShowError: () => void;
   isSelected: boolean;
 }) {
   const active = job.stage === "uploading" || job.stage === "parsing" || job.stage === "matching" || job.stage === "saving";
