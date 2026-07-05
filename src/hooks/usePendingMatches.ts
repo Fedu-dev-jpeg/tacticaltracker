@@ -38,12 +38,12 @@ export function usePendingMatches() {
 
   const fetchPending = useCallback(async () => {
     setLoading(true);
-    const { data: matches, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = supabase as any;
+    const { data: matches, error } = await client
       .from("matches")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("*" as any)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .eq("confirmed" as any, false)
+      .select("*")
+      .eq("confirmed", false)
       .order("created_at", { ascending: false });
     if (error || !matches) {
       setPending([]);
@@ -53,12 +53,11 @@ export function usePendingMatches() {
     const ids = (matches as { id: string }[]).map((m) => m.id);
     let stats: PendingPlayerStat[] = [];
     if (ids.length > 0) {
-      const { data: rows } = await supabase
+      const { data: rows } = await client
         .from("player_stats")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .select("id, match_id, user_id, steam_id, steam_tag, kills, deaths, assists, adr, rating, role" as any)
+        .select("id, match_id, user_id, steam_id, steam_tag, kills, deaths, assists, adr, rating, role")
         .in("match_id", ids);
-      stats = (rows as unknown as PendingPlayerStat[]) ?? [];
+      stats = (rows as PendingPlayerStat[] | null) ?? [];
     }
     const byMatch = new Map<string, PendingPlayerStat[]>();
     for (const s of stats) {
@@ -66,7 +65,7 @@ export function usePendingMatches() {
       arr.push(s);
       byMatch.set(s.match_id, arr);
     }
-    const combined: PendingMatch[] = (matches as unknown as PendingMatch[]).map((m) => ({
+    const combined: PendingMatch[] = (matches as PendingMatch[]).map((m) => ({
       ...m,
       stats: byMatch.get(m.id) ?? [],
     }));
