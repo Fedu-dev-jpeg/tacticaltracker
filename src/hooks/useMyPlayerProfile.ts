@@ -67,7 +67,7 @@ export function useMyPlayerProfile(): PlayerProfileData {
       if (matchIds.length) {
         const { data: matches } = await supabase
           .from("matches")
-          .select("id, map, our_score, their_score")
+          .select("id, map, score_us, score_them")
           .in("id", matchIds);
         const mapToAdr = new Map<string, { sum: number; n: number }>();
         let wonRounds = 0;
@@ -81,8 +81,8 @@ export function useMyPlayerProfile(): PlayerProfileData {
           mapToAdr.set(match.map, cur);
         }
         for (const match of matches ?? []) {
-          const ours = match.our_score ?? 0;
-          const theirs = match.their_score ?? 0;
+          const ours = match.score_us ?? 0;
+          const theirs = match.score_them ?? 0;
           wonRounds += ours;
           totalRounds += ours + theirs;
         }
