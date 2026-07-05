@@ -24,4 +24,14 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
+  // The demo parser worker imports @deademx/cs2 + seek-bzip. Vite's dep
+  // optimizer scans main-thread entry points only, so worker-only imports
+  // must be listed explicitly or the worker gets a 504 on the prebundle.
+  optimizeDeps: {
+    include: ["@deademx/cs2", "@deademx/engine", "seek-bzip"],
+  },
+  worker: {
+    format: "es",
+    plugins: () => [react()],
+  },
 }));
