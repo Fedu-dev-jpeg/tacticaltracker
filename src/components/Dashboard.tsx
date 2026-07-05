@@ -340,6 +340,7 @@ export default function Dashboard({ matches }: DashboardProps) {
                   <th className="text-center py-2 px-2 font-heading">WR vs Rival</th>
                   <th className="text-center py-2 px-2 font-heading">CT P</th>
                   <th className="text-center py-2 px-2 font-heading">TR P</th>
+                  <th className="text-center py-2 px-2 font-heading">Stats</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,6 +360,18 @@ export default function Dashboard({ matches }: DashboardProps) {
                       <td className="text-center py-2.5 px-2 text-xs text-muted-foreground">{wrRival !== null ? `${wrRival}%` : "—"}</td>
                       <td className="text-center py-2.5 px-2">{ctPistol === undefined ? <span className="text-muted-foreground">—</span> : <span className={cn("inline-block h-2.5 w-2.5 rounded-full", ctPistol ? "bg-success" : "bg-destructive")} />}</td>
                       <td className="text-center py-2.5 px-2">{trPistol === undefined ? <span className="text-muted-foreground">—</span> : <span className={cn("inline-block h-2.5 w-2.5 rounded-full", trPistol ? "bg-success" : "bg-destructive")} />}</td>
+                      <td className="text-center py-2.5 px-2">
+                        {m.demo_data ? (
+                          <MatchStatsDialog
+                            data={m.demo_data as DemoData}
+                            mode="stored"
+                            meta={{ date: m.date, matchType: m.type, rival: m.rival, savedAt: m.date }}
+                            trigger={<button className="text-accent hover:text-accent/80" title="Ver stats"><BarChart3 className="h-4 w-4 mx-auto" /></button>}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
