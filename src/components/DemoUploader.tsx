@@ -247,7 +247,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         updateJob(job.id, { stage: "done", result: parsed, finishedAt: t1, durationMs: t1 - t0 });
         setResult(parsed);
         onParsed(parsed);
-        toast.success(`Demo importada: ${job.fileName}`);
+        const summaryBits: string[] = [];
+        if (parsed.map) summaryBits.push(parsed.map);
+        if (parsed.rival) summaryBits.push(`vs ${parsed.rival}`);
+        if (parsed.score_us != null && parsed.score_them != null) summaryBits.push(`${parsed.score_us}-${parsed.score_them}`);
+        toast.success(`✔ Demo importada: ${job.fileName}`, {
+          description: summaryBits.length > 0 ? summaryBits.join(" · ") : `Completada en ${Math.round((t1 - t0) / 1000)}s`,
+        });
       } catch (e) {
         const err = e as Error;
         const t1 = Date.now();
