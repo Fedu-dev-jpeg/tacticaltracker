@@ -46,7 +46,6 @@ const NAV = [
 ];
 
 export function AppSidebar() {
-export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
@@ -126,10 +125,20 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
-        <div className={cn("flex items-center gap-2 px-2 py-2", collapsed && "flex-col")}>
-          <div className="h-8 w-8 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center text-xs font-bold text-accent shrink-0">
-            {playerName.charAt(0).toUpperCase()}
-          </div>
+        <button
+          onClick={() => setProfileOpen(true)}
+          className={cn(
+            "flex items-center gap-2 px-2 py-2 w-full rounded-md hover:bg-sidebar-accent/50 transition text-left",
+            collapsed && "flex-col justify-center",
+          )}
+          title="Ver perfil"
+        >
+          <Avatar className="h-8 w-8 border border-accent/40 shrink-0">
+            <AvatarImage src={avatarUrl ?? undefined} alt={playerName} />
+            <AvatarFallback className="text-xs font-bold text-accent bg-accent/20">
+              {playerName.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{playerName}</div>
@@ -140,11 +149,9 @@ export function AppSidebar() {
               )}
             </div>
           )}
-          <Button variant="ghost" size="icon" onClick={signOut} title="Cerrar sesión" className="h-8 w-8">
-            <LogOut className="h-4 w-4" />
-          </Button>
-        </div>
+        </button>
       </SidebarFooter>
+      <PlayerProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </Sidebar>
   );
 }
