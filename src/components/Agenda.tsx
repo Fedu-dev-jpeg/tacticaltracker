@@ -91,23 +91,37 @@ export default function Agenda() {
   };
 
   // ── Teamup helpers ──
-  const pushToTeamup = async (row: AgendaEvent) => {
+  const pushToTeamup = async (row: AgendaEvent, mode: "create" | "update") => {
+    const t = toast.loading(mode === "create" ? "Publicando en Teamup..." : "Actualizando en Teamup...");
     try {
-      await supabase.functions.invoke("teamup-sync", {
+      const { data, error } = await supabase.functions.invoke("teamup-sync", {
         body: { action: "push", event: row },
       });
+      if (error) throw new Error(error.message);
+      const err = (data as { error?: string })?.error;
+      if (err) throw new Error(err);
+      const teamupId = (data as { teamup_event_id?: string })?.teamup_event_id;
+      toast.success(
+        mode === "create" ? "Publicado en Teamup" : "Actualizado en Teamup",
+        { id: t, description: teamupId ? `ID Teamup: ${teamupId}` : "Sin ID devuelto" },
+      );
     } catch (e) {
-      console.warn("Teamup push falló (silencioso):", e);
+      toast.error("Teamup push falló", { id: t, description: (e as Error).message });
     }
   };
   const deleteFromTeamup = async (teamupId: string | null | undefined) => {
     if (!teamupId) return;
+    const t = toast.loading(`Eliminando ${teamupId} en Teamup...`);
     try {
-      await supabase.functions.invoke("teamup-sync", {
+      const { data, error } = await supabase.functions.invoke("teamup-sync", {
         body: { action: "delete", teamup_event_id: teamupId },
       });
+      if (error) throw new Error(error.message);
+      const err = (data as { error?: string })?.error;
+      if (err) throw new Error(err);
+      toast.success("Eliminado en Teamup", { id: t, description: `ID: ${teamupId}` });
     } catch (e) {
-      console.warn("Teamup delete falló (silencioso):", e);
+      toast.error("Teamup delete falló", { id: t, description: (e as Error).message });
     }
   };
 
@@ -126,12 +140,12 @@ export default function Agenda() {
       const { data, error } = await supabase.from("agenda_events").update(payload).eq("id", editingEvent.id).select().single();
       if (error) { toast.error("Error al actualizar"); return; }
       toast.success("Evento actualizado");
-      if (data) pushToTeamup(data as AgendaEvent);
+      if (data) pushToTeamup(data as AgendaEvent, "update");
     } else {
       const { data, error } = await supabase.from("agenda_events").insert(payload).select().single();
       if (error) { toast.error("Error al guardar"); return; }
       toast.success("Evento agregado");
-      if (data) pushToTeamup(data as AgendaEvent);
+      if (data) pushToTeamup(data as AgendaEvent, "create");
     }
     closeDialog();
     fetchEvents();
