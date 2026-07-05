@@ -1,18 +1,20 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 
-type Stage = "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
+type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
 const STAGES: { key: Exclude<Stage, "error" | "cancelled">; label: string; icon: React.ElementType; pct: number }[] = [
   { key: "uploading", label: "Subiendo demo", icon: CloudUpload, pct: 20 },
@@ -55,7 +57,13 @@ interface Job {
   error: string | null;
   result: ParsedDemo | null;
   abort: AbortController;
+  attempt: number; // 1-indexed current attempt
+  maxAttempts: number;
 }
+
+const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
+const RETRY_ATTEMPT_OPTIONS = [2, 3, 4, 5] as const;
+const RETRIABLE_STAGES: Stage[] = ["parsing", "matching"];
 
 export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) => void }) {
   const [dragOver, setDragOver] = useState(false);
@@ -63,6 +71,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
+  // Concurrency + retry settings (persisted in memory for the session)
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(2);
+  const [autoRetry, setAutoRetry] = useState<boolean>(true);
+  const [maxAttempts, setMaxAttempts] = useState<number>(3);
+  // Refs so async pipeline sees current values without re-creating callbacks
+  const startedRef = useRef<Set<string>>(new Set());
+  const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
 
@@ -165,13 +180,53 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           updateJob(job.id, { stage: "cancelled", failedStage: current });
           toast.info(`Cancelada: ${job.fileName}`);
         } else {
-          updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
-          toast.error(`Falló ${job.fileName}`);
+          // Auto-retry only for parsing/matching stages
+          const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
+          if (canAutoRetry) {
+            const nextAttempt = job.attempt + 1;
+            updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController() });
+            startedRef.current.delete(job.id);
+            toast.info(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`);
+            const backoff = 800 * job.attempt;
+            const timer = window.setTimeout(() => {
+              retryTimeoutsRef.current.delete(job.id);
+            }, backoff);
+            retryTimeoutsRef.current.set(job.id, timer);
+          } else {
+            updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
+            toast.error(`Falló ${job.fileName}`);
+          }
         }
+      } finally {
+        // free the slot regardless of outcome
+        startedRef.current.delete(job.id);
       }
     },
-    [onParsed, updateJob],
+    [onParsed, updateJob, autoRetry],
   );
+
+  // Scheduler: pick up "queued" jobs whenever a slot is free
+  useEffect(() => {
+    const runningIds = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).map((j) => j.id);
+    // ensure ref reflects actual running set
+    runningIds.forEach((id) => startedRef.current.add(id));
+    const freeSlots = Math.max(0, maxConcurrent - runningIds.length);
+    if (freeSlots === 0) return;
+    const pending = jobs.filter((j) => j.stage === "queued" && !startedRef.current.has(j.id));
+    for (const j of pending.slice(0, freeSlots)) {
+      startedRef.current.add(j.id);
+      // delay slightly so backoff timers can elapse; runPipeline sets stage
+      window.setTimeout(() => runPipeline(j), 50);
+    }
+  }, [jobs, maxConcurrent, runPipeline]);
+
+  // Clean up pending retry timers on unmount
+  useEffect(() => {
+    return () => {
+      retryTimeoutsRef.current.forEach((t) => window.clearTimeout(t));
+      retryTimeoutsRef.current.clear();
+    };
+  }, []);
 
   const startJobs = useCallback(
     (files: File[]) => {
@@ -188,47 +243,54 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${f.name}`,
         fileName: f.name,
         file: f,
-        stage: "uploading",
+        stage: "queued",
         failedStage: null,
         error: null,
         result: null,
         abort: new AbortController(),
+        attempt: 1,
+        maxAttempts: autoRetry ? maxAttempts : 1,
       }));
       setJobs((prev) => [...prev, ...newJobs]);
-      // fire in parallel
-      newJobs.forEach((j) => runPipeline(j));
+      // scheduler effect will pick them up
     },
-    [runPipeline],
+    [autoRetry, maxAttempts],
   );
 
   const cancelJob = useCallback((id: string) => {
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
       j?.abort.abort();
+      // if it was queued (not yet running), transition it to cancelled directly
+      if (j && j.stage === "queued") {
+        return prev.map((x) => (x.id === id ? { ...x, stage: "cancelled" as Stage, failedStage: x.failedStage ?? "queued" } : x));
+      }
       return prev;
     });
   }, []);
 
-  const retryJob = useCallback(
-    (id: string) => {
-      setJobs((prev) => {
-        const j = prev.find((x) => x.id === id);
-        if (!j) return prev;
-        const fresh: Job = { ...j, stage: "uploading", failedStage: null, error: null, result: null, abort: new AbortController() };
-        // run outside of setState
-        queueMicrotask(() => runPipeline(fresh));
-        return prev.map((x) => (x.id === id ? fresh : x));
-      });
-    },
-    [runPipeline],
-  );
+  const retryJob = useCallback((id: string) => {
+    setJobs((prev) => {
+      const j = prev.find((x) => x.id === id);
+      if (!j) return prev;
+      startedRef.current.delete(id);
+      return prev.map((x) =>
+        x.id === id
+          ? { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1 }
+          : x,
+      );
+    });
+  }, [autoRetry, maxAttempts]);
 
   const removeJob = useCallback((id: string) => {
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
-      if (j && (j.stage === "uploading" || j.stage === "parsing" || j.stage === "matching" || j.stage === "saving")) {
+      if (j && (j.stage === "uploading" || j.stage === "parsing" || j.stage === "matching" || j.stage === "saving" || j.stage === "queued")) {
         j.abort.abort();
       }
+      startedRef.current.delete(id);
+      const t = retryTimeoutsRef.current.get(id);
+      if (t) { window.clearTimeout(t); retryTimeoutsRef.current.delete(id); }
       return prev.filter((x) => x.id !== id);
     });
   }, []);
@@ -238,7 +300,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   }, []);
 
   const activeCount = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).length;
-  const finishedCount = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.stage)).length;
+  const queuedCount = jobs.filter((j) => j.stage === "queued").length;
+  const doneCount = jobs.filter((j) => j.stage === "done").length;
+  const errorCount = jobs.filter((j) => j.stage === "error").length;
+  const cancelledCount = jobs.filter((j) => j.stage === "cancelled").length;
+  const finishedCount = doneCount + errorCount + cancelledCount;
+  const totalCount = jobs.length;
+  const globalPct = totalCount > 0 ? Math.round((finishedCount / totalCount) * 100) : 0;
 
   return (
     <Card className="border-border">
@@ -311,6 +379,100 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             />
           )}
         </div>
+
+        {/* Concurrency + auto-retry settings */}
+        <div className="rounded-md border border-border bg-muted/20 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Gauge className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground">Parseo simultáneo</Label>
+              <Select value={String(maxConcurrent)} onValueChange={(v) => setMaxConcurrent(Number(v))}>
+                <SelectTrigger className="h-7 text-xs mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONCURRENCY_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)} className="text-xs">
+                      {n} demo{n === 1 ? "" : "s"} a la vez
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Repeat className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground flex items-center justify-between gap-2">
+                <span>Reintento automático</span>
+                <Switch checked={autoRetry} onCheckedChange={setAutoRetry} />
+              </Label>
+              <div className="text-[10px] text-muted-foreground mt-1">Reintenta si falla el parsing o la vinculación</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <RotateCcw className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground">Intentos máximos</Label>
+              <Select value={String(maxAttempts)} onValueChange={(v) => setMaxAttempts(Number(v))} disabled={!autoRetry}>
+                <SelectTrigger className="h-7 text-xs mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RETRY_ATTEMPT_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)} className="text-xs">
+                      Hasta {n} intentos
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Global progress */}
+        {totalCount > 0 && (
+          <div className="rounded-md border border-accent/30 bg-accent/5 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 font-heading font-bold">
+                <BarChart3 className="h-4 w-4 text-accent" />
+                <span>Progreso global</span>
+                <span className="text-muted-foreground font-body font-normal">
+                  {finishedCount} / {totalCount} procesadas
+                </span>
+              </div>
+              <span className="tabular-nums text-accent font-heading font-bold">{globalPct}%</span>
+            </div>
+            <Progress value={globalPct} className="h-2" />
+            <div className="flex flex-wrap gap-1.5 text-[10px]">
+              {activeCount > 0 && (
+                <Badge className="bg-accent/20 text-accent border-accent/30 h-5">
+                  <Loader2 className="h-2.5 w-2.5 mr-1 animate-spin" /> {activeCount} en curso
+                </Badge>
+              )}
+              {queuedCount > 0 && (
+                <Badge variant="outline" className="h-5">
+                  <Clock className="h-2.5 w-2.5 mr-1" /> {queuedCount} en cola
+                </Badge>
+              )}
+              {doneCount > 0 && (
+                <Badge className="bg-success/20 text-success border-success/30 h-5">
+                  <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> {doneCount} listas
+                </Badge>
+              )}
+              {errorCount > 0 && (
+                <Badge variant="outline" className="border-destructive/40 text-destructive h-5">
+                  <XCircle className="h-2.5 w-2.5 mr-1" /> {errorCount} con error
+                </Badge>
+              )}
+              {cancelledCount > 0 && (
+                <Badge variant="outline" className="h-5">
+                  <Ban className="h-2.5 w-2.5 mr-1" /> {cancelledCount} canceladas
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Jobs list */}
         {jobs.length > 0 && (
@@ -490,12 +652,18 @@ function JobRow({
   isSelected: boolean;
 }) {
   const active = job.stage === "uploading" || job.stage === "parsing" || job.stage === "matching" || job.stage === "saving";
+  const isQueued = job.stage === "queued";
   const currentPct = STAGES.find((s) => s.key === (job.stage === "error" || job.stage === "cancelled" ? job.failedStage : job.stage))?.pct ?? 0;
+  const stageLabel = isQueued
+    ? job.attempt > 1
+      ? `En cola — reintento ${job.attempt}/${job.maxAttempts}`
+      : "En cola"
+    : STAGES.find((s) => s.key === job.stage)?.label ?? "";
 
   return (
     <div className={cn(
       "rounded-md border p-3 space-y-2 transition-colors",
-      isSelected ? "border-accent/60 bg-accent/5" : "border-border bg-card/40",
+      isSelected ? "border-accent/60 bg-accent/5" : isQueued ? "border-dashed border-border bg-card/20" : "border-border bg-card/40",
     )}>
       <div className="flex items-center justify-between text-xs gap-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -505,10 +673,17 @@ function JobRow({
             <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
           ) : job.stage === "done" ? (
             <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+          ) : isQueued ? (
+            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
           ) : (
             <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
           )}
           <span className="truncate font-medium">{job.fileName}</span>
+          {job.attempt > 1 && job.stage !== "done" && (
+            <Badge variant="outline" className="h-4 px-1 text-[9px] border-accent/40 text-accent">
+              intento {job.attempt}/{job.maxAttempts}
+            </Badge>
+          )}
           <span className={cn(
             "truncate text-muted-foreground text-[10px] hidden sm:inline",
             job.stage === "error" && "text-destructive",
@@ -518,7 +693,7 @@ function JobRow({
               ? `Falló en "${STAGES.find((s) => s.key === job.failedStage)?.label ?? "el proceso"}": ${job.error}`
               : job.stage === "cancelled"
                 ? `Cancelado en "${STAGES.find((s) => s.key === job.failedStage)?.label ?? "el proceso"}"`
-                : STAGES.find((s) => s.key === job.stage)?.label}
+                : stageLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -537,7 +712,7 @@ function JobRow({
               Ver detalles
             </Button>
           )}
-          {active && (
+          {(active || isQueued) && (
             <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={onCancel}>
               <Ban className="h-3 w-3 mr-1" /> Cancelar
             </Button>
