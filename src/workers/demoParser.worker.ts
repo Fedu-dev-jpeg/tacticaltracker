@@ -305,7 +305,7 @@ async function parseFile(
     if (r.winner_side === "CT") ct += 1; else t += 1;
   }
 
-  onProgress(98, "Consolidando resultado");
+  onProgress(98, "Consolidando resultado", "finalize");
 
   return {
     map: mapName,
