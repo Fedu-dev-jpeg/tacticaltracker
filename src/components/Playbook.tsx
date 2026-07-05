@@ -145,6 +145,9 @@ export default function Playbook() {
 
   const filtered = useMemo(() => {
     const f = strategies.filter((s) => {
+      // Only include entries that belong to the "estrategias" book
+      const book = (s as unknown as { book?: string }).book ?? "estrategias";
+      if (book !== "estrategias") return false;
       if (s.map !== selectedMap) return false;
       if (selectedSide !== "all" && s.side !== selectedSide) return false;
       if (selectedPlayer && !s.playerRoles[selectedPlayer]) return false;
