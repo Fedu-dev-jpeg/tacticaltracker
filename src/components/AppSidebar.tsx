@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,14 +23,15 @@ import {
   Trophy,
   Award,
   Users,
-  LogOut,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PlayerProfileDialog } from "@/components/PlayerProfileDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: BarChart3 },
