@@ -71,7 +71,7 @@ export default function Analysis({ matches }: AnalysisProps) {
     if (d.trPistol < 40) recommendations.push(`TR Pistol muy bajo en ${d.name} (${d.trPistol}%)`);
   });
 
-  const COLORS = { ct: "#1F4E79", tr: "#ED7D31", success: "#70AD47", danger: "#e74c3c" };
+  const COLORS = { ct: "#1F4E79", tr: "#0088FF", success: "#70AD47", danger: "#e74c3c" };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
