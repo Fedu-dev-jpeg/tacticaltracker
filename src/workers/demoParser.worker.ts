@@ -13,6 +13,11 @@
 //             { type: "done"; data: RawParsedDemo }
 //             { type: "error"; message: string }
 
+// seek-bzip is a Node port that calls `new Buffer(...)` internally. Browsers
+// have no `Buffer` global, so we polyfill it BEFORE importing seek-bzip.
+import { Buffer as BufferPolyfill } from "buffer";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(self as any).Buffer = (self as any).Buffer || BufferPolyfill;
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — seek-bzip has no types
 import Bunzip from "seek-bzip";
