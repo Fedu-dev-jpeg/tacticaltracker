@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,12 +7,14 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save, UserPlus, XCircle, RotateCcw, Ban, Trash2, Clock, Gauge, Repeat, Pause, Play, Copy, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
