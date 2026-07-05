@@ -232,10 +232,11 @@ export default function Playbook() {
         <div className="h-10 w-10 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center">
           <BookOpen className="h-5 w-5 text-accent" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-heading font-bold">Playbook</h1>
           <p className="text-xs text-muted-foreground">Estrategias del equipo, roles y utilidad</p>
         </div>
+        <PlaybookImportDialog book="estrategias" onImported={fetchStrategies} />
       </div>
 
       <Tabs defaultValue="estrategias" className="space-y-6">
