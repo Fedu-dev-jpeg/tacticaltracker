@@ -22,6 +22,7 @@ export interface Match {
   startingSide: Side;
   notes: string;
   recorded_by?: string;
+  demo_data?: unknown | null;
 }
 
 export const MAPS: MapName[] = ["Nuke", "Ancient", "Anubis", "Inferno"];
