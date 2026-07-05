@@ -347,25 +347,105 @@ function FullTeamTable({ label, players }: { label: string; players: PlayerBlob[
   );
 }
 
+type SideFilter = "all" | "CT" | "TR";
+type ResultFilter = "all" | "win" | "loss";
+const REASONS = ["Bomb", "Defuse", "Elimination", "Time"] as const;
+type Reason = typeof REASONS[number];
+
+function isClutchRound(r: Round) {
+  return r.winner === "us" && r.survivors === 1 && r.enemy_remaining >= 1;
+}
+
 function RoundsTimeline({ rounds }: { rounds: Round[] }) {
+  const [side, setSide] = useState<SideFilter>("all");
+  const [result, setResult] = useState<ResultFilter>("all");
+  const [reasons, setReasons] = useState<Set<Reason>>(new Set());
+  const [onlyPistol, setOnlyPistol] = useState(false);
+  const [onlyClutch, setOnlyClutch] = useState(false);
+
+  const matches = useMemo(() => {
+    const set = new Set<number>();
+    rounds.forEach((r) => {
+      if (side !== "all" && r.us_side !== side) return;
+      if (result === "win" && r.winner !== "us") return;
+      if (result === "loss" && r.winner !== "them") return;
+      if (reasons.size > 0 && !reasons.has(r.reason as Reason)) return;
+      if (onlyPistol && !r.is_pistol) return;
+      if (onlyClutch && !isClutchRound(r)) return;
+      set.add(r.n);
+    });
+    return set;
+  }, [rounds, side, result, reasons, onlyPistol, onlyClutch]);
+
+  const toggleReason = (r: Reason) => {
+    setReasons((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r); else next.add(r);
+      return next;
+    });
+  };
+  const resetFilters = () => {
+    setSide("all"); setResult("all"); setReasons(new Set()); setOnlyPistol(false); setOnlyClutch(false);
+  };
+  const filtersActive = side !== "all" || result !== "all" || reasons.size > 0 || onlyPistol || onlyClutch;
+
   const half1 = rounds.slice(0, 12);
   const half2 = rounds.slice(12);
+
   return (
     <div className="rounded-lg border border-border p-4 space-y-3">
       <div className="text-center">
         <h3 className="font-heading font-bold">Round Analysis</h3>
         <p className="text-xs text-muted-foreground">Round by round breakdown with winners, survivors, and round reasons</p>
       </div>
+
+      {/* Filters */}
+      <div className="rounded-md border border-border/40 bg-muted/10 p-3 space-y-2">
+        <div className="flex items-center gap-2 text-[11px] font-heading font-bold text-muted-foreground uppercase tracking-widest">
+          <Filter className="h-3 w-3" /> Filtros
+          <span className="ml-auto font-body normal-case tracking-normal text-muted-foreground">
+            Mostrando <span className="text-accent font-bold">{matches.size}</span> / {rounds.length}
+          </span>
+          {filtersActive && (
+            <button onClick={resetFilters} className="text-[10px] flex items-center gap-1 text-muted-foreground hover:text-destructive normal-case tracking-normal">
+              <X className="h-3 w-3" /> Reset
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+          <span className="text-muted-foreground">Nuestro lado:</span>
+          {(["all", "CT", "TR"] as SideFilter[]).map((s) => (
+            <FilterChip key={s} active={side === s} onClick={() => setSide(s)}>
+              {s === "all" ? "Todos" : s}
+            </FilterChip>
+          ))}
+          <span className="text-muted-foreground ml-2">Resultado:</span>
+          {(["all", "win", "loss"] as ResultFilter[]).map((r) => (
+            <FilterChip key={r} active={result === r} onClick={() => setResult(r)}>
+              {r === "all" ? "Todos" : r === "win" ? "Ganadas" : "Perdidas"}
+            </FilterChip>
+          ))}
+          <span className="text-muted-foreground ml-2">Motivo:</span>
+          {REASONS.map((r) => (
+            <FilterChip key={r} active={reasons.has(r)} onClick={() => toggleReason(r)}>
+              {r}
+            </FilterChip>
+          ))}
+          <FilterChip active={onlyPistol} onClick={() => setOnlyPistol((v) => !v)}>Pistol</FilterChip>
+          <FilterChip active={onlyClutch} onClick={() => setOnlyClutch((v) => !v)}>Clutch</FilterChip>
+        </div>
+      </div>
+
       <div className="rounded-md border border-border/40 p-3 space-y-3">
         <div className="text-xs font-heading font-bold flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-accent" /> Rounds Timeline
         </div>
         <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
-          {half1.map((r) => <RoundCell key={r.n} round={r} />)}
+          {half1.map((r) => <RoundCell key={r.n} round={r} highlighted={matches.has(r.n)} dimmed={filtersActive && !matches.has(r.n)} />)}
         </div>
         <div className="text-center text-[10px] uppercase tracking-widest text-muted-foreground border-t border-border py-1">Half Time</div>
         <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
-          {half2.map((r) => <RoundCell key={r.n} round={r} />)}
+          {half2.map((r) => <RoundCell key={r.n} round={r} highlighted={matches.has(r.n)} dimmed={filtersActive && !matches.has(r.n)} />)}
         </div>
         <TimelineLegend />
       </div>
@@ -373,15 +453,45 @@ function RoundsTimeline({ rounds }: { rounds: Round[] }) {
   );
 }
 
-function RoundCell({ round: r }: { round: Round }) {
-  const winnerLabel = r.winner === "us" ? "Team 1" : "Team 2";
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div className="border border-border/50 rounded p-1.5 text-center text-[9px] space-y-0.5 bg-muted/10">
-      <div className="text-muted-foreground">R{r.n}</div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "px-2 py-0.5 rounded-full border text-[10px] font-medium transition-colors",
+        active
+          ? "border-accent bg-accent/20 text-accent"
+          : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/40",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function RoundCell({ round: r, highlighted, dimmed }: { round: Round; highlighted?: boolean; dimmed?: boolean }) {
+  const winnerLabel = r.winner === "us" ? "Team 1" : "Team 2";
+  const clutch = isClutchRound(r);
+  return (
+    <div
+      className={cn(
+        "border rounded p-1.5 text-center text-[9px] space-y-0.5 bg-muted/10 transition-all",
+        "border-border/50",
+        dimmed && "opacity-25",
+        highlighted && "ring-2 ring-accent ring-offset-1 ring-offset-background border-accent/60 bg-accent/5",
+      )}
+    >
+      <div className="flex items-center justify-center gap-1 text-muted-foreground">
+        <span>R{r.n}</span>
+        {r.is_pistol && <span className="text-yellow-300 font-bold">P</span>}
+        {clutch && <span className="text-orange-400 font-bold">1v{r.enemy_remaining}</span>}
+      </div>
       <div className={cn("rounded-sm px-1 font-heading text-[10px]", r.winner_side === "CT" ? "bg-blue-500/30 text-blue-300" : "bg-orange-500/30 text-orange-300")}>{r.winner_side}</div>
       <div className="font-medium">{winnerLabel}</div>
       <div className="flex items-center justify-center gap-1 text-[8px]">
         {r.reason === "Bomb" && <Bomb className="h-2.5 w-2.5 text-red-400" />}
+        {r.reason === "Defuse" && <Shield className="h-2.5 w-2.5 text-blue-400" />}
         {r.reason === "Elimination" && <Skull className="h-2.5 w-2.5" />}
         {r.reason === "Time" && <Clock className="h-2.5 w-2.5" />}
       </div>
