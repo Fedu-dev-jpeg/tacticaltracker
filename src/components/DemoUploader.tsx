@@ -360,9 +360,11 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   }, []);
 
   const retryJob = useCallback((id: string) => {
+    let blocked = false;
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
       if (!j) return prev;
+      if (!j.file) { blocked = true; return prev; }
       startedRef.current.delete(id);
       return prev.map((x) =>
         x.id === id
@@ -370,13 +372,16 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           : x,
       );
     });
+    if (blocked) toast.error("Archivo no disponible tras recargar. Subilo de nuevo desde la zona de drop.");
   }, [autoRetry, maxAttempts]);
 
   const retryAllErrors = useCallback(() => {
+    let skipped = 0;
     setJobs((prev) => {
       let count = 0;
       const next = prev.map((x) => {
         if (x.stage !== "error") return x;
+        if (!x.file) { skipped++; return x; }
         startedRef.current.delete(x.id);
         count++;
         return { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null };
@@ -384,6 +389,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       if (count > 0) toast.info(`Reintentando ${count} demo${count === 1 ? "" : "s"} con error`);
       return next;
     });
+    if (skipped > 0) toast.warning(`${skipped} demo${skipped === 1 ? "" : "s"} requieren volver a subir el archivo (perdido tras recarga)`);
   }, [autoRetry, maxAttempts]);
 
   const removeJob = useCallback((id: string) => {
