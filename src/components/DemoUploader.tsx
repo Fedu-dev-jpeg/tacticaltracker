@@ -487,15 +487,52 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         {/* Global progress */}
         {totalCount > 0 && (
           <div className="rounded-md border border-accent/30 bg-accent/5 p-3 space-y-2">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
               <div className="flex items-center gap-2 font-heading font-bold">
                 <BarChart3 className="h-4 w-4 text-accent" />
                 <span>Progreso global</span>
                 <span className="text-muted-foreground font-body font-normal">
                   {finishedCount} / {totalCount} procesadas
                 </span>
+                {eta != null && (
+                  <span className="text-muted-foreground font-body font-normal flex items-center gap-1">
+                    <Timer className="h-3 w-3 text-accent" />
+                    ETA <span className="text-accent tabular-nums">{formatEta(eta)}</span>
+                  </span>
+                )}
+                {paused && (
+                  <Badge variant="outline" className="h-5 border-accent/40 text-accent">
+                    <Pause className="h-2.5 w-2.5 mr-1" /> Pausado
+                  </Badge>
+                )}
               </div>
-              <span className="tabular-nums text-accent font-heading font-bold">{globalPct}%</span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => {
+                    setPaused((p) => {
+                      const next = !p;
+                      toast.info(next ? "Cola pausada" : "Cola reanudada");
+                      return next;
+                    });
+                  }}
+                >
+                  {paused ? <><Play className="h-3 w-3 mr-1" /> Reanudar</> : <><Pause className="h-3 w-3 mr-1" /> Pausar</>}
+                </Button>
+                {errorCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10"
+                    onClick={retryAllErrors}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" /> Reintentar errores ({errorCount})
+                  </Button>
+                )}
+                <span className="tabular-nums text-accent font-heading font-bold text-xs ml-1">{globalPct}%</span>
+              </div>
             </div>
             <Progress value={globalPct} className="h-2" />
             <div className="flex flex-wrap gap-1.5 text-[10px]">
