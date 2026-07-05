@@ -291,9 +291,23 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       startedRef.current.delete(id);
       return prev.map((x) =>
         x.id === id
-          ? { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1 }
+          ? { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null }
           : x,
       );
+    });
+  }, [autoRetry, maxAttempts]);
+
+  const retryAllErrors = useCallback(() => {
+    setJobs((prev) => {
+      let count = 0;
+      const next = prev.map((x) => {
+        if (x.stage !== "error") return x;
+        startedRef.current.delete(x.id);
+        count++;
+        return { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null };
+      });
+      if (count > 0) toast.info(`Reintentando ${count} demo${count === 1 ? "" : "s"} con error`);
+      return next;
     });
   }, [autoRetry, maxAttempts]);
 
