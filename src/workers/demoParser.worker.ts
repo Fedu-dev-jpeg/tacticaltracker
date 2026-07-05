@@ -164,6 +164,9 @@ async function parseFile(
 
   // Snapshot user_info string table into `players` (lazy — only after
   // string tables have been populated by the parser).
+  // We skip bots, GOTV/SourceTV relays and any entry without a real SteamID.
+  // Coaches are filtered later (post-parse) based on zero match participation
+  // because user_info alone doesn't distinguish them from active players.
   const snapshotPlayersFromStringTable = () => {
     const demo = parser.getDemo();
     const userInfo = demo?.stringTableContainer?.getByName?.(StringTableType.USER_INFO.name);
@@ -172,12 +175,22 @@ async function parseFile(
       const v = entry.value;
       if (!v || !Number.isInteger(v.userid)) continue;
       if (players.has(v.userid)) continue;
+
+      // Reject fake players (bots) and any HLTV/SourceTV relay slot.
+      if (v.fakeplayer === true || v.ishltv === true || v.is_hltv === true) continue;
+      const name: string = v.name ?? "";
+      if (/^(gotv|sourcetv|hltv)\b/i.test(name.trim())) continue;
+
       // xuid is a BigInt SteamID64 in @deademx/cs2. Fallback to any variant name.
-      const steamid = String(v.xuid ?? v.steamid ?? v.userid);
+      const xuidStr = v.xuid != null ? String(v.xuid) : "";
+      const steamid = xuidStr || String(v.steamid ?? v.userid);
+      // Real SteamID64 starts with 76561; reject slots that don't have one.
+      if (!/^7656119\d{10}$/.test(steamid)) continue;
+
       players.set(v.userid, {
         steamid,
         userid: v.userid,
-        name: v.name ?? "unknown",
+        name: name || "unknown",
         team_first_half: null,
         kills: 0, deaths: 0, assists: 0, hs_kills: 0, damage: 0,
         first_kills: 0, first_deaths: 0,
