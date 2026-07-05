@@ -58,6 +58,14 @@ interface DemoOverrides {
   map: string;
 }
 
+export type ParserStageKey = "read" | "bz2" | "parse" | "finalize";
+export interface ParserStageInfo {
+  pct: number;              // last reported % within this stage's overall bar
+  label: string;            // last human label ("Descomprimiendo bz2 (245 MB)")
+  startedAt: number;        // ms epoch when stage first became active
+  endedAt: number | null;   // ms epoch when a newer stage took over
+}
+
 interface Job {
   id: string;
   fileName: string;
@@ -73,7 +81,11 @@ interface Job {
   finishedAt: number | null;
   durationMs: number | null;
   overrides?: DemoOverrides;
+  parserStages?: Partial<Record<ParserStageKey, ParserStageInfo>>;
+  parserStageCurrent?: ParserStageKey | null;
+  parserPct?: number;
 }
+
 
 const MAP_OPTIONS = ["Mirage", "Inferno", "Nuke", "Anubis", "Ancient", "Dust2", "Vertigo", "Overpass", "Train"] as const;
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
