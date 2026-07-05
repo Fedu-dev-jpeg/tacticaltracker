@@ -6,6 +6,7 @@ import { Download, Trash2, Search, Pencil, X, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import TrainingForm from "@/components/TrainingForm";
@@ -107,25 +108,25 @@ export default function HistoryView({ matches, onDelete, onUpdate, onExport, onI
     toast.success("Partido actualizado");
   };
 
-  // Show edit form
-  if (editingMatch) {
-    return (
-      <div className="space-y-4 animate-slide-up">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-heading font-bold flex items-center gap-2">
-            <Pencil className="h-5 w-5 text-accent" /> Editar Partido
-          </h2>
-          <Button variant="ghost" size="sm" onClick={() => setEditingMatch(null)}>
-            <X className="h-4 w-4 mr-1" /> Cancelar
-          </Button>
-        </div>
-        <TrainingForm onSubmit={handleEditSubmit} initialData={editingMatch} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4 animate-slide-up">
+      {/* Edit dialog */}
+      <Dialog open={!!editingMatch} onOpenChange={(open) => { if (!open) setEditingMatch(null); }}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-heading">
+              <Pencil className="h-4 w-4 text-accent" /> Editar partido
+            </DialogTitle>
+            <DialogDescription>
+              Corregí los detalles del partido: score, mapa, rival, tipo (Treino / Scrim / Oficial) y las pistols.
+            </DialogDescription>
+          </DialogHeader>
+          {editingMatch && (
+            <TrainingForm onSubmit={handleEditSubmit} initialData={editingMatch} />
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="relative flex-1 min-w-[180px]">
