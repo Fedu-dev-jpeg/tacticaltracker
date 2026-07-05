@@ -183,6 +183,23 @@ function MiniView({ demo, meta, mode, storageKey, onFull }: { demo: DemoData; me
 
 function plusMinus(p: DemoPlayer) { return p.stats.kills - p.stats.deaths; }
 function kda(p: DemoPlayer) { return `${p.stats.kills}/${p.stats.deaths}/${p.stats.assists}`; }
+function fmtAdr(p: DemoPlayer, totalRounds: number): string {
+  // Defensive: legacy payloads sometimes stored raw total damage in `adr`.
+  // Recompute from damage/rounds when the stored value looks like total damage
+  // (implausibly high). If we don't know round count, show a dash.
+  if (!totalRounds || totalRounds <= 0) return "—";
+  const stored = p.stats.adr;
+  const raw = p.stats.damage;
+  const val = stored > 200 && raw > 0 ? raw / totalRounds : stored;
+  if (!Number.isFinite(val) || val <= 0) return "—";
+  return val.toFixed(1);
+}
+function fmtKast(p: DemoPlayer): { text: string; known: boolean } {
+  return p.stats.kast > 0 ? { text: `${p.stats.kast.toFixed(0)}%`, known: true } : { text: "—", known: false };
+}
+function fmtRating(p: DemoPlayer): { text: string; known: boolean } {
+  return p.stats.rating > 0 ? { text: p.stats.rating.toFixed(2), known: true } : { text: "—", known: false };
+}
 
 function MiniTeamTable({ label, players, totalRounds, className }: { label: string; players: DemoPlayer[]; totalRounds: number; className?: string }) {
   return (
