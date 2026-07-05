@@ -174,8 +174,8 @@ function MiniView({ demo, meta, mode, storageKey, onFull }: { demo: DemoData; me
           <Button variant="outline" size="sm" onClick={onFull}>View Full Stats</Button>
         </div>
       </div>
-      <MiniTeamTable label={demo.match.teams.team2.name} players={team2} totalRounds={demo.match.total_rounds} />
-      <MiniTeamTable label={demo.match.teams.team1.name} players={team1} totalRounds={demo.match.total_rounds} className="mt-3" />
+      <MiniTeamTable label={displayTeamName(demo.match.teams.team2.name, "Equipo 2")} players={team2} totalRounds={demo.match.total_rounds} />
+      <MiniTeamTable label={displayTeamName(demo.match.teams.team1.name, "Equipo 1")} players={team1} totalRounds={demo.match.total_rounds} className="mt-3" />
       <RoundsTimeline demo={demo} storageKey={storageKey} compact />
     </div>
   );
