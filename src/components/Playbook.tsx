@@ -103,6 +103,14 @@ export default function Playbook() {
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showMatchView, setShowMatchView] = useState(false);
+  const { members: teamMembers } = useTeamMembers();
+  const memberByName = useMemo(() => {
+    const map: Record<string, TeamMember> = {};
+    teamMembers.filter((m) => !m.is_coach).forEach((m) => {
+      map[m.player_name.toLowerCase()] = m;
+    });
+    return map;
+  }, [teamMembers]);
 
   // Load strategies from Supabase on mount
   const fetchStrategies = useCallback(async () => {
