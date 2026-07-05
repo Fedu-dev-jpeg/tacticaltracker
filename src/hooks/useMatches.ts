@@ -26,7 +26,7 @@ export function useMatches() {
   // Realtime subscription
   useEffect(() => {
     const channel = supabase
-      .channel("matches-changes")
+      .channel(`matches-changes-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => {
         fetchMatches();
       })
