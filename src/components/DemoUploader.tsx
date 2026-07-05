@@ -149,9 +149,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         if (job.abort.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
       };
       let current: Stage = "uploading";
+      const t0 = Date.now();
       try {
         current = "uploading";
-        updateJob(job.id, { stage: current });
+        updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
         const path = `${Date.now()}-${job.file.name}`;
         const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file, {
           contentType: "application/octet-stream",
@@ -178,21 +179,23 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         throwIfAborted();
 
         const parsed = data as ParsedDemo;
-        updateJob(job.id, { stage: "done", result: parsed });
+        const t1 = Date.now();
+        updateJob(job.id, { stage: "done", result: parsed, finishedAt: t1, durationMs: t1 - t0 });
         setResult(parsed);
         onParsed(parsed);
         toast.success(`Demo importada: ${job.fileName}`);
       } catch (e) {
         const err = e as Error;
+        const t1 = Date.now();
         if (err.name === "AbortError") {
-          updateJob(job.id, { stage: "cancelled", failedStage: current });
+          updateJob(job.id, { stage: "cancelled", failedStage: current, finishedAt: t1, durationMs: t1 - t0 });
           toast.info(`Cancelada: ${job.fileName}`);
         } else {
           // Auto-retry only for parsing/matching stages
           const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
           if (canAutoRetry) {
             const nextAttempt = job.attempt + 1;
-            updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController() });
+            updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController(), startedAt: null });
             startedRef.current.delete(job.id);
             toast.info(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`);
             const backoff = 800 * job.attempt;
@@ -201,7 +204,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             }, backoff);
             retryTimeoutsRef.current.set(job.id, timer);
           } else {
-            updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message) });
+            updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message), finishedAt: t1, durationMs: t1 - t0 });
             toast.error(`Falló ${job.fileName}`);
           }
         }
@@ -213,11 +216,12 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     [onParsed, updateJob, autoRetry],
   );
 
-  // Scheduler: pick up "queued" jobs whenever a slot is free
+  // Scheduler: pick up "queued" jobs whenever a slot is free (unless paused)
   useEffect(() => {
     const runningIds = jobs.filter((j) => ["uploading", "parsing", "matching", "saving"].includes(j.stage)).map((j) => j.id);
     // ensure ref reflects actual running set
     runningIds.forEach((id) => startedRef.current.add(id));
+    if (paused) return;
     const freeSlots = Math.max(0, maxConcurrent - runningIds.length);
     if (freeSlots === 0) return;
     const pending = jobs.filter((j) => j.stage === "queued" && !startedRef.current.has(j.id));
@@ -226,7 +230,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       // delay slightly so backoff timers can elapse; runPipeline sets stage
       window.setTimeout(() => runPipeline(j), 50);
     }
-  }, [jobs, maxConcurrent, runPipeline]);
+  }, [jobs, maxConcurrent, runPipeline, paused]);
 
   // Clean up pending retry timers on unmount
   useEffect(() => {
