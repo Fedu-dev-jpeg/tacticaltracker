@@ -229,8 +229,25 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       const t0 = Date.now();
       try {
         if (!job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
-        current = "uploading";
+
+        // 0. Read map from the demo header locally BEFORE uploading. Cheap
+        //    (only reads the first ~4 MB compressed / 512 KB decompressed) and
+        //    lets us pass the real map to the edge function so it never has
+        //    to guess. Score/stats stay manual until we have a WASM parser.
+        current = "parsing";
         updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
+        let detectedMap: string | undefined;
+        try {
+          const header = await parseDemoHeader(job.file);
+          detectedMap = header.map;
+        } catch (headerErr) {
+          // Non-fatal: fall back to user-provided/simulator map. Log for visibility.
+          console.warn(`[demo-parser] header falló para ${job.fileName}:`, headerErr);
+        }
+        throwIfAborted();
+
+        current = "uploading";
+        updateJob(job.id, { stage: current });
         const path = `${Date.now()}-${job.file.name}`;
         const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file, {
           contentType: "application/octet-stream",
@@ -240,14 +257,15 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
 
         current = "parsing";
         updateJob(job.id, { stage: current });
-        await new Promise((r) => setTimeout(r, 400));
         throwIfAborted();
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
           body: {
             path,
             rival: job.overrides?.rival,
             match_type: job.overrides?.matchType,
-            map: job.overrides?.map,
+            // Prefer the map we just read from the demo header. Fall back to
+            // whatever the user set in the pre-upload override.
+            map: detectedMap ?? job.overrides?.map,
           },
         });
         throwIfAborted();
