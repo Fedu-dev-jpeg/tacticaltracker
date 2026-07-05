@@ -345,11 +345,39 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <div className="h-7 w-7 rounded-full border border-destructive/40 flex items-center justify-center">
-                                  <HelpCircle className="h-3.5 w-3.5 text-destructive" />
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <div className="h-7 w-7 rounded-full border border-destructive/40 flex items-center justify-center">
+                                    <HelpCircle className="h-3.5 w-3.5 text-destructive" />
+                                  </div>
+                                  <span className="text-destructive text-[11px] uppercase">Sin vincular — asignar manual</span>
                                 </div>
-                                <span className="text-destructive text-[11px] uppercase">Sin vincular</span>
+                                <div className="flex items-center gap-1.5">
+                                  <Select
+                                    value={manualLinks[p.steam_id] ?? ""}
+                                    onValueChange={(v) => setManualLinks((prev) => ({ ...prev, [p.steam_id]: v }))}
+                                  >
+                                    <SelectTrigger className="h-7 text-[11px] w-36">
+                                      <SelectValue placeholder="Elegir jugador" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {players.map((m) => (
+                                        <SelectItem key={m.id} value={m.id} className="text-xs">
+                                          {m.player_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[11px]"
+                                    disabled={!manualLinks[p.steam_id] || assigning === p.steam_id}
+                                    onClick={() => assignManualLink(p)}
+                                  >
+                                    {assigning === p.steam_id ? <Loader2 className="h-3 w-3 animate-spin" /> : <><UserPlus className="h-3 w-3 mr-1" /> Vincular</>}
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </td>
