@@ -2,13 +2,14 @@ import { useState, useMemo } from "react";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType } from "@/types/match";
 import { isWin } from "@/hooks/useMatches";
 import { format } from "date-fns";
-import { Download, Trash2, Search, Pencil, X } from "lucide-react";
+import { Download, Trash2, Search, Pencil, X, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import TrainingForm from "@/components/TrainingForm";
+import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 
 interface HistoryProps {
   matches: Match[];
