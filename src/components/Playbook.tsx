@@ -775,3 +775,178 @@ function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel }: {
     </form>
   );
 }
+
+// -----------------------------
+// Individual / Core tab
+// -----------------------------
+function IndividualCoreTab({
+  playerDescriptions,
+  savePlayerDesc,
+  editingPlayerDesc,
+  setEditingPlayerDesc,
+  tempPlayerDesc,
+  setTempPlayerDesc,
+  strategies,
+}: {
+  playerDescriptions: Record<string, string>;
+  savePlayerDesc: (player: string) => void | Promise<void>;
+  editingPlayerDesc: string | null;
+  setEditingPlayerDesc: (v: string | null) => void;
+  tempPlayerDesc: string;
+  setTempPlayerDesc: (v: string) => void;
+  strategies: Strategy[];
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {PLAYERS.map((p) => {
+          const isEditing = editingPlayerDesc === p;
+          const stratCount = strategies.filter((s) => s.playerRoles[p]).length;
+          return (
+            <div key={p} className="rounded-lg border border-border bg-card p-4 card-glow">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center font-heading font-bold text-accent">
+                  {p.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-heading font-bold">{p}</div>
+                  {isEditing ? (
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        value={tempPlayerDesc}
+                        onChange={(e) => setTempPlayerDesc(e.target.value)}
+                        placeholder="Rol / core del jugador"
+                        className="h-7 text-xs"
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); savePlayerDesc(p); } }}
+                      />
+                      <button onClick={() => savePlayerDesc(p)} className="text-success"><Check className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setEditingPlayerDesc(null)} className="text-muted-foreground"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground truncate">
+                      {playerDescriptions[p] || <span className="italic opacity-60">Sin rol definido</span>}
+                    </div>
+                  )}
+                </div>
+                {!isEditing && (
+                  <button
+                    onClick={() => { setEditingPlayerDesc(p); setTempPlayerDesc(playerDescriptions[p] || ""); }}
+                    className="text-muted-foreground hover:text-accent"
+                    title="Editar rol"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>Estrategias asignadas</span>
+                <span className="font-mono text-accent">{stratCount}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-[11px] text-muted-foreground">
+        Los coaches no aparecen acá — el playbook individual es solo para los 5 jugadores.
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------
+// Generic Protocolos / Setups tab
+// -----------------------------
+function BookList({
+  book,
+  strategies,
+  setStrategies,
+  title,
+  description,
+}: {
+  book: "protocolos" | "setups";
+  strategies: Strategy[];
+  setStrategies: React.Dispatch<React.SetStateAction<Strategy[]>>;
+  title: string;
+  description: string;
+}) {
+  const items = strategies.filter((s) => (s as unknown as { book?: string }).book === book || (book === "protocolos" && s.type === "__protocolo__") || (book === "setups" && s.type === "__setup__"));
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const id = crypto.randomUUID();
+    const row = {
+      id,
+      map: "Nuke" as MapName,
+      side: "TR" as const,
+      type: book === "protocolos" ? "__protocolo__" : "__setup__",
+      name: name.trim(),
+      description: desc.trim(),
+      player_roles: {} as unknown as Record<string, string>,
+      notes: "",
+      link: "",
+      status: "Ready" as const,
+      book,
+    };
+    const { error } = await supabase.from("strategies").insert(row as never);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    setStrategies((prev) => [{ ...row, playerRoles: {} } as Strategy, ...prev]);
+    setName(""); setDesc("");
+    toast.success(`${title === "Protocolos" ? "Protocolo" : "Setup"} agregado`);
+  };
+
+  const remove = async (id: string) => {
+    await supabase.from("strategies").delete().eq("id", id);
+    setStrategies((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-heading font-bold">{title}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+        <Label className="text-xs">Nuevo {title === "Protocolos" ? "protocolo" : "setup"}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Título" />
+        <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Detalle / pasos" rows={3} />
+        <div className="flex justify-end">
+          <Button size="sm" onClick={add} disabled={saving || !name.trim()}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar
+          </Button>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <BookOpen className="h-10 w-10 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">Sin {title.toLowerCase()} todavía.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((s) => (
+            <div key={s.id} className="rounded-lg border border-border bg-card p-4 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-heading font-semibold">{s.name}</div>
+                {s.description && <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{s.description}</p>}
+              </div>
+              <button
+                onClick={() => remove(s.id)}
+                className="text-muted-foreground hover:text-destructive shrink-0"
+                title="Eliminar"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
