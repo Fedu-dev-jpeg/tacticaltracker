@@ -196,6 +196,27 @@ async function parseFile(
   let pendingWinner: number | null = null;
   let pendingReason = 0;
   const gameRulesFieldsSeen = new Set<string>();
+  // Fallback tally: deaths per side in current round + bomb events.
+  // Team numbers in CS2: 2 = TERRORIST, 3 = CT.
+  let deathsCT = 0;
+  let deathsT = 0;
+  let bombExploded = false;
+  let bombDefused = false;
+  let fallbackUsed = 0;
+  // Lookup victim/attacker current team from user_info string table.
+  const getTeam = (userid: number): number | null => {
+    const demo = parser.getDemo();
+    const ui = demo?.stringTableContainer?.getByName?.(StringTableType.USER_INFO.name);
+    if (!ui) return null;
+    for (const e of ui.getEntries()) {
+      const v = e.value;
+      if (v && Number(v.userid) === userid) {
+        const tn = Number(v.team_number ?? v.teamnumber ?? v.team);
+        return Number.isFinite(tn) ? tn : null;
+      }
+    }
+    return null;
+  };
 
   // Snapshot user_info string table into `players` (lazy — only after
   // string tables have been populated by the parser).
