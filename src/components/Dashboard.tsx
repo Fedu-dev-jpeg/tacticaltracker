@@ -119,34 +119,8 @@ export default function Dashboard({ matches }: DashboardProps) {
   const bestMap = [...mapData].filter((m) => m.played > 0).sort((a, b) => b.winRate - a.winRate)[0];
   const worstMap = [...mapData].filter((m) => m.played > 0).sort((a, b) => a.winRate - b.winRate)[0];
 
-  const pistolData = [
-    { name: "CT Pistol", value: getPistolRate(matches, "CT"), side: "CT" },
-    { name: "TR Pistol", value: getPistolRate(matches, "TR"), side: "TR" },
-    { name: "CT 2nd Rd", value: getConversionRate(matches, "CT"), side: "CT" },
-    { name: "TR 2nd Rd", value: getConversionRate(matches, "TR"), side: "TR" },
-  ];
-
   const weeklyData = getWeeklyTrend(matches);
 
-  // Result trend: recent matches diff (+1 win / -1 loss cumulative)
-  const trendMatches = [...matches]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .slice(-12);
-  let running = 0;
-  const trendData = trendMatches.map((m, i) => {
-    running += isWin(m) ? 1 : -1;
-    return { idx: i + 1, diff: running, win: isWin(m) };
-  });
-  const wlDiff = trendData.length ? trendData[trendData.length - 1].diff : 0;
-  const wins = matches.filter(isWin).length;
-  const losses = matches.length - wins;
-  // longest streak
-  let longest = 0, cur = 0, curType: "W" | "L" | null = null;
-  [...matches].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).forEach((m) => {
-    const t = isWin(m) ? "W" : "L";
-    if (t === curType) cur++; else { curType = t; cur = 1; }
-    if (cur > longest) longest = cur;
-  });
 
   const last10 = [...matches].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
 
