@@ -51,6 +51,12 @@ interface ParsedDemo {
   demo_data?: DemoData;
 }
 
+interface DemoOverrides {
+  rival: string;
+  matchType: "OFFICIAL" | "TRAINING";
+  map: string;
+}
+
 interface Job {
   id: string;
   fileName: string;
@@ -65,8 +71,10 @@ interface Job {
   startedAt: number | null;
   finishedAt: number | null;
   durationMs: number | null;
+  overrides?: DemoOverrides;
 }
 
+const MAP_OPTIONS = ["Mirage", "Inferno", "Nuke", "Anubis", "Ancient", "Dust2", "Vertigo", "Overpass", "Train"] as const;
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
 const RETRY_ATTEMPT_OPTIONS = [2, 3, 4, 5] as const;
 const RETRIABLE_STAGES: Stage[] = ["parsing", "matching"];
@@ -139,6 +147,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
+  // Pre-upload confirmation dialog
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [overridesDraft, setOverridesDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
@@ -230,7 +241,14 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         updateJob(job.id, { stage: current });
         await new Promise((r) => setTimeout(r, 400));
         throwIfAborted();
-        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
+        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
+          body: {
+            path,
+            rival: job.overrides?.rival,
+            match_type: job.overrides?.matchType,
+            map: job.overrides?.map,
+          },
+        });
         throwIfAborted();
         if (fnErr) throw new Error("Parser: " + fnErr.message);
 
@@ -318,7 +336,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   }, []);
 
   const startJobs = useCallback(
-    (files: File[]) => {
+    (files: File[], overrides?: DemoOverrides) => {
       const valid: File[] = [];
       for (const f of files) {
         if (!f.name.match(/\.(dem|dem\.bz2|bz2)$/i)) {
@@ -342,12 +360,33 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         startedAt: null,
         finishedAt: null,
         durationMs: null,
+        overrides,
       }));
       setJobs((prev) => [...prev, ...newJobs]);
       // scheduler effect will pick them up
     },
     [autoRetry, maxAttempts],
   );
+
+  // Ask user to confirm rival / tipo / mapa before queueing.
+  const queueFiles = useCallback((files: File[]) => {
+    const valid = files.filter((f) => f.name.match(/\.(dem|dem\.bz2|bz2)$/i));
+    const invalid = files.filter((f) => !f.name.match(/\.(dem|dem\.bz2|bz2)$/i));
+    invalid.forEach((f) => toast.error(`Ignorado: ${f.name} (no es .dem)`));
+    if (valid.length === 0) return;
+    setOverridesDraft({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
+    setPendingFiles(valid);
+  }, []);
+
+  const confirmPending = useCallback(() => {
+    const rival = overridesDraft.rival.trim();
+    if (!rival) {
+      toast.error("Ingresá el nombre del equipo rival");
+      return;
+    }
+    startJobs(pendingFiles, { ...overridesDraft, rival });
+    setPendingFiles([]);
+  }, [overridesDraft, pendingFiles, startJobs]);
 
   const cancelJob = useCallback((id: string) => {
     setJobs((prev) => {
@@ -490,7 +529,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               e.preventDefault();
               setDragOver(false);
               const fs = Array.from(e.dataTransfer.files ?? []);
-              if (fs.length) startJobs(fs);
+              if (fs.length) queueFiles(fs);
             }}
           >
             <input
@@ -500,7 +539,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               className="hidden"
               onChange={(e) => {
                 const fs = Array.from(e.target.files ?? []);
-                if (fs.length) startJobs(fs);
+                if (fs.length) queueFiles(fs);
                 e.currentTarget.value = "";
               }}
             />
@@ -879,7 +918,57 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         )}
       </CardContent>
       <ErrorDetailsDialog job={errorJob} onOpenChange={(open) => { if (!open) setErrorJobId(null); }} onRetry={() => { if (errorJob) { retryJob(errorJob.id); setErrorJobId(null); } }} />
+
+      <Dialog open={pendingFiles.length > 0} onOpenChange={(o) => { if (!o) setPendingFiles([]); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar datos de la demo</DialogTitle>
+            <DialogDescription>
+              {pendingFiles.length === 1
+                ? `Se aplicarán a: ${pendingFiles[0].name}`
+                : `Se aplicarán a las ${pendingFiles.length} demos seleccionadas.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="rival-input" className="text-xs">Equipo rival</Label>
+              <Input
+                id="rival-input"
+                autoFocus
+                placeholder="Ej: Team Nova"
+                value={overridesDraft.rival}
+                onChange={(e) => setOverridesDraft((d) => ({ ...d, rival: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmPending(); }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo de partido</Label>
+              <Select value={overridesDraft.matchType} onValueChange={(v) => setOverridesDraft((d) => ({ ...d, matchType: v as "OFFICIAL" | "TRAINING" }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OFFICIAL">Torneo / Oficial</SelectItem>
+                  <SelectItem value="TRAINING">Entrenamiento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mapa</Label>
+              <Select value={overridesDraft.map} onValueChange={(v) => setOverridesDraft((d) => ({ ...d, map: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MAP_OPTIONS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPendingFiles([])}>Cancelar</Button>
+            <Button onClick={confirmPending}>Subir {pendingFiles.length > 1 ? `${pendingFiles.length} demos` : "demo"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
+
   );
 }
 
