@@ -23,6 +23,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
   const [syncing, setSyncing] = useState(false);
   const [calKey, setCalKey] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [calPass, setCalPass] = useState("");
   const [integ, setInteg] = useState<Integ | null>(null);
 
   const userId = user?.id;
@@ -31,14 +32,16 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
     let cancelled = false;
     supabase
       .from("integrations")
-      .select("teamup_calendar_key, teamup_api_key, teamup_last_sync")
+      .select("teamup_calendar_key, teamup_api_key, teamup_password, teamup_last_sync")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
-        setInteg(data ?? null);
-        setCalKey(data?.teamup_calendar_key ?? "");
-        setApiKey(data?.teamup_api_key ?? "");
+        const d = data as (Integ & { teamup_password?: string | null }) | null;
+        setInteg(d ?? null);
+        setCalKey(d?.teamup_calendar_key ?? "");
+        setApiKey(d?.teamup_api_key ?? "");
+        setCalPass(d?.teamup_password ?? "");
         setLoading(false);
       });
     return () => {
@@ -55,6 +58,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
         user_id: user.id,
         teamup_calendar_key: calKey.trim() || null,
         teamup_api_key: apiKey.trim() || null,
+        teamup_password: calPass.trim() || null,
       },
       { onConflict: "user_id" },
     );
@@ -65,6 +69,7 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
       setInteg({ teamup_calendar_key: calKey, teamup_api_key: apiKey, teamup_last_sync: integ?.teamup_last_sync ?? null });
     }
   };
+
 
   const sync = async () => {
     setSyncing(true);
