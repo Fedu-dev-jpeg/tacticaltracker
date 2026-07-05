@@ -94,6 +94,7 @@ export type Database = {
           ct_second_round: string
           ct_setup: string
           date: string
+          demo_data: Json | null
           id: string
           map: string
           notes: string
@@ -116,6 +117,7 @@ export type Database = {
           ct_second_round?: string
           ct_setup?: string
           date?: string
+          demo_data?: Json | null
           id?: string
           map: string
           notes?: string
@@ -138,6 +140,7 @@ export type Database = {
           ct_second_round?: string
           ct_setup?: string
           date?: string
+          demo_data?: Json | null
           id?: string
           map?: string
           notes?: string

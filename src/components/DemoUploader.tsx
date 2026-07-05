@@ -3,29 +3,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Upload, FileArchive, Loader2, CheckCircle2, AlertCircle, Link2, Tag, HelpCircle, Sparkles, BarChart3, CloudUpload, Cpu, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 
-type Status = "idle" | "uploading" | "parsing" | "matching" | "done" | "error";
+type Stage = "idle" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error";
+
+const STAGES: { key: Stage; label: string; icon: React.ElementType; pct: number }[] = [
+  { key: "uploading", label: "Subiendo demo", icon: CloudUpload, pct: 20 },
+  { key: "parsing", label: "Parseando rounds y economía", icon: Cpu, pct: 55 },
+  { key: "matching", label: "Vinculando jugadores por SteamID", icon: Link2, pct: 80 },
+  { key: "saving", label: "Guardando en base de datos", icon: Save, pct: 95 },
+  { key: "done", label: "Import completado", icon: CheckCircle2, pct: 100 },
+];
 
 interface ParsedPlayer {
-  steam_id: string;
-  steam_tag: string;
+  steam_id: string; steam_tag: string;
   matched_user_id: string | null;
   matched_player_name: string | null;
   match_type: "steam_id" | "steam_tag" | "unmatched";
   avatar_url: string | null;
-  kills: number;
-  deaths: number;
-  assists: number;
-  adr: number;
-  hs_pct: number;
-  kast_pct: number;
-  rating: number;
+  kills: number; deaths: number; assists: number;
+  adr: number; hs_pct: number; kast_pct: number; rating: number;
 }
-
 interface ParsedDemo {
   status?: string;
   simulated?: boolean;
@@ -38,14 +41,17 @@ interface ParsedDemo {
   total_rounds?: number;
   players?: ParsedPlayer[];
   summary?: { total: number; by_steam_id: number; by_steam_tag: number; unmatched: number };
+  demo_data?: DemoData;
 }
 
 export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) => void }) {
-  const [status, setStatus] = useState<Status>("idle");
-  const [progress, setProgress] = useState("");
+  const [stage, setStage] = useState<Stage>("idle");
   const [dragOver, setDragOver] = useState(false);
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string>("");
+
+  const currentPct = STAGES.find((s) => s.key === stage)?.pct ?? 0;
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -55,29 +61,31 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       }
       setError(null);
       setResult(null);
+      setFileName(file.name);
       try {
-        setStatus("uploading");
-        setProgress(`Subiendo ${file.name}...`);
+        setStage("uploading");
         const path = `${Date.now()}-${file.name}`;
         const { error: upErr } = await supabase.storage.from("demos").upload(path, file, {
           contentType: "application/octet-stream",
         });
         if (upErr) throw new Error("Upload: " + upErr.message);
 
-        setStatus("parsing");
-        setProgress("Parseando demo y extrayendo stats...");
+        setStage("parsing");
+        // Small delay so the user sees the parsing stage
+        await new Promise((r) => setTimeout(r, 400));
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
         if (fnErr) throw new Error("Parser: " + fnErr.message);
 
-        setStatus("matching");
-        setProgress("Vinculando jugadores por SteamID...");
+        setStage("matching");
+        await new Promise((r) => setTimeout(r, 300));
+        setStage("saving");
+        await new Promise((r) => setTimeout(r, 250));
         setResult(data as ParsedDemo);
         onParsed(data as ParsedDemo);
-        setStatus("done");
-        setProgress("Import completado");
+        setStage("done");
         toast.success("Demo importada correctamente");
       } catch (e) {
-        setStatus("error");
+        setStage("error");
         setError(String((e as Error).message));
         toast.error("Falló el procesamiento");
       }
@@ -85,58 +93,116 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     [onParsed],
   );
 
+  const stageActive = (key: Stage) => {
+    if (stage === "done") return true;
+    const order = STAGES.map((s) => s.key);
+    return order.indexOf(key) <= order.indexOf(stage);
+  };
+
   return (
     <Card className="border-border">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <FileArchive className="h-4 w-4 text-accent" />
           Importar Demo (.dem)
+          {result?.demo_data && (
+            <div className="ml-auto">
+              <MatchStatsDialog data={result.demo_data} />
+            </div>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <label
-          className={cn(
-            "block border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
-            dragOver ? "border-accent bg-accent/10" : "border-border hover:border-accent/50 bg-muted/20",
-          )}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) handleFile(f);
-          }}
-        >
-          <input
-            type="file"
-            accept=".dem,.bz2"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
+        <div className="flex items-start gap-3">
+          <label
+            className={cn(
+              "flex-1 block border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+              dragOver ? "border-accent bg-accent/10" : "border-border hover:border-accent/50 bg-muted/20",
+            )}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
               if (f) handleFile(f);
             }}
-          />
-          <Upload className="h-10 w-10 mx-auto text-accent mb-3" />
-          <div className="text-sm font-medium mb-1">Arrastrá el .dem acá</div>
-          <div className="text-xs text-muted-foreground mb-4">
-            Vinculación automática por <span className="text-accent">SteamID64</span> · fallback por steam tag
-          </div>
-          <Button type="button" variant="default" size="sm" className="pointer-events-none">
-            Seleccionar archivo .dem / .dem.bz2
-          </Button>
-        </label>
+          >
+            <input
+              type="file"
+              accept=".dem,.bz2"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+            <Upload className="h-10 w-10 mx-auto text-accent mb-3" />
+            <div className="text-sm font-medium mb-1">Arrastrá el .dem acá</div>
+            <div className="text-xs text-muted-foreground mb-4">
+              Vinculación automática por <span className="text-accent">SteamID64</span> · fallback por steam tag
+            </div>
+            <Button type="button" variant="default" size="sm" className="pointer-events-none">
+              Seleccionar archivo .dem / .dem.bz2
+            </Button>
+          </label>
 
-        {status !== "idle" && status !== "done" && (
-          <div className="flex items-center gap-2 text-sm">
-            {status === "error" ? (
-              <AlertCircle className="h-4 w-4 text-destructive" />
-            ) : (
-              <Loader2 className="h-4 w-4 animate-spin text-accent" />
-            )}
-            <span className={status === "error" ? "text-destructive" : "text-muted-foreground"}>
-              {error ?? progress}
-            </span>
+          {result?.demo_data && (
+            <MatchStatsDialog
+              data={result.demo_data}
+              trigger={
+                <button
+                  type="button"
+                  className="flex flex-col items-center justify-center gap-2 w-32 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/20 transition-colors p-4"
+                >
+                  <BarChart3 className="h-6 w-6 text-accent" />
+                  <div className="text-xs font-heading font-bold text-accent">Stats</div>
+                  <div className="text-[10px] text-muted-foreground text-center">Ver estadísticas de la demo</div>
+                </button>
+              }
+            />
+          )}
+        </div>
+
+        {/* Progress area */}
+        {stage !== "idle" && (
+          <div className="rounded-md border border-border bg-card/40 p-3 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                {stage === "error" ? (
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                ) : stage === "done" ? (
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                ) : (
+                  <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                )}
+                <span className={cn(stage === "error" && "text-destructive", stage === "done" && "text-success")}>
+                  {stage === "error" ? error : STAGES.find((s) => s.key === stage)?.label}
+                </span>
+              </div>
+              {fileName && <span className="text-muted-foreground text-[10px] truncate max-w-[200px]">{fileName}</span>}
+            </div>
+            <Progress value={stage === "error" ? 0 : currentPct} className="h-1.5" />
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+              {STAGES.map((s) => {
+                const active = stageActive(s.key);
+                const isCurrent = stage === s.key;
+                const Icon = s.icon;
+                return (
+                  <div
+                    key={s.key}
+                    className={cn(
+                      "flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded border transition-colors",
+                      active ? "border-accent/40 bg-accent/10 text-accent" : "border-border bg-muted/20 text-muted-foreground",
+                      isCurrent && stage !== "done" && "animate-pulse",
+                    )}
+                  >
+                    <Icon className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{s.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -148,12 +214,11 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 <div className="text-muted-foreground">
                   <span className="text-foreground font-medium">Parser en modo simulado.</span> Los datos se
                   generan a partir del archivo hasta que se conecte el parser real de <code>.dem</code>.
-                  La lógica de vinculación por SteamID64 y tag ya es real.
+                  La lógica de vinculación por SteamID64 y tag, la persistencia y el análisis de rounds/economía ya son reales.
                 </div>
               </div>
             )}
 
-            {/* Match header */}
             <div className="rounded-md border border-border bg-card/50 p-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
               <MetaCell label="Mapa" value={result.map ?? "—"} />
               <MetaCell label="Rival" value={result.rival ?? "—"} />
@@ -162,7 +227,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               <MetaCell label="Rounds" value={String(result.total_rounds ?? 0)} />
             </div>
 
-            {/* Match summary */}
             {result.summary && (
               <div className="flex flex-wrap gap-2 text-[11px]">
                 <Badge className="bg-success/20 text-success border-success/30">
@@ -180,7 +244,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               </div>
             )}
 
-            {/* Per-player stat rows */}
             {result.players && result.players.length > 0 && (
               <div className="space-y-1.5">
                 <div className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -245,11 +308,6 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 </div>
               </div>
             )}
-
-            <div className="flex items-center gap-2 text-sm text-success">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Import completado y guardado en la base.</span>
-            </div>
           </div>
         )}
       </CardContent>
