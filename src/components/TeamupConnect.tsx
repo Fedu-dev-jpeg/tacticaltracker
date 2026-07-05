@@ -158,6 +158,9 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
               </span>
             )}
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            El pull importa eventos del rango <span className="text-accent">−30 días</span> a <span className="text-accent">+90 días</span> desde hoy. Cada evento nuevo/editado desde la app se publica automáticamente a Teamup (verás toast con el ID).
+          </p>
         </CardContent>
       )}
     </Card>
