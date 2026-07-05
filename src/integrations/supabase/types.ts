@@ -22,6 +22,7 @@ export type Database = {
           description: string
           event_type: string
           id: string
+          teamup_event_id: string | null
           time_end: string
           time_start: string
           title: string
@@ -34,6 +35,7 @@ export type Database = {
           description?: string
           event_type?: string
           id?: string
+          teamup_event_id?: string | null
           time_end?: string
           time_start?: string
           title: string
@@ -46,10 +48,41 @@ export type Database = {
           description?: string
           event_type?: string
           id?: string
+          teamup_event_id?: string | null
           time_end?: string
           time_start?: string
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      integrations: {
+        Row: {
+          created_at: string
+          id: string
+          teamup_api_key: string | null
+          teamup_calendar_key: string | null
+          teamup_last_sync: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          teamup_api_key?: string | null
+          teamup_calendar_key?: string | null
+          teamup_last_sync?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          teamup_api_key?: string | null
+          teamup_calendar_key?: string | null
+          teamup_last_sync?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -228,6 +261,7 @@ export type Database = {
       }
       strategies: {
         Row: {
+          book: string
           created_at: string
           description: string
           id: string
@@ -242,6 +276,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          book?: string
           created_at?: string
           description?: string
           id?: string
@@ -256,6 +291,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          book?: string
           created_at?: string
           description?: string
           id?: string
