@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS agenda_events_teamup_event_id_key ON public.agenda_events(teamup_event_id) WHERE teamup_event_id IS NOT NULL;
