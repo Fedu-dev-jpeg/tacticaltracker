@@ -241,7 +241,14 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         updateJob(job.id, { stage: current });
         await new Promise((r) => setTimeout(r, 400));
         throwIfAborted();
-        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", { body: { path } });
+        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
+          body: {
+            path,
+            rival: job.overrides?.rival,
+            match_type: job.overrides?.matchType,
+            map: job.overrides?.map,
+          },
+        });
         throwIfAborted();
         if (fnErr) throw new Error("Parser: " + fnErr.message);
 
