@@ -332,11 +332,32 @@ async function parseFile(
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
 
+  // Post-filter: drop coaches / no-shows. A CS2 coach shows up in user_info
+  // but never fires player_death / player_hurt as attacker or victim, so their
+  // K/D/A/damage stay at zero. Anyone with truly no participation is dropped.
+  const activePlayers = [...players.values()].filter((p) =>
+    p.kills > 0 || p.deaths > 0 || p.assists > 0 || p.damage > 0 || p.first_kills > 0 || p.first_deaths > 0,
+  );
+
   // Derive score from rounds.
   let ct = 0, t = 0;
   for (const r of rounds) {
     if (r.winner_side === "CT") ct += 1; else t += 1;
   }
+
+  // Diagnostic log: the top event names + count of round_end packets we saw
+  // but couldn't attribute a winner to. Helps triage 0-0 scores.
+  const topEvents = [...eventCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+  console.log("[demo-parser worker] event summary", {
+    rounds: rounds.length,
+    score: { ct, t },
+    players_kept: activePlayers.length,
+    players_dropped: players.size - activePlayers.length,
+    missed_round_ends: debugMissedRoundEnd,
+    top_events: Object.fromEntries(topEvents),
+  });
 
   onProgress(98, "Consolidando resultado", "finalize");
 
@@ -347,7 +368,7 @@ async function parseFile(
     total_rounds: rounds.length,
     score: { ct, t },
     rounds,
-    players: [ ...players.values() ],
+    players: activePlayers,
     duration_ticks: lastTick,
   };
 }
