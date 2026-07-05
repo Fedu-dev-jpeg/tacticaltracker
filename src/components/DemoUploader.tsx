@@ -17,6 +17,7 @@ import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { parseDemoFull } from "@/lib/demoParser";
+import { startJobLog, log as demoLog, downloadJobLog, copyJobLog } from "@/lib/demoLog";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
