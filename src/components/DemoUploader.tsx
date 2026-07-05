@@ -86,22 +86,24 @@ type StatusFilter = "all" | "queued" | "active" | "done" | "error" | "cancelled"
 type AttemptFilter = "all" | "first" | "retried";
 
 function serializeJobs(jobs: Job[]) {
-  return jobs.map((j) => ({
-    id: j.id,
-    fileName: j.fileName,
-    // Active/queued jobs can't survive a reload (File is gone); flag them as error.
-    stage: (["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage) ? "error" : j.stage) as Stage,
-    failedStage: ["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage) ? (j.stage as Stage) : j.failedStage,
-    error: ["uploading", "parsing", "matching", "saving", "queued"].includes(j.stage)
-      ? "Interrumpido por recarga de la página — volvé a subir el archivo"
-      : j.error,
-    result: j.result,
-    attempt: j.attempt,
-    maxAttempts: j.maxAttempts,
-    startedAt: j.startedAt,
-    finishedAt: j.finishedAt,
-    durationMs: j.durationMs,
-  }));
+  // Only persist terminal jobs — active/queued ones can't survive a reload
+  // (the File object is gone) so we drop them instead of surfacing fake errors.
+  const TERMINAL: Stage[] = ["done", "error", "cancelled"];
+  return jobs
+    .filter((j) => TERMINAL.includes(j.stage))
+    .map((j) => ({
+      id: j.id,
+      fileName: j.fileName,
+      stage: j.stage,
+      failedStage: j.failedStage,
+      error: j.error,
+      result: j.result,
+      attempt: j.attempt,
+      maxAttempts: j.maxAttempts,
+      startedAt: j.startedAt,
+      finishedAt: j.finishedAt,
+      durationMs: j.durationMs,
+    }));
 }
 
 function loadPersistedJobs(): Job[] {
