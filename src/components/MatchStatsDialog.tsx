@@ -423,6 +423,15 @@ function RoundsTimeline({ demo, storageKey, compact }: { demo: DemoData; storage
   const reasonSet = useMemo(() => new Set<EndReason>(reasons), [reasons]);
   const rounds = demo.rounds;
 
+  if (!rounds || rounds.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border p-4 text-center">
+        <h3 className="font-heading font-bold text-sm">{compact ? "Round Timeline" : "Round Analysis"}</h3>
+        <p className="text-xs text-muted-foreground mt-1">Pendiente de parser completo — el análisis por rounds aún no está disponible para esta demo.</p>
+      </div>
+    );
+  }
+
   const matches = useMemo(() => {
     const set = new Set<number>();
     rounds.forEach((r) => {
