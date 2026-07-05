@@ -91,9 +91,12 @@ export function normalizeMapName(raw: string): string {
 // ─── Full demo parser (browser Web Worker) ────────────────────────────────
 // Runs the real @deademx/cs2 parser inside a Worker so the main thread stays
 // responsive during bz2 decompression + event iteration on ~1 GB streams.
+export type ParserStage = "read" | "bz2" | "parse" | "finalize";
+export type ParserProgress = (pct: number, label: string, stage: ParserStage) => void;
+
 export function parseDemoFull(
   file: File,
-  onProgress?: (pct: number, label: string) => void,
+  onProgress?: ParserProgress,
 ): Promise<RawParsedDemo> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../workers/demoParser.worker.ts", import.meta.url), { type: "module" });
@@ -103,9 +106,9 @@ export function parseDemoFull(
       reject(new Error(`Worker error: ${e.message || "desconocido"}`));
     };
     worker.onmessage = (ev: MessageEvent) => {
-      const msg = ev.data as { type: string; pct?: number; label?: string; message?: string; data?: RawParsedDemo };
+      const msg = ev.data as { type: string; pct?: number; label?: string; stage?: ParserStage; message?: string; data?: RawParsedDemo };
       if (msg.type === "progress") {
-        onProgress?.(msg.pct ?? 0, msg.label ?? "");
+        onProgress?.(msg.pct ?? 0, msg.label ?? "", msg.stage ?? "parse");
       } else if (msg.type === "done" && msg.data) {
         cleanup();
         resolve(msg.data);

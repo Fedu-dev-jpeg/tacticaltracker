@@ -58,6 +58,14 @@ interface DemoOverrides {
   map: string;
 }
 
+export type ParserStageKey = "read" | "bz2" | "parse" | "finalize";
+export interface ParserStageInfo {
+  pct: number;              // last reported % within this stage's overall bar
+  label: string;            // last human label ("Descomprimiendo bz2 (245 MB)")
+  startedAt: number;        // ms epoch when stage first became active
+  endedAt: number | null;   // ms epoch when a newer stage took over
+}
+
 interface Job {
   id: string;
   fileName: string;
@@ -73,7 +81,11 @@ interface Job {
   finishedAt: number | null;
   durationMs: number | null;
   overrides?: DemoOverrides;
+  parserStages?: Partial<Record<ParserStageKey, ParserStageInfo>>;
+  parserStageCurrent?: ParserStageKey | null;
+  parserPct?: number;
 }
+
 
 const MAP_OPTIONS = ["Mirage", "Inferno", "Nuke", "Anubis", "Ancient", "Dust2", "Vertigo", "Overpass", "Train"] as const;
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
@@ -235,15 +247,42 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         //    events). This yields the real map / score / K-D-A directly from
         //    the .dem — no more simulator on the server.
         current = "parsing";
-        updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
+        updateJob(job.id, {
+          stage: current,
+          startedAt: t0,
+          finishedAt: null,
+          durationMs: null,
+          parserStages: {},
+          parserStageCurrent: null,
+          parserPct: 0,
+        });
         let rawParsed: Awaited<ReturnType<typeof parseDemoFull>> | null = null;
         try {
-          rawParsed = await parseDemoFull(job.file, (pct, label) => {
-            // Surface progress into the job label so the UI shows real-time %.
-            updateJob(job.id, { error: `${label} (${pct}%)` });
+          rawParsed = await parseDemoFull(job.file, (pct, label, stage) => {
+            const now = Date.now();
+            setJobs((prev) => prev.map((j) => {
+              if (j.id !== job.id) return j;
+              const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+              // Close out any stage that isn't the current one.
+              if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
+                stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
+              }
+              const existing = stages[stage];
+              stages[stage] = existing
+                ? { ...existing, pct, label, endedAt: null }
+                : { pct, label, startedAt: now, endedAt: null };
+              return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
+            }));
           });
-          // Clear the transient progress label once parsing finishes.
-          updateJob(job.id, { error: null });
+          // Close the last active stage and clear the transient label.
+          setJobs((prev) => prev.map((j) => {
+            if (j.id !== job.id) return j;
+            const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+            if (j.parserStageCurrent && stages[j.parserStageCurrent]) {
+              stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: Date.now(), pct: 100 };
+            }
+            return { ...j, parserStages: stages, parserStageCurrent: null, parserPct: 100, error: null };
+          }));
           console.log(`[demo-parser] ${job.fileName} → parsed`, {
             map: rawParsed?.map,
             players: rawParsed?.players?.length,
@@ -1265,9 +1304,91 @@ function JobRow({
           );
         })}
       </div>
+      {job.parserStages && Object.keys(job.parserStages).length > 0 && (
+        <ParserStagePanel stages={job.parserStages} current={job.parserStageCurrent ?? null} pct={job.parserPct ?? 0} />
+      )}
     </div>
   );
 }
+
+const PARSER_STAGE_META: Array<{ key: ParserStageKey; label: string }> = [
+  { key: "read",     label: "Lectura" },
+  { key: "bz2",      label: "Descompresión bz2" },
+  { key: "parse",    label: "Rounds + eventos" },
+  { key: "finalize", label: "Consolidación" },
+];
+
+function ParserStagePanel({
+  stages,
+  current,
+  pct,
+}: {
+  stages: Partial<Record<ParserStageKey, ParserStageInfo>>;
+  current: ParserStageKey | null;
+  pct: number;
+}) {
+  // Re-render every 500 ms while a stage is active so the elapsed timer ticks.
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!current) return;
+    const id = window.setInterval(() => force((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [current]);
+
+  const fmtMs = (ms: number) => {
+    if (ms < 1000) return `${ms} ms`;
+    const s = ms / 1000;
+    if (s < 60) return `${s.toFixed(1)} s`;
+    const m = Math.floor(s / 60);
+    const rem = Math.round(s - m * 60);
+    return `${m}m ${rem}s`;
+  };
+
+  return (
+    <div className="rounded border border-border/60 bg-muted/10 p-2 space-y-1.5">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1"><Cpu className="h-3 w-3" /> Parser local (worker)</span>
+        <span className="text-accent font-mono">{pct}%</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        {PARSER_STAGE_META.map((meta) => {
+          const info = stages[meta.key];
+          const isCurrent = current === meta.key;
+          const now = Date.now();
+          const elapsed = info
+            ? (info.endedAt ?? (isCurrent ? now : info.startedAt)) - info.startedAt
+            : 0;
+          const state: "pending" | "active" | "done" = !info
+            ? "pending"
+            : isCurrent
+              ? "active"
+              : "done";
+          return (
+            <div
+              key={meta.key}
+              className={cn(
+                "rounded border px-2 py-1.5 text-[10px] leading-tight",
+                state === "active" && "border-accent/50 bg-accent/10 text-accent",
+                state === "done" && "border-success/40 bg-success/10 text-success",
+                state === "pending" && "border-border bg-background/30 text-muted-foreground",
+              )}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="truncate font-medium">{meta.label}</span>
+                <span className="font-mono">{info ? `${info.pct}%` : "—"}</span>
+              </div>
+              <div className="flex items-center justify-between gap-1 text-[9px] opacity-80">
+                <span className="truncate">{info?.label ?? "en espera"}</span>
+                <span className="font-mono shrink-0">{info ? fmtMs(elapsed) : ""}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 
 function MetaCell({ label, value }: { label: string; value: string }) {
   return (
