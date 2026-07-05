@@ -649,7 +649,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         {/* Jobs list */}
         {jobs.length > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground uppercase tracking-widest">
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground uppercase tracking-widest gap-2">
               <span>Cola de importación · {jobs.length}</span>
               {finishedCount > 0 && (
                 <button onClick={clearCompleted} className="normal-case tracking-normal hover:text-destructive flex items-center gap-1">
@@ -657,18 +657,75 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 </button>
               )}
             </div>
-            {jobs.map((j) => (
-              <JobRow
-                key={j.id}
-                job={j}
-                onCancel={() => cancelJob(j.id)}
-                onRetry={() => retryJob(j.id)}
-                onRemove={() => removeJob(j.id)}
-                onOpen={() => j.result && setResult(j.result)}
-                onShowError={() => setErrorJobId(j.id)}
-                isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
-              />
-            ))}
+
+            {/* Search + filters */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar por nombre de archivo…"
+                  className="h-8 pl-7 text-xs"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-destructive"
+                    aria-label="Limpiar búsqueda"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+                  <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Todos ({jobs.length})</SelectItem>
+                    <SelectItem value="queued" className="text-xs">En cola ({queuedCount})</SelectItem>
+                    <SelectItem value="active" className="text-xs">En curso ({activeCount})</SelectItem>
+                    <SelectItem value="done" className="text-xs">Listas ({doneCount})</SelectItem>
+                    <SelectItem value="error" className="text-xs">Con error ({errorCount})</SelectItem>
+                    <SelectItem value="cancelled" className="text-xs">Canceladas ({cancelledCount})</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={attemptFilter} onValueChange={(v) => setAttemptFilter(v as AttemptFilter)}>
+                  <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Todos los intentos</SelectItem>
+                    <SelectItem value="first" className="text-xs">Primer intento</SelectItem>
+                    <SelectItem value="retried" className="text-xs">Con reintentos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {filteredJobs.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-6 border border-dashed border-border rounded-md">
+                Ningún job coincide con los filtros actuales
+              </div>
+            ) : (
+              filteredJobs.map((j) => (
+                <JobRow
+                  key={j.id}
+                  job={j}
+                  onCancel={() => cancelJob(j.id)}
+                  onRetry={() => retryJob(j.id)}
+                  onRemove={() => removeJob(j.id)}
+                  onOpen={() => j.result && setResult(j.result)}
+                  onShowError={() => setErrorJobId(j.id)}
+                  isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
+                />
+              ))
+            )}
+            {filteredJobs.length > 0 && filteredJobs.length !== jobs.length && (
+              <div className="text-[10px] text-muted-foreground text-center">
+                Mostrando {filteredJobs.length} de {jobs.length}
+              </div>
+            )}
           </div>
         )}
 
