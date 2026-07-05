@@ -247,15 +247,42 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         //    events). This yields the real map / score / K-D-A directly from
         //    the .dem — no more simulator on the server.
         current = "parsing";
-        updateJob(job.id, { stage: current, startedAt: t0, finishedAt: null, durationMs: null });
+        updateJob(job.id, {
+          stage: current,
+          startedAt: t0,
+          finishedAt: null,
+          durationMs: null,
+          parserStages: {},
+          parserStageCurrent: null,
+          parserPct: 0,
+        });
         let rawParsed: Awaited<ReturnType<typeof parseDemoFull>> | null = null;
         try {
-          rawParsed = await parseDemoFull(job.file, (pct, label) => {
-            // Surface progress into the job label so the UI shows real-time %.
-            updateJob(job.id, { error: `${label} (${pct}%)` });
+          rawParsed = await parseDemoFull(job.file, (pct, label, stage) => {
+            const now = Date.now();
+            setJobs((prev) => prev.map((j) => {
+              if (j.id !== job.id) return j;
+              const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+              // Close out any stage that isn't the current one.
+              if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
+                stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
+              }
+              const existing = stages[stage];
+              stages[stage] = existing
+                ? { ...existing, pct, label, endedAt: null }
+                : { pct, label, startedAt: now, endedAt: null };
+              return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
+            }));
           });
-          // Clear the transient progress label once parsing finishes.
-          updateJob(job.id, { error: null });
+          // Close the last active stage and clear the transient label.
+          setJobs((prev) => prev.map((j) => {
+            if (j.id !== job.id) return j;
+            const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+            if (j.parserStageCurrent && stages[j.parserStageCurrent]) {
+              stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: Date.now(), pct: 100 };
+            }
+            return { ...j, parserStages: stages, parserStageCurrent: null, parserPct: 100, error: null };
+          }));
           console.log(`[demo-parser] ${job.fileName} → parsed`, {
             map: rawParsed?.map,
             players: rawParsed?.players?.length,
