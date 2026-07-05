@@ -5,19 +5,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// NOTE: real .dem binary parsing is not yet wired in. Until it is, this
-// function runs a "simulated" import that:
-//   1) verifies the demo file exists in storage
-//   2) generates plausible per-player stats for the current roster
-//   3) tries to match each demo player to a team_member by steam_id (exact)
-//      first, then by steam_tag (case-insensitive) as fallback
-//   4) inserts a matches row + player_stats rows
-//   5) returns a detailed report so the UI can show what was imported and
-//      how each row was linked
-// Once a Deno-compatible .dem parser is wired in, only the "generate" block
-// needs to change — the roster matching, DB writes and response shape stay.
+// SIMULATED parser: produces plausible, deterministic-per-file data.
+// Once a real .dem binary parser is wired in, only the generateAnalysis()
+// block needs to change — the roster matching, DB writes and response
+// shape stay the same.
 
 const MAPS = ["Mirage", "Inferno", "Nuke", "Anubis", "Ancient", "Dust2", "Vertigo", "Overpass", "Train"];
+const RIVAL_NAMES = ["Team Nova", "Ratones", "Gauchos", "LosPibes", "Puntería GC"];
+const RIVAL_TAGS = [
+  ["KING", "meka", "agustoN", "jonny", "Concepts"],
+  ["hunter", "vito", "ninja", "cold", "sparks"],
+  ["neo", "duke", "milo", "wraith", "vex"],
+];
+const ROLES = ["A Anchor", "A Extremity", "B Anchor", "B Cave", "B Extremity", "Awper", "Mid"];
+const BUY_TYPES = ["P", "FE", "E", "HB", "FB"]; // Pistol, Full Eco, Eco, Half Buy, Full Buy
+const END_REASONS = ["Bomb", "Elimination", "Time", "Defuse"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -34,35 +36,40 @@ Deno.serve(async (req) => {
     const { data: file, error } = await admin.storage.from("demos").download(path);
     if (error || !file) return json({ error: "Demo no encontrada: " + (error?.message ?? "unknown") }, 404);
 
-    // Deterministic RNG so re-uploading the same file gives the same "parse".
     const rng = seededRng(hashString(path));
 
-    // Roster available for matching. Skip coaches — they don't get stats.
     const { data: teamRaw } = await admin
       .from("team_members")
       .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url")
       .eq("is_coach", false);
     const roster = (teamRaw ?? []).filter((m) => m.steam_id);
 
-    // --- SIMULATED PARSE OUTPUT -------------------------------------------
+    // --- SIMULATED PARSE ---
     const map = MAPS[Math.floor(rng() * MAPS.length)];
     const startingSide: "CT" | "TR" = rng() > 0.5 ? "CT" : "TR";
     const scoreUs = 6 + Math.floor(rng() * 10);
     const scoreThem = 6 + Math.floor(rng() * 10);
     const totalRounds = scoreUs + scoreThem;
-    const rival = ["Team Nova", "Ratones", "Gauchos", "LosPibes", "Puntería GC"][Math.floor(rng() * 5)];
+    const rival = RIVAL_NAMES[Math.floor(rng() * RIVAL_NAMES.length)];
+    const rivalTags = RIVAL_TAGS[Math.floor(rng() * RIVAL_TAGS.length)];
 
-    // Build demo player rows: every rostered player + one "guest" that hits
-    // the steam_tag fallback path so the UI can showcase both link modes.
-    const demoPlayers = roster.map((m) => genStats(m.steam_id!, m.steam_tag ?? m.player_name, totalRounds, rng));
+    // Build demo player rows for our roster
+    const usPlayers = roster.map((m) => genPlayer(m.steam_id!, m.steam_tag ?? m.player_name, totalRounds, rng, ROLES, false));
     if (roster.length > 0) {
       const tagFallback = roster[0].steam_tag ?? roster[0].player_name;
-      // extra guest with wrong steam_id but matching tag → forces tag fallback path
-      demoPlayers.push(
-        genStats("76561190000000000", tagFallback, totalRounds, rng, { guest: true }),
-      );
+      usPlayers.push(genPlayer("76561190000000000", tagFallback, totalRounds, rng, ROLES, true));
     }
-    // -----------------------------------------------------------------------
+
+    // Rival team players (not stored in player_stats — only inside demo_data)
+    const themPlayers = rivalTags.map((tag, i) =>
+      genPlayer(`76561198${(100000000 + Math.floor(rng() * 900000000))}`, tag, totalRounds, rng, ROLES, false, i === 0),
+    );
+
+    // Rounds timeline
+    const rounds = buildRounds(totalRounds, scoreUs, scoreThem, startingSide, rng);
+
+    // Economy summary
+    const economy = buildEconomy(rounds);
 
     // Insert match row
     const { data: matchRow, error: matchErr } = await admin
@@ -75,14 +82,8 @@ Deno.serve(async (req) => {
         score_us: scoreUs,
         score_them: scoreThem,
         starting_side: startingSide,
-        ct_pistol: "WIN",
-        ct_second_round: "WIN",
-        ct_setup: "WIN",
-        ct_finalizacion: "WIN",
-        tr_pistol: "WIN",
-        tr_second_round: "WIN",
-        tr_setup: "WIN",
-        tr_finalizacion: "WIN",
+        ct_pistol: "WIN", ct_second_round: "WIN", ct_setup: "WIN", ct_finalizacion: "WIN",
+        tr_pistol: "WIN", tr_second_round: "WIN", tr_setup: "WIN", tr_finalizacion: "WIN",
         notes: `Importado desde demo: ${path}`,
         recorded_by: "demo-import",
       })
@@ -90,30 +91,13 @@ Deno.serve(async (req) => {
       .single();
     if (matchErr) return json({ error: "matches insert: " + matchErr.message }, 500);
 
-    // Match + insert player_stats
-    const report: Array<{
-      steam_id: string;
-      steam_tag: string;
-      matched_user_id: string | null;
-      matched_player_name: string | null;
-      match_type: "steam_id" | "steam_tag" | "unmatched";
-      avatar_url: string | null;
-      kills: number;
-      deaths: number;
-      assists: number;
-      adr: number;
-      hs_pct: number;
-      kast_pct: number;
-      rating: number;
-    }> = [];
-
-    for (const p of demoPlayers) {
+    // Vinculación + insert de player_stats
+    const report: any[] = [];
+    for (const p of usPlayers) {
       let matched = roster.find((r) => r.steam_id === p.steam_id);
       let matchType: "steam_id" | "steam_tag" | "unmatched" = matched ? "steam_id" : "unmatched";
       if (!matched) {
-        matched = roster.find(
-          (r) => (r.steam_tag ?? "").toLowerCase() === p.steam_tag.toLowerCase(),
-        );
+        matched = roster.find((r) => (r.steam_tag ?? "").toLowerCase() === p.steam_tag.toLowerCase());
         if (matched) matchType = "steam_tag";
       }
 
@@ -122,47 +106,57 @@ Deno.serve(async (req) => {
         user_id: matched?.user_id ?? null,
         steam_id: p.steam_id,
         steam_tag: p.steam_tag,
-        kills: p.kills,
-        deaths: p.deaths,
-        assists: p.assists,
-        adr: p.adr,
-        hs_pct: p.hs_pct,
-        kast_pct: p.kast_pct,
+        kills: p.kills, deaths: p.deaths, assists: p.assists,
+        adr: p.adr, hs_pct: p.hs_pct, kast_pct: p.kast_pct,
         kr: +(p.kills / totalRounds).toFixed(2),
         dr: +(p.deaths / totalRounds).toFixed(2),
-        fk: p.fk,
-        fd: p.fd,
-        flash_assists: p.flash_assists,
-        util_dmg: p.util_dmg,
-        rating: p.rating,
+        fk: p.fk, fd: p.fd, flash_assists: p.flash_assists,
+        util_dmg: p.util_dmg, rating: p.rating,
       });
 
       report.push({
-        steam_id: p.steam_id,
-        steam_tag: p.steam_tag,
+        steam_id: p.steam_id, steam_tag: p.steam_tag,
         matched_user_id: matched?.user_id ?? null,
         matched_player_name: matched?.player_name ?? null,
         match_type: matchType,
         avatar_url: matched?.steam_avatar_url ?? null,
-        kills: p.kills,
-        deaths: p.deaths,
-        assists: p.assists,
-        adr: p.adr,
-        hs_pct: p.hs_pct,
-        kast_pct: p.kast_pct,
-        rating: p.rating,
+        kills: p.kills, deaths: p.deaths, assists: p.assists,
+        adr: p.adr, hs_pct: p.hs_pct, kast_pct: p.kast_pct, rating: p.rating,
       });
     }
+
+    // Rich demo_data blob
+    const demoData = {
+      version: 1,
+      generated_at: new Date().toISOString(),
+      map, rival,
+      score_us: scoreUs, score_them: scoreThem,
+      starting_side: startingSide,
+      total_rounds: totalRounds,
+      team_us: {
+        name: "Hambrientos",
+        score: scoreUs,
+        players: usPlayers.map((p) => playerForBlob(p, scoreUs > scoreThem)),
+      },
+      team_them: {
+        name: rival,
+        score: scoreThem,
+        players: themPlayers.map((p) => playerForBlob(p, scoreThem > scoreUs)),
+      },
+      rounds,
+      economy,
+      charts: buildCharts(usPlayers, themPlayers),
+    };
+
+    await admin.from("matches").update({ demo_data: demoData }).eq("id", matchRow.id);
 
     return json({
       status: "imported",
       simulated: true,
       match_id: matchRow.id,
       file_size: file.size,
-      map,
-      score_us: scoreUs,
-      score_them: scoreThem,
-      rival,
+      map, rival,
+      score_us: scoreUs, score_them: scoreThem,
       starting_side: startingSide,
       total_rounds: totalRounds,
       players: report,
@@ -172,6 +166,7 @@ Deno.serve(async (req) => {
         by_steam_tag: report.filter((r) => r.match_type === "steam_tag").length,
         unmatched: report.filter((r) => r.match_type === "unmatched").length,
       },
+      demo_data: demoData,
     });
   } catch (e) {
     return json({ error: String((e as Error).message) }, 500);
@@ -179,20 +174,11 @@ Deno.serve(async (req) => {
 });
 
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-function genStats(
-  steamId: string,
-  steamTag: string,
-  totalRounds: number,
-  rng: () => number,
-  opts: { guest?: boolean } = {},
-) {
-  const kills = Math.floor(10 + rng() * (opts.guest ? 12 : 22));
+function genPlayer(steamId: string, tag: string, totalRounds: number, rng: () => number, allRoles: string[], guest = false, isStar = false) {
+  const kills = Math.floor((isStar ? 16 : 10) + rng() * (guest ? 12 : 22));
   const deaths = Math.floor(10 + rng() * 15);
   const assists = Math.floor(2 + rng() * 8);
   const adr = +(60 + rng() * 55).toFixed(1);
@@ -202,11 +188,113 @@ function genStats(
   const fd = Math.floor(rng() * 5);
   const flash_assists = Math.floor(rng() * 6);
   const util_dmg = Math.floor(rng() * 120);
-  const rating = +(0.6 + rng() * 1.0).toFixed(2);
+  const rating = +(0.5 + rng() * 1.2).toFixed(2);
+  const damage = Math.floor(adr * totalRounds);
+  const trades = Math.floor(rng() * 5);
+  const impact = +(0.4 + rng() * 1.5).toFixed(2);
+  // Assign 1-2 roles
+  const nRoles = 1 + Math.floor(rng() * 2);
+  const roles: string[] = [];
+  const pool = [...allRoles];
+  for (let i = 0; i < nRoles && pool.length; i++) {
+    const idx = Math.floor(rng() * pool.length);
+    roles.push(pool.splice(idx, 1)[0]);
+  }
   return {
-    steam_id: steamId,
-    steam_tag: steamTag,
-    kills, deaths, assists, adr, hs_pct, kast_pct, fk, fd, flash_assists, util_dmg, rating,
+    steam_id: steamId, steam_tag: tag,
+    kills, deaths, assists, adr, hs_pct, kast_pct,
+    fk, fd, flash_assists, util_dmg, rating,
+    damage, trades, impact, roles,
+  };
+}
+
+function playerForBlob(p: any, teamWon: boolean) {
+  const kda = `${p.kills}/${p.deaths}/${p.assists}`;
+  const plusMinus = p.kills - p.deaths;
+  return {
+    steam_id: p.steam_id,
+    tag: p.steam_tag,
+    roles: p.roles,
+    kills: p.kills, deaths: p.deaths, assists: p.assists,
+    kda,
+    plus_minus: plusMinus,
+    adr: p.adr,
+    kast_pct: p.kast_pct,
+    rating: p.rating,
+    impact: p.impact,
+    damage: p.damage,
+    entry_kd: `${p.fk}/${p.fd}`,
+    trades: p.trades,
+    won: teamWon,
+  };
+}
+
+function buildRounds(total: number, scoreUs: number, scoreThem: number, startingSide: "CT" | "TR", rng: () => number) {
+  const rounds: any[] = [];
+  const wins: ("us" | "them")[] = [];
+  for (let i = 0; i < scoreUs; i++) wins.push("us");
+  for (let i = 0; i < scoreThem; i++) wins.push("them");
+  // Shuffle keeping first round distinct
+  for (let i = wins.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [wins[i], wins[j]] = [wins[j], wins[i]];
+  }
+
+  const opposite = (s: "CT" | "TR") => (s === "CT" ? "TR" : "CT");
+  const firstHalfUsSide = startingSide;
+  const secondHalfUsSide = opposite(startingSide);
+
+  for (let r = 0; r < total; r++) {
+    const isFirstHalf = r < 12;
+    const usSide = isFirstHalf ? firstHalfUsSide : secondHalfUsSide;
+    const themSide = opposite(usSide);
+    const winner = wins[r];
+    const winnerSide = winner === "us" ? usSide : themSide;
+    const survivors = 1 + Math.floor(rng() * 5);
+    const enemyRemaining = Math.floor(rng() * 3);
+    const reason = END_REASONS[Math.floor(rng() * END_REASONS.length)];
+    const isPistol = r === 0 || r === 12;
+    const usBuy = isPistol ? "P" : BUY_TYPES[1 + Math.floor(rng() * (BUY_TYPES.length - 1))];
+    const themBuy = isPistol ? "P" : BUY_TYPES[1 + Math.floor(rng() * (BUY_TYPES.length - 1))];
+    rounds.push({
+      n: r + 1,
+      winner,
+      winner_team_label: winner === "us" ? "Team 1" : "Team 2",
+      winner_side: winnerSide,
+      survivors,
+      enemy_remaining: enemyRemaining,
+      reason,
+      is_pistol: isPistol,
+      us_side: usSide,
+      us_buy: usBuy,
+      them_buy: themBuy,
+    });
+  }
+  return rounds;
+}
+
+function buildEconomy(rounds: any[]) {
+  const summary = (side: "us" | "them") => {
+    const wins: Record<string, number> = { P: 0, FE: 0, E: 0, HB: 0, FB: 0 };
+    const losses: Record<string, number> = { P: 0, FE: 0, E: 0, HB: 0, FB: 0 };
+    for (const r of rounds) {
+      const buy = side === "us" ? r.us_buy : r.them_buy;
+      if (r.winner === side) wins[buy] = (wins[buy] ?? 0) + 1;
+      else losses[buy] = (losses[buy] ?? 0) + 1;
+    }
+    return { wins, losses };
+  };
+  return { us: summary("us"), them: summary("them") };
+}
+
+function buildCharts(us: any[], them: any[]) {
+  const all = [...us, ...them].sort((a, b) => b.rating - a.rating);
+  return {
+    player_rating: all.map((p) => ({ tag: p.steam_tag, value: p.rating })),
+    damage_per_round: all.map((p) => ({ tag: p.steam_tag, value: p.adr })),
+    total_damage: [...all].sort((a, b) => b.damage - a.damage).map((p) => ({ tag: p.steam_tag, value: p.damage })),
+    clutch: us.slice(0, 2).map((p) => ({ tag: p.steam_tag, attempts: 2 + Math.floor(Math.random() * 3), wins: 1 + Math.floor(Math.random() * 2) })),
+    entry: all.map((p) => ({ tag: p.steam_tag, fk: p.fk, fd: p.fd, trades: p.trades })),
   };
 }
 
