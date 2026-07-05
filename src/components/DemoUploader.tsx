@@ -380,6 +380,100 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           )}
         </div>
 
+        {/* Concurrency + auto-retry settings */}
+        <div className="rounded-md border border-border bg-muted/20 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Gauge className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground">Parseo simultáneo</Label>
+              <Select value={String(maxConcurrent)} onValueChange={(v) => setMaxConcurrent(Number(v))}>
+                <SelectTrigger className="h-7 text-xs mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONCURRENCY_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)} className="text-xs">
+                      {n} demo{n === 1 ? "" : "s"} a la vez
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Repeat className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground flex items-center justify-between gap-2">
+                <span>Reintento automático</span>
+                <Switch checked={autoRetry} onCheckedChange={setAutoRetry} />
+              </Label>
+              <div className="text-[10px] text-muted-foreground mt-1">Reintenta si falla el parsing o la vinculación</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <RotateCcw className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground">Intentos máximos</Label>
+              <Select value={String(maxAttempts)} onValueChange={(v) => setMaxAttempts(Number(v))} disabled={!autoRetry}>
+                <SelectTrigger className="h-7 text-xs mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RETRY_ATTEMPT_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)} className="text-xs">
+                      Hasta {n} intentos
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Global progress */}
+        {totalCount > 0 && (
+          <div className="rounded-md border border-accent/30 bg-accent/5 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 font-heading font-bold">
+                <BarChart3 className="h-4 w-4 text-accent" />
+                <span>Progreso global</span>
+                <span className="text-muted-foreground font-body font-normal">
+                  {finishedCount} / {totalCount} procesadas
+                </span>
+              </div>
+              <span className="tabular-nums text-accent font-heading font-bold">{globalPct}%</span>
+            </div>
+            <Progress value={globalPct} className="h-2" />
+            <div className="flex flex-wrap gap-1.5 text-[10px]">
+              {activeCount > 0 && (
+                <Badge className="bg-accent/20 text-accent border-accent/30 h-5">
+                  <Loader2 className="h-2.5 w-2.5 mr-1 animate-spin" /> {activeCount} en curso
+                </Badge>
+              )}
+              {queuedCount > 0 && (
+                <Badge variant="outline" className="h-5">
+                  <Clock className="h-2.5 w-2.5 mr-1" /> {queuedCount} en cola
+                </Badge>
+              )}
+              {doneCount > 0 && (
+                <Badge className="bg-success/20 text-success border-success/30 h-5">
+                  <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> {doneCount} listas
+                </Badge>
+              )}
+              {errorCount > 0 && (
+                <Badge variant="outline" className="border-destructive/40 text-destructive h-5">
+                  <XCircle className="h-2.5 w-2.5 mr-1" /> {errorCount} con error
+                </Badge>
+              )}
+              {cancelledCount > 0 && (
+                <Badge variant="outline" className="h-5">
+                  <Ban className="h-2.5 w-2.5 mr-1" /> {cancelledCount} canceladas
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Jobs list */}
         {jobs.length > 0 && (
           <div className="space-y-2">
