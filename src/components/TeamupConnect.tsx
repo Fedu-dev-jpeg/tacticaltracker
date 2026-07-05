@@ -61,18 +61,22 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
 
   const sync = async () => {
     setSyncing(true);
+    const t = toast.loading("Trayendo eventos de Teamup...");
     const { data, error } = await supabase.functions.invoke("teamup-sync", { body: { action: "pull" } });
     setSyncing(false);
     if (error) {
-      toast.error("Error de sync: " + error.message);
+      toast.error("Error de sync", { id: t, description: error.message });
       return;
     }
     if ((data as { error?: string })?.error) {
-      toast.error((data as { error: string }).error);
+      toast.error("Error de sync", { id: t, description: (data as { error: string }).error });
       return;
     }
-    const imported = (data as { imported?: number })?.imported ?? 0;
-    toast.success(`Importados ${imported} eventos desde Teamup`);
+    const d = data as { imported?: number; total?: number; range?: { start: string; end: string } };
+    const imported = d?.imported ?? 0;
+    const total = d?.total ?? 0;
+    const rangeTxt = d?.range ? `Rango ${d.range.start} → ${d.range.end}` : "";
+    toast.success(`Importados ${imported} / ${total} eventos de Teamup`, { id: t, description: rangeTxt });
     setInteg((i) => (i ? { ...i, teamup_last_sync: new Date().toISOString() } : i));
     onSynced?.();
   };
