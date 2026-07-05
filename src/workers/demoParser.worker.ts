@@ -96,15 +96,30 @@ const ROUND_END_REASON: Record<number, string> = {
 
 export type ParserStage = "read" | "bz2" | "parse" | "finalize";
 
+function post(msg: unknown) { (self as unknown as Worker).postMessage(msg); }
+function wlog(scope: string, event: string, data?: unknown, level: "info" | "warn" | "error" | "debug" = "info") {
+  post({ type: "log", scope, event, level, data });
+}
+
 self.onmessage = async (ev: MessageEvent) => {
   const { file } = ev.data as { file: File };
   try {
+    wlog("worker", "start", { name: file.name, size: file.size, type: file.type });
     const raw = await parseFile(file, (pct, label, stage) => {
-      (self as unknown as Worker).postMessage({ type: "progress", pct, label, stage });
+      post({ type: "progress", pct, label, stage });
     });
-    (self as unknown as Worker).postMessage({ type: "done", data: raw });
+    wlog("worker", "done", {
+      map: raw.map,
+      total_rounds: raw.total_rounds,
+      score: raw.score,
+      players: raw.players.length,
+      rounds: raw.rounds.length,
+      duration_ticks: raw.duration_ticks,
+    });
+    post({ type: "done", data: raw });
   } catch (e) {
-    (self as unknown as Worker).postMessage({ type: "error", message: (e as Error).message ?? String(e) });
+    wlog("worker", "error", { message: (e as Error).message, stack: (e as Error).stack }, "error");
+    post({ type: "error", message: (e as Error).message ?? String(e) });
   }
 };
 
