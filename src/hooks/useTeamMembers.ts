@@ -10,6 +10,7 @@ export interface TeamMember {
   role_in_team: string | null;
   is_coach: boolean;
   avatar_url: string | null;
+  steam_avatar_url: string | null;
 }
 
 export function useTeamMembers() {

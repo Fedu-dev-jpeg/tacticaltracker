@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import GameplanExport from "@/components/GameplanExport";
 import PlaybookImportDialog from "@/components/PlaybookImportDialog";
 import MatchView from "@/components/MatchView";
+import SteamAvatar from "@/components/SteamAvatar";
+import { useTeamMembers, TeamMember } from "@/hooks/useTeamMembers";
 import { toast } from "sonner";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
@@ -101,6 +103,14 @@ export default function Playbook() {
   const [tempPlayerDesc, setTempPlayerDesc] = useState("");
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showMatchView, setShowMatchView] = useState(false);
+  const { members: teamMembers } = useTeamMembers();
+  const memberByName = useMemo(() => {
+    const map: Record<string, TeamMember> = {};
+    teamMembers.filter((m) => !m.is_coach).forEach((m) => {
+      map[m.player_name.toLowerCase()] = m;
+    });
+    return map;
+  }, [teamMembers]);
 
   // Load strategies from Supabase on mount
   const fetchStrategies = useCallback(async () => {
@@ -382,6 +392,7 @@ export default function Playbook() {
           submitLabel="Guardar Cambios"
           onSubmit={saveEdit}
           onCancel={() => setEditingStrat(null)}
+          memberByName={memberByName}
         />
       )}
 
@@ -410,6 +421,7 @@ export default function Playbook() {
               submitLabel="Guardar"
               onSubmit={async (s) => { const newId = crypto.randomUUID(); const newStrat = { ...s, id: newId }; setStrategies((prev) => [newStrat, ...prev]); setShowForm(false); await supabase.from("strategies").insert({ id: newId, map: s.map, side: s.side, type: s.type, name: s.name, description: s.description, player_roles: s.playerRoles as any, notes: s.notes, link: s.link, status: s.status }); toast.success("Estrategia agregada"); }}
               onCancel={() => setShowForm(false)}
+              memberByName={memberByName}
             />
           ) : (
             <Button onClick={() => setShowForm(true)} className="gradient-accent text-accent-foreground w-full">
@@ -442,6 +454,7 @@ export default function Playbook() {
             tempPlayerDesc={tempPlayerDesc}
             setTempPlayerDesc={setTempPlayerDesc}
             strategies={strategies}
+            memberByName={memberByName}
           />
         </TabsContent>
 
@@ -680,9 +693,10 @@ function StratSection({ title, icon, strats, expandedId, setExpandedId, allExpan
   );
 }
 
-function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel }: {
+function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel, memberByName }: {
   initialData: Strategy; title: string; submitLabel: string;
   onSubmit: (s: Strategy) => void; onCancel: () => void;
+  memberByName: Record<string, TeamMember>;
 }) {
   const [map, setMap] = useState<MapName>(initialData.map);
   const [side, setSide] = useState<"CT" | "TR">(initialData.side);
@@ -756,12 +770,27 @@ function StrategyForm({ initialData, title, submitLabel, onSubmit, onCancel }: {
       <div className="space-y-2">
         <Label className="text-xs">Roles por jugador</Label>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          {PLAYERS.map((p) => (
-            <div key={p} className="space-y-1">
-              <span className="text-[10px] text-accent font-semibold">{p}</span>
-              <Input value={playerRoles[p] || ""} onChange={(e) => setPlayerRoles((prev) => ({ ...prev, [p]: e.target.value }))} placeholder="Rol..." className="h-8 text-xs" />
-            </div>
-          ))}
+          {PLAYERS.map((p) => {
+            const m = memberByName[p.toLowerCase()];
+            const roleLabel = m?.role_in_team;
+            return (
+              <div key={p} className="space-y-1 rounded-md border border-border bg-secondary/20 p-2">
+                <div className="flex items-center gap-2">
+                  <SteamAvatar
+                    memberId={m?.id}
+                    url={m?.steam_avatar_url ?? m?.avatar_url ?? null}
+                    fallback={p}
+                    size={24}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-heading font-bold text-accent leading-tight truncate">{p}</div>
+                    {roleLabel && <div className="text-[9px] text-muted-foreground truncate">{roleLabel}</div>}
+                  </div>
+                </div>
+                <Input value={playerRoles[p] || ""} onChange={(e) => setPlayerRoles((prev) => ({ ...prev, [p]: e.target.value }))} placeholder="Rol..." className="h-8 text-xs" />
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -793,6 +822,7 @@ function IndividualCoreTab({
   tempPlayerDesc,
   setTempPlayerDesc,
   strategies,
+  memberByName,
 }: {
   playerDescriptions: Record<string, string>;
   savePlayerDesc: (player: string) => void | Promise<void>;
@@ -801,6 +831,7 @@ function IndividualCoreTab({
   tempPlayerDesc: string;
   setTempPlayerDesc: (v: string) => void;
   strategies: Strategy[];
+  memberByName: Record<string, TeamMember>;
 }) {
   return (
     <div className="space-y-4">
@@ -808,12 +839,18 @@ function IndividualCoreTab({
         {PLAYERS.map((p) => {
           const isEditing = editingPlayerDesc === p;
           const stratCount = strategies.filter((s) => s.playerRoles[p]).length;
+          const m = memberByName[p.toLowerCase()];
+          const savedRole = m?.role_in_team || playerDescriptions[p] || "";
           return (
             <div key={p} className="rounded-lg border border-border bg-card p-4 card-glow">
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center font-heading font-bold text-accent">
-                  {p.charAt(0).toUpperCase()}
-                </div>
+                <SteamAvatar
+                  memberId={m?.id}
+                  url={m?.steam_avatar_url ?? m?.avatar_url ?? null}
+                  fallback={p}
+                  size={44}
+                  className="h-11 w-11"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="font-heading font-bold">{p}</div>
                   {isEditing ? (
@@ -831,7 +868,7 @@ function IndividualCoreTab({
                     </div>
                   ) : (
                     <div className="text-xs text-muted-foreground truncate">
-                      {playerDescriptions[p] || <span className="italic opacity-60">Sin rol definido</span>}
+                      {savedRole || <span className="italic opacity-60">Sin rol definido</span>}
                     </div>
                   )}
                 </div>
