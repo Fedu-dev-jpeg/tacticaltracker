@@ -71,6 +71,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
+  // Concurrency + retry settings (persisted in memory for the session)
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(2);
+  const [autoRetry, setAutoRetry] = useState<boolean>(true);
+  const [maxAttempts, setMaxAttempts] = useState<number>(3);
+  // Refs so async pipeline sees current values without re-creating callbacks
+  const startedRef = useRef<Set<string>>(new Set());
+  const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
   const { members: teamMembers } = useTeamMembers();
   const players = teamMembers.filter((m) => !m.is_coach);
 
