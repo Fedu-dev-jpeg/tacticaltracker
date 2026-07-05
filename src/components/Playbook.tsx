@@ -822,6 +822,7 @@ function IndividualCoreTab({
   tempPlayerDesc,
   setTempPlayerDesc,
   strategies,
+  memberByName,
 }: {
   playerDescriptions: Record<string, string>;
   savePlayerDesc: (player: string) => void | Promise<void>;
@@ -830,6 +831,7 @@ function IndividualCoreTab({
   tempPlayerDesc: string;
   setTempPlayerDesc: (v: string) => void;
   strategies: Strategy[];
+  memberByName: Record<string, TeamMember>;
 }) {
   return (
     <div className="space-y-4">
@@ -837,12 +839,18 @@ function IndividualCoreTab({
         {PLAYERS.map((p) => {
           const isEditing = editingPlayerDesc === p;
           const stratCount = strategies.filter((s) => s.playerRoles[p]).length;
+          const m = memberByName[p.toLowerCase()];
+          const savedRole = m?.role_in_team || playerDescriptions[p] || "";
           return (
             <div key={p} className="rounded-lg border border-border bg-card p-4 card-glow">
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center font-heading font-bold text-accent">
-                  {p.charAt(0).toUpperCase()}
-                </div>
+                <SteamAvatar
+                  memberId={m?.id}
+                  url={m?.steam_avatar_url ?? m?.avatar_url ?? null}
+                  fallback={p}
+                  size={44}
+                  className="h-11 w-11"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="font-heading font-bold">{p}</div>
                   {isEditing ? (
@@ -860,7 +868,7 @@ function IndividualCoreTab({
                     </div>
                   ) : (
                     <div className="text-xs text-muted-foreground truncate">
-                      {playerDescriptions[p] || <span className="italic opacity-60">Sin rol definido</span>}
+                      {savedRole || <span className="italic opacity-60">Sin rol definido</span>}
                     </div>
                   )}
                 </div>
