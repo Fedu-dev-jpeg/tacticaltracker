@@ -917,7 +917,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           setSavingReview(true);
           const { error } = await supabase
             .from("matches")
-            .update({ rival, map: reviewDraft.map, type: reviewDraft.matchType })
+            .update({ rival, map: reviewDraft.map, type: reviewDraft.matchType, confirmed: true })
             .eq("id", parsed.match_id);
           setSavingReview(false);
           if (error) { toast.error("No se pudo guardar: " + error.message); return; }
