@@ -167,16 +167,28 @@ export default function Dashboard({ matches }: DashboardProps) {
           <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
       </div>
 
-      {/* Countdown */}
-      <TournamentCountdown />
+      {/* Countdown — solo si hay un torneo agendado */}
+      {upcoming && upcomingDate && (
+        <TournamentCountdown target={upcomingDate} name={upcoming.name} format={upcoming.format} />
+      )}
       </div>
 
+      {/* Tournaments manager */}
+      <TournamentsManager />
+
       {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={cn("grid grid-cols-2 gap-4", upcoming ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
         <StatCard icon={Trophy} label="Partidos" value={matches.length} />
         <StatCard icon={Target} label="Win Rate" value={`${winRate}%`} color="gradient-accent" />
         <StatCard icon={Flame} label="Racha" value={`${streak.count}${streak.type}`} sub={streak.type === "W" ? "Victorias seguidas" : "Derrotas seguidas"} color={streak.type === "W" ? "gradient-success" : "bg-destructive"} />
-        <StatCard icon={Timer} label="Días al Torneo" value={daysLeft} sub="25/04/2026 15:00" />
+        {upcoming && upcomingDate && (
+          <StatCard
+            icon={Timer}
+            label="Días al Torneo"
+            value={daysLeft ?? 0}
+            sub={upcomingDate.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+          />
+        )}
       </div>
 
       {/* Team Objectives */}
