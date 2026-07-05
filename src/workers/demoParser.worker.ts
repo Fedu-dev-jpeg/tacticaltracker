@@ -475,6 +475,7 @@ async function parseFile(
     players_dropped: players.size - activePlayers.length,
     dropped_coaches: droppedCoaches,
     missed_round_ends: debugMissedRoundEnd,
+    fallback_winner_deductions: fallbackUsed,
     top_events: Object.fromEntries(topEvents),
     total_event_types: eventCounts.size,
     game_rules_fields_seen: [...gameRulesFieldsSeen].sort(),
