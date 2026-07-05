@@ -160,7 +160,10 @@ export default function Dashboard({ matches }: DashboardProps) {
         <div>
           <h2 className="text-xl font-heading font-bold">Qué onda, <span className="text-accent">{playerName}</span> 🔥</h2>
           <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
-        </div>
+      </div>
+
+      {/* Countdown */}
+      <TournamentCountdown />
       </div>
 
       {/* Summary */}
