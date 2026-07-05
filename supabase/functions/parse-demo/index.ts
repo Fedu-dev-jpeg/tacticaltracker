@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
       status: "imported",
       simulated: true,
       match_id: matchRow.id,
-      file_size: file.size,
+      file_size: fileSize,
       map, rival,
       score_us: scoreUs, score_them: scoreThem,
       starting_side: startingSide,
