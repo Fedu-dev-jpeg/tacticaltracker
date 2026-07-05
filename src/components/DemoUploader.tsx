@@ -17,6 +17,7 @@ import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { parseDemoFull } from "@/lib/demoParser";
+import { startJobLog, log as demoLog, downloadJobLog, copyJobLog } from "@/lib/demoLog";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
@@ -240,13 +241,20 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       };
       let current: Stage = "uploading";
       const t0 = Date.now();
+      startJobLog(job.id, job.fileName);
+      demoLog(job.id, "uploader", "pipeline-start", {
+        file: job.fileName,
+        size: job.file?.size ?? null,
+        attempt: job.attempt,
+        maxAttempts: job.maxAttempts,
+        overrides: job.overrides ?? null,
+      });
       try {
         if (!job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
 
-        // 1. Parse the demo end-to-end in a Web Worker (bz2 decompress + game
-        //    events). This yields the real map / score / K-D-A directly from
-        //    the .dem — no more simulator on the server.
+        // 1. Parse the demo end-to-end in a Web Worker.
         current = "parsing";
+        demoLog(job.id, "uploader", "stage-start", { stage: current });
         updateJob(job.id, {
           stage: current,
           startedAt: t0,
@@ -258,23 +266,25 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         });
         let rawParsed: Awaited<ReturnType<typeof parseDemoFull>> | null = null;
         try {
-          rawParsed = await parseDemoFull(job.file, (pct, label, stage) => {
-            const now = Date.now();
-            setJobs((prev) => prev.map((j) => {
-              if (j.id !== job.id) return j;
-              const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
-              // Close out any stage that isn't the current one.
-              if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
-                stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
-              }
-              const existing = stages[stage];
-              stages[stage] = existing
-                ? { ...existing, pct, label, endedAt: null }
-                : { pct, label, startedAt: now, endedAt: null };
-              return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
-            }));
-          });
-          // Close the last active stage and clear the transient label.
+          rawParsed = await parseDemoFull(
+            job.file,
+            (pct, label, stage) => {
+              const now = Date.now();
+              setJobs((prev) => prev.map((j) => {
+                if (j.id !== job.id) return j;
+                const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+                if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
+                  stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
+                }
+                const existing = stages[stage];
+                stages[stage] = existing
+                  ? { ...existing, pct, label, endedAt: null }
+                  : { pct, label, startedAt: now, endedAt: null };
+                return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
+              }));
+            },
+            (scope, event, data, level) => demoLog(job.id, scope, event, data, level),
+          );
           setJobs((prev) => prev.map((j) => {
             if (j.id !== job.id) return j;
             const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
@@ -283,52 +293,69 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             }
             return { ...j, parserStages: stages, parserStageCurrent: null, parserPct: 100, error: null };
           }));
-          console.log(`[demo-parser] ${job.fileName} → parsed`, {
+          demoLog(job.id, "uploader", "parser-ok", {
             map: rawParsed?.map,
             players: rawParsed?.players?.length,
             rounds: rawParsed?.rounds?.length,
             score: rawParsed?.score,
+            total_rounds: rawParsed?.total_rounds,
           });
         } catch (parseErr) {
-          console.error(`[demo-parser] ${job.fileName} failed:`, parseErr);
+          demoLog(job.id, "uploader", "parser-error", { message: (parseErr as Error).message, stack: (parseErr as Error).stack }, "error");
           throw new Error("Parser local: " + (parseErr as Error).message);
         }
         throwIfAborted();
 
-        // 2. Upload the raw .dem to storage for archival (async — errors here
-        //    are non-fatal because we already parsed everything we need).
+        // 2. Upload raw .dem to storage for archival.
         current = "uploading";
+        demoLog(job.id, "uploader", "stage-start", { stage: current });
         updateJob(job.id, { stage: current });
         const path = `${Date.now()}-${job.file.name}`;
+        const tUp = Date.now();
         const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file, {
           contentType: "application/octet-stream",
         });
         throwIfAborted();
-        if (upErr) console.warn(`[demo-upload] storage falló para ${job.fileName}: ${upErr.message}`);
+        if (upErr) {
+          demoLog(job.id, "storage", "upload-failed", { path, message: upErr.message }, "warn");
+          console.warn(`[demo-upload] storage falló para ${job.fileName}: ${upErr.message}`);
+        } else {
+          demoLog(job.id, "storage", "upload-ok", { path, elapsed_ms: Date.now() - tUp });
+        }
 
-        // 3. Hand the parsed payload to the edge function → validate + insert.
+        // 3. Send parsed payload to edge function → validate + insert.
         current = "matching";
+        demoLog(job.id, "uploader", "stage-start", { stage: current });
         updateJob(job.id, { stage: current });
         throwIfAborted();
-        // Defensive: strip any BigInt values from the payload before invoke()
-        // JSON-encodes it (BigInts throw at JSON.stringify time).
         const bigintSafe = JSON.parse(JSON.stringify(rawParsed, (_k, v) => typeof v === "bigint" ? String(v) : v));
-        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
-          body: {
-            path,
-            rival: job.overrides?.rival,
-            match_type: job.overrides?.matchType,
-            map: job.overrides?.map, // user override — server prefers parsed value
-            parsed: bigintSafe,
+        demoLog(job.id, "edge", "invoke-parse-demo", {
+          path, rival: job.overrides?.rival, match_type: job.overrides?.matchType, map: job.overrides?.map,
+          parsed_summary: {
+            map: bigintSafe?.map,
+            total_rounds: bigintSafe?.total_rounds,
+            players_count: bigintSafe?.players?.length,
+            rounds_count: bigintSafe?.rounds?.length,
+            score: bigintSafe?.score,
           },
+        });
+        const tFn = Date.now();
+        const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
+          body: { path, rival: job.overrides?.rival, match_type: job.overrides?.matchType, map: job.overrides?.map, parsed: bigintSafe },
         });
         throwIfAborted();
         if (fnErr) {
-          console.error(`[demo-parser] edge function error for ${job.fileName}:`, fnErr, "data:", data);
+          demoLog(job.id, "edge", "invoke-error", { message: fnErr.message, elapsed_ms: Date.now() - tFn, data }, "error");
           throw new Error("Parser: " + fnErr.message);
         }
-
-
+        demoLog(job.id, "edge", "invoke-ok", {
+          elapsed_ms: Date.now() - tFn,
+          match_id: (data as ParsedDemo)?.match_id,
+          score_us: (data as ParsedDemo)?.score_us,
+          score_them: (data as ParsedDemo)?.score_them,
+          total_rounds: (data as ParsedDemo)?.total_rounds,
+          summary: (data as ParsedDemo)?.summary,
+        });
 
         current = "matching";
         updateJob(job.id, { stage: current });
@@ -336,16 +363,17 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         throwIfAborted();
 
         current = "saving";
+        demoLog(job.id, "uploader", "stage-start", { stage: current });
         updateJob(job.id, { stage: current });
         await new Promise((r) => setTimeout(r, 250));
         throwIfAborted();
 
         const parsed = data as ParsedDemo;
         const t1 = Date.now();
+        demoLog(job.id, "uploader", "pipeline-done", { total_elapsed_ms: t1 - t0, match_id: parsed?.match_id });
         updateJob(job.id, { stage: "done", result: parsed, finishedAt: t1, durationMs: t1 - t0 });
         setResult(parsed);
         onParsed(parsed);
-        // Auto-open review dialog so the user can confirm/fix rival, map and type.
         setReviewDraft({
           rival: parsed.rival && parsed.rival !== "Sin definir" ? parsed.rival : "",
           matchType: "OFFICIAL",
@@ -359,22 +387,22 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         const t1 = Date.now();
         const stageLabel = STAGE_LABELS[current] ?? current;
         if (err.name === "AbortError") {
+          demoLog(job.id, "uploader", "cancelled", { stage: current, elapsed_ms: t1 - t0 }, "warn");
           updateJob(job.id, { stage: "cancelled", failedStage: current, finishedAt: t1, durationMs: t1 - t0 });
           toast.info(`Cancelada: ${job.fileName}`, { description: `Detenida en ${stageLabel}` });
         } else {
-          // Auto-retry only for parsing/matching stages
           const canAutoRetry = autoRetry && RETRIABLE_STAGES.includes(current) && job.attempt < job.maxAttempts;
           if (canAutoRetry) {
             const nextAttempt = job.attempt + 1;
+            demoLog(job.id, "uploader", "retry-scheduled", { stage: current, attempt: job.attempt, nextAttempt, error: err.message }, "warn");
             updateJob(job.id, { stage: "queued", failedStage: current, error: `Intento ${job.attempt}: ${err.message}`, attempt: nextAttempt, abort: new AbortController(), startedAt: null });
             startedRef.current.delete(job.id);
             toast.warning(`Reintentando ${job.fileName} (${nextAttempt}/${job.maxAttempts})`, { description: `Falló en ${stageLabel}: ${err.message}` });
             const backoff = 800 * job.attempt;
-            const timer = window.setTimeout(() => {
-              retryTimeoutsRef.current.delete(job.id);
-            }, backoff);
+            const timer = window.setTimeout(() => { retryTimeoutsRef.current.delete(job.id); }, backoff);
             retryTimeoutsRef.current.set(job.id, timer);
           } else {
+            demoLog(job.id, "uploader", "failed", { stage: current, message: err.message, stack: err.stack, elapsed_ms: t1 - t0 }, "error");
             updateJob(job.id, { stage: "error", failedStage: current, error: String(err.message), finishedAt: t1, durationMs: t1 - t0 });
             const jobId = job.id;
             toast.error(`✖ Falló ${job.fileName} en ${stageLabel}`, {
@@ -1259,6 +1287,26 @@ function JobRow({
               <AlertCircle className="h-3 w-3 mr-1" /> Ver error
             </Button>
           )}
+          <Button
+            size="sm" variant="outline"
+            className="h-6 px-2 text-[10px]"
+            title="Descargar log completo (.txt)"
+            onClick={() => downloadJobLog(job.id)}
+          >
+            <FileArchive className="h-3 w-3 mr-1" /> Log
+          </Button>
+          <Button
+            size="sm" variant="outline"
+            className="h-6 px-2 text-[10px]"
+            title="Copiar log al portapapeles"
+            onClick={async () => {
+              const ok = await copyJobLog(job.id);
+              if (ok) toast.success("Log copiado al portapapeles");
+              else toast.error("No se pudo copiar — descargalo con el botón Log");
+            }}
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
           {!active && (
             <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1" title="Quitar de la lista">
               <Trash2 className="h-3 w-3" />

@@ -96,15 +96,30 @@ const ROUND_END_REASON: Record<number, string> = {
 
 export type ParserStage = "read" | "bz2" | "parse" | "finalize";
 
+function post(msg: unknown) { (self as unknown as Worker).postMessage(msg); }
+function wlog(scope: string, event: string, data?: unknown, level: "info" | "warn" | "error" | "debug" = "info") {
+  post({ type: "log", scope, event, level, data });
+}
+
 self.onmessage = async (ev: MessageEvent) => {
   const { file } = ev.data as { file: File };
   try {
+    wlog("worker", "start", { name: file.name, size: file.size, type: file.type });
     const raw = await parseFile(file, (pct, label, stage) => {
-      (self as unknown as Worker).postMessage({ type: "progress", pct, label, stage });
+      post({ type: "progress", pct, label, stage });
     });
-    (self as unknown as Worker).postMessage({ type: "done", data: raw });
+    wlog("worker", "done", {
+      map: raw.map,
+      total_rounds: raw.total_rounds,
+      score: raw.score,
+      players: raw.players.length,
+      rounds: raw.rounds.length,
+      duration_ticks: raw.duration_ticks,
+    });
+    post({ type: "done", data: raw });
   } catch (e) {
-    (self as unknown as Worker).postMessage({ type: "error", message: (e as Error).message ?? String(e) });
+    wlog("worker", "error", { message: (e as Error).message, stack: (e as Error).stack }, "error");
+    post({ type: "error", message: (e as Error).message ?? String(e) });
   }
 };
 
@@ -115,22 +130,34 @@ async function parseFile(
   const isBz2 = /\.bz2$/i.test(file.name);
   let bytes: Uint8Array;
 
+  const tReadStart = performance.now();
   if (isBz2) {
+    wlog("worker:read", "reading-bz2-file", { size: file.size });
     onProgress(2, "Leyendo archivo comprimido", "read");
     const compressed = new Uint8Array(await file.arrayBuffer());
+    wlog("worker:read", "bz2-loaded", { compressed_bytes: compressed.length, elapsed_ms: Math.round(performance.now() - tReadStart) });
+    const tBz2 = performance.now();
     onProgress(5, "Descomprimiendo bz2 (puede tardar)", "bz2");
     bytes = decompressBz2All(compressed, (done, total) => {
-      // Map decompression progress into 5..45% of the overall bar.
       const inner = total > 0 ? done / total : 0;
       onProgress(5 + Math.round(inner * 40), `Descomprimiendo bz2 (${fmtBytes(done)})`, "bz2");
     });
+    wlog("worker:bz2", "decompressed", {
+      compressed_bytes: compressed.length,
+      uncompressed_bytes: bytes.length,
+      ratio: +(bytes.length / Math.max(1, compressed.length)).toFixed(2),
+      elapsed_ms: Math.round(performance.now() - tBz2),
+    });
   } else {
+    wlog("worker:read", "reading-raw-demo", { size: file.size });
     onProgress(5, "Leyendo demo", "read");
     bytes = new Uint8Array(await file.arrayBuffer());
+    wlog("worker:read", "raw-loaded", { bytes: bytes.length, elapsed_ms: Math.round(performance.now() - tReadStart) });
     onProgress(45, "Demo cargada", "read");
   }
 
   onProgress(50, "Parseando eventos", "parse");
+  wlog("worker:parse", "loading-deadem-umd");
 
   // Load the deadem UMD lazily so any load error is reported through the
   // normal message channel instead of a bare worker `error` event.
@@ -229,6 +256,20 @@ async function parseFile(
     if (messagePacket.type === MessagePacketType.GE_SOURCE1_LEGACY_GAME_EVENT_LIST) {
       const data = messagePacket.data as { descriptors: Array<{ eventid: number; name: string; keys: Array<{ name: string; type: number }> }> };
       for (const d of data.descriptors) descriptors.set(d.eventid, d);
+      // Emit the discovered event catalog so we can see what @deademx exposes
+      // for this demo (round_end / cs_win_panel_round / etc. names differ
+      // between CS2 patches). Truncated to first 60 for log readability.
+      const names = data.descriptors.map((d) => d.name);
+      wlog("worker:parse", "descriptors-loaded", {
+        total: names.length,
+        has_round_end: names.includes("round_end"),
+        has_round_officially_ended: names.includes("round_officially_ended"),
+        has_cs_win_panel_round: names.includes("cs_win_panel_round"),
+        has_player_death: names.includes("player_death"),
+        has_player_hurt: names.includes("player_hurt"),
+        round_like: names.filter((n) => /round|win_panel|match_end|scoreboard/i.test(n)),
+        sample: names.slice(0, 60),
+      });
       return;
     }
 
@@ -329,16 +370,21 @@ async function parseFile(
   await parser.parse(stream);
   await parser.dispose();
 
+  const tParseEnd = performance.now();
+  wlog("worker:parse", "parser-finished", {
+    ticks_seen: lastTick,
+    total_players_in_user_info: players.size,
+    total_event_types: eventCounts.size,
+    elapsed_ms_since_worker_start: Math.round(performance.now()),
+  });
+
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
 
-  // Post-filter: drop coaches only. CS2's user_info string table has no
-  // explicit coach flag, but pracc / matchmaking coaches almost always use
-  // names prefixed with "COACH" / "coach". Keep every other real SteamID —
-  // including players with all-zero stats — so the roster reflects the actual
-  // 5v5 (players who disconnected early or had a quiet match must still show).
+  // Post-filter: drop coaches only.
   const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
   const activePlayers = [...players.values()].filter((p) => !COACH_RE.test(p.name ?? ""));
+  const droppedCoaches = [...players.values()].filter((p) => COACH_RE.test(p.name ?? "")).map((p) => p.name);
 
   // Derive score from rounds.
   let ct = 0, t = 0;
@@ -350,15 +396,27 @@ async function parseFile(
   // but couldn't attribute a winner to. Helps triage 0-0 scores.
   const topEvents = [...eventCounts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 15);
-  console.log("[demo-parser worker] event summary", {
-    rounds: rounds.length,
-    score: { ct, t },
+    .slice(0, 30);
+  wlog("worker:parse", "event-summary", {
+    map: mapName,
+    server: serverName,
+    demo_version: demoVersion,
+    rounds_captured: rounds.length,
+    score_ct_t: { ct, t },
     players_kept: activePlayers.length,
     players_dropped: players.size - activePlayers.length,
+    dropped_coaches: droppedCoaches,
     missed_round_ends: debugMissedRoundEnd,
     top_events: Object.fromEntries(topEvents),
+    total_event_types: eventCounts.size,
+    parse_ms: Math.round(tParseEnd - performance.now()) * -1,
   });
+  wlog("worker:parse", "players-snapshot", activePlayers.map((p) => ({
+    steamid: p.steamid, name: p.name,
+    k: p.kills, d: p.deaths, a: p.assists,
+    hs: p.hs_kills, dmg: p.damage,
+    fk: p.first_kills, fd: p.first_deaths,
+  })));
 
   onProgress(98, "Consolidando resultado", "finalize");
 
