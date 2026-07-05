@@ -256,6 +256,20 @@ async function parseFile(
     if (messagePacket.type === MessagePacketType.GE_SOURCE1_LEGACY_GAME_EVENT_LIST) {
       const data = messagePacket.data as { descriptors: Array<{ eventid: number; name: string; keys: Array<{ name: string; type: number }> }> };
       for (const d of data.descriptors) descriptors.set(d.eventid, d);
+      // Emit the discovered event catalog so we can see what @deademx exposes
+      // for this demo (round_end / cs_win_panel_round / etc. names differ
+      // between CS2 patches). Truncated to first 60 for log readability.
+      const names = data.descriptors.map((d) => d.name);
+      wlog("worker:parse", "descriptors-loaded", {
+        total: names.length,
+        has_round_end: names.includes("round_end"),
+        has_round_officially_ended: names.includes("round_officially_ended"),
+        has_cs_win_panel_round: names.includes("cs_win_panel_round"),
+        has_player_death: names.includes("player_death"),
+        has_player_hurt: names.includes("player_hurt"),
+        round_like: names.filter((n) => /round|win_panel|match_end|scoreboard/i.test(n)),
+        sample: names.slice(0, 60),
+      });
       return;
     }
 
