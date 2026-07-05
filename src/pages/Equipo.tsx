@@ -157,9 +157,13 @@ function MemberCard({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <div className="h-9 w-9 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center text-sm font-heading text-accent">
-              {member.player_name.charAt(0).toUpperCase()}
-            </div>
+            <SteamAvatar
+              memberId={member.id}
+              url={(member as TeamMember & { steam_avatar_url?: string | null }).steam_avatar_url}
+              fallback={member.player_name}
+              size={36}
+              className="text-sm"
+            />
             {member.player_name}
           </CardTitle>
           {member.is_coach && <Badge variant="outline" className="text-[10px]">COACH</Badge>}
