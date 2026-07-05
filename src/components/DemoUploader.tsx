@@ -262,6 +262,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         abort: new AbortController(),
         attempt: 1,
         maxAttempts: autoRetry ? maxAttempts : 1,
+        startedAt: null,
+        finishedAt: null,
+        durationMs: null,
       }));
       setJobs((prev) => [...prev, ...newJobs]);
       // scheduler effect will pick them up
