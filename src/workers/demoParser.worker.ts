@@ -191,6 +191,11 @@ async function parseFile(
   let bytesProcessed = 0;
   const eventCounts = new Map<string, number>();
   let debugMissedRoundEnd = 0;
+  // Filled in by ENTITY_PACKET interceptor from CCSGameRulesProxy mutations.
+  // In CS2 the round outcome comes from these entity props, not the game event.
+  let pendingWinner: number | null = null;
+  let pendingReason = 0;
+  const gameRulesFieldsSeen = new Set<string>();
 
   // Snapshot user_info string table into `players` (lazy — only after
   // string tables have been populated by the parser).
