@@ -336,7 +336,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   }, []);
 
   const startJobs = useCallback(
-    (files: File[]) => {
+    (files: File[], overrides?: DemoOverrides) => {
       const valid: File[] = [];
       for (const f of files) {
         if (!f.name.match(/\.(dem|dem\.bz2|bz2)$/i)) {
@@ -360,12 +360,33 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         startedAt: null,
         finishedAt: null,
         durationMs: null,
+        overrides,
       }));
       setJobs((prev) => [...prev, ...newJobs]);
       // scheduler effect will pick them up
     },
     [autoRetry, maxAttempts],
   );
+
+  // Ask user to confirm rival / tipo / mapa before queueing.
+  const queueFiles = useCallback((files: File[]) => {
+    const valid = files.filter((f) => f.name.match(/\.(dem|dem\.bz2|bz2)$/i));
+    const invalid = files.filter((f) => !f.name.match(/\.(dem|dem\.bz2|bz2)$/i));
+    invalid.forEach((f) => toast.error(`Ignorado: ${f.name} (no es .dem)`));
+    if (valid.length === 0) return;
+    setOverridesDraft({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
+    setPendingFiles(valid);
+  }, []);
+
+  const confirmPending = useCallback(() => {
+    const rival = overridesDraft.rival.trim();
+    if (!rival) {
+      toast.error("Ingresá el nombre del equipo rival");
+      return;
+    }
+    startJobs(pendingFiles, { ...overridesDraft, rival });
+    setPendingFiles([]);
+  }, [overridesDraft, pendingFiles, startJobs]);
 
   const cancelJob = useCallback((id: string) => {
     setJobs((prev) => {
