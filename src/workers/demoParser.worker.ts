@@ -130,22 +130,34 @@ async function parseFile(
   const isBz2 = /\.bz2$/i.test(file.name);
   let bytes: Uint8Array;
 
+  const tReadStart = performance.now();
   if (isBz2) {
+    wlog("worker:read", "reading-bz2-file", { size: file.size });
     onProgress(2, "Leyendo archivo comprimido", "read");
     const compressed = new Uint8Array(await file.arrayBuffer());
+    wlog("worker:read", "bz2-loaded", { compressed_bytes: compressed.length, elapsed_ms: Math.round(performance.now() - tReadStart) });
+    const tBz2 = performance.now();
     onProgress(5, "Descomprimiendo bz2 (puede tardar)", "bz2");
     bytes = decompressBz2All(compressed, (done, total) => {
-      // Map decompression progress into 5..45% of the overall bar.
       const inner = total > 0 ? done / total : 0;
       onProgress(5 + Math.round(inner * 40), `Descomprimiendo bz2 (${fmtBytes(done)})`, "bz2");
     });
+    wlog("worker:bz2", "decompressed", {
+      compressed_bytes: compressed.length,
+      uncompressed_bytes: bytes.length,
+      ratio: +(bytes.length / Math.max(1, compressed.length)).toFixed(2),
+      elapsed_ms: Math.round(performance.now() - tBz2),
+    });
   } else {
+    wlog("worker:read", "reading-raw-demo", { size: file.size });
     onProgress(5, "Leyendo demo", "read");
     bytes = new Uint8Array(await file.arrayBuffer());
+    wlog("worker:read", "raw-loaded", { bytes: bytes.length, elapsed_ms: Math.round(performance.now() - tReadStart) });
     onProgress(45, "Demo cargada", "read");
   }
 
   onProgress(50, "Parseando eventos", "parse");
+  wlog("worker:parse", "loading-deadem-umd");
 
   // Load the deadem UMD lazily so any load error is reported through the
   // normal message channel instead of a bare worker `error` event.
