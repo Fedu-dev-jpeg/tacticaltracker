@@ -584,6 +584,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                 onRetry={() => retryJob(j.id)}
                 onRemove={() => removeJob(j.id)}
                 onOpen={() => j.result && setResult(j.result)}
+                onShowError={() => setErrorJobId(j.id)}
                 isSelected={result?.match_id === j.result?.match_id && !!j.result?.match_id}
               />
             ))}
