@@ -14,25 +14,80 @@ interface Seed {
   role_in_team: string;
 }
 
-const ROSTER: Seed[] = [
-  { handle: "fedu", password: "admin1", role: "admin", is_coach: false, role_in_team: "IGL / Support" },
-  { handle: "boke", password: "tactical1", role: "player", is_coach: false, role_in_team: "Rifler" },
-  { handle: "kud", password: "tactical1", role: "player", is_coach: false, role_in_team: "Rifler" },
-  { handle: "koda", password: "tactical1", role: "player", is_coach: false, role_in_team: "AWPer" },
-  { handle: "ray", password: "tactical1", role: "player", is_coach: false, role_in_team: "Rifler" },
-  { handle: "pakito", password: "tactical1", role: "coach", is_coach: true, role_in_team: "Head Coach" },
-  { handle: "ema", password: "tactical1", role: "coach", is_coach: true, role_in_team: "Assistant Coach" },
-];
 const DOMAIN = "hambrientos.com";
-const ALLOWED_EMAILS = new Set(ROSTER.map((r) => `${r.handle}@${DOMAIN}`));
+
+interface RosterEntry {
+  handle: string;
+  role: Role;
+  is_coach: boolean;
+  role_in_team: string;
+}
+
+const ROSTER_META: RosterEntry[] = [
+  { handle: "fedu", role: "admin", is_coach: false, role_in_team: "IGL / Support" },
+  { handle: "boke", role: "player", is_coach: false, role_in_team: "Rifler" },
+  { handle: "kud", role: "player", is_coach: false, role_in_team: "Rifler" },
+  { handle: "koda", role: "player", is_coach: false, role_in_team: "AWPer" },
+  { handle: "ray", role: "player", is_coach: false, role_in_team: "Rifler" },
+  { handle: "pakito", role: "coach", is_coach: true, role_in_team: "Head Coach" },
+  { handle: "ema", role: "coach", is_coach: true, role_in_team: "Assistant Coach" },
+];
+const ALLOWED_EMAILS = new Set(ROSTER_META.map((r) => `${r.handle}@${DOMAIN}`));
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // --- Auth: require signed-in admin ---
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const jwt = authHeader.replace(/^Bearer\s+/i, "");
+  if (!jwt) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
+  if (userErr || !userData?.user) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const { data: roleRow } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userData.user.id)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (!roleRow) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Passwords are provided via secrets — never hardcoded.
+  const adminPassword = Deno.env.get("SEED_ADMIN_PASSWORD");
+  const playerPassword = Deno.env.get("SEED_PLAYER_PASSWORD");
+  if (!adminPassword || !playerPassword) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "faltan secretos SEED_ADMIN_PASSWORD y/o SEED_PLAYER_PASSWORD",
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const ROSTER: Seed[] = ROSTER_META.map((r) => ({
+    ...r,
+    password: r.role === "admin" ? adminPassword : playerPassword,
+  }));
 
   const log: Record<string, string> = {};
 
@@ -44,6 +99,7 @@ Deno.serve(async (req) => {
       log[u.email ?? u.id] = error ? `delete err: ${error.message}` : "deleted";
     }
   }
+
 
   // Refresh existing user list
   const { data: after } = await admin.auth.admin.listUsers();
