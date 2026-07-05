@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     const calKey = integ.teamup_calendar_key;
     const apiKey = integ.teamup_api_key;
     const calPass = (integ as { teamup_password?: string | null }).teamup_password ?? "";
-    const teamupHeaders: Record<string, string> = teamupHeaders;
+    const teamupHeaders: Record<string, string> = { "Teamup-Token": apiKey };
     if (calPass) teamupHeaders["Teamup-Password"] = calPass;
 
 
