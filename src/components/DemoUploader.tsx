@@ -652,12 +652,18 @@ function JobRow({
   isSelected: boolean;
 }) {
   const active = job.stage === "uploading" || job.stage === "parsing" || job.stage === "matching" || job.stage === "saving";
+  const isQueued = job.stage === "queued";
   const currentPct = STAGES.find((s) => s.key === (job.stage === "error" || job.stage === "cancelled" ? job.failedStage : job.stage))?.pct ?? 0;
+  const stageLabel = isQueued
+    ? job.attempt > 1
+      ? `En cola — reintento ${job.attempt}/${job.maxAttempts}`
+      : "En cola"
+    : STAGES.find((s) => s.key === job.stage)?.label ?? "";
 
   return (
     <div className={cn(
       "rounded-md border p-3 space-y-2 transition-colors",
-      isSelected ? "border-accent/60 bg-accent/5" : "border-border bg-card/40",
+      isSelected ? "border-accent/60 bg-accent/5" : isQueued ? "border-dashed border-border bg-card/20" : "border-border bg-card/40",
     )}>
       <div className="flex items-center justify-between text-xs gap-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -667,10 +673,17 @@ function JobRow({
             <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
           ) : job.stage === "done" ? (
             <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+          ) : isQueued ? (
+            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
           ) : (
             <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
           )}
           <span className="truncate font-medium">{job.fileName}</span>
+          {job.attempt > 1 && job.stage !== "done" && (
+            <Badge variant="outline" className="h-4 px-1 text-[9px] border-accent/40 text-accent">
+              intento {job.attempt}/{job.maxAttempts}
+            </Badge>
+          )}
           <span className={cn(
             "truncate text-muted-foreground text-[10px] hidden sm:inline",
             job.stage === "error" && "text-destructive",
@@ -680,7 +693,7 @@ function JobRow({
               ? `Falló en "${STAGES.find((s) => s.key === job.failedStage)?.label ?? "el proceso"}": ${job.error}`
               : job.stage === "cancelled"
                 ? `Cancelado en "${STAGES.find((s) => s.key === job.failedStage)?.label ?? "el proceso"}"`
-                : STAGES.find((s) => s.key === job.stage)?.label}
+                : stageLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
