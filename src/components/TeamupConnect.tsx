@@ -107,19 +107,37 @@ export default function TeamupConnect({ onSynced }: { onSynced?: () => void }) {
 
       {open && (
         <CardContent className="space-y-4">
-          <div className="text-xs text-muted-foreground space-y-1">
+          <div className="text-xs text-muted-foreground space-y-2">
             <p>
               Vincula tu calendario de Teamup. Los eventos importados quedan en la agenda de la app, y los que
               crees acá se pueden publicar de vuelta a Teamup.
             </p>
-            <p className="flex items-center gap-1">
-              <ExternalLink className="h-3 w-3" />
-              Generá tu API key en{" "}
-              <a href="https://teamup.com/settings/api-key" target="_blank" rel="noreferrer" className="text-accent underline">
-                teamup.com/settings/api-key
-              </a>
-            </p>
+            <div className="rounded-md border border-border/60 bg-muted/30 p-2 space-y-1">
+              <p className="font-medium text-foreground">¿Cómo obtener la API Key?</p>
+              <p>
+                Teamup no genera la key desde el panel de usuario: hay que pedirla con un formulario y llega por mail (suele tardar unos minutos).
+              </p>
+              <p className="flex items-center gap-1">
+                <ExternalLink className="h-3 w-3" />
+                Pedila acá:{" "}
+                <a
+                  href="https://teamup.com/api-keys/request"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline"
+                >
+                  teamup.com/api-keys/request
+                </a>
+              </p>
+              <p>
+                En el formulario poné tu email, un nombre de app (ej: "Hambrientos Tracker") y una descripción corta. Cuando llegue el mail, copiá la key (tipo <span className="font-mono">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>) y pegala abajo.
+              </p>
+              <p>
+                El <span className="font-medium text-foreground">Calendar Key</span> es la parte final de la URL de tu calendario de Teamup (empieza con <span className="font-mono">ks...</span>).
+              </p>
+            </div>
           </div>
+
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
