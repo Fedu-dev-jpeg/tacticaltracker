@@ -202,7 +202,7 @@ async function parseFile(
     if (bytesProcessed % 500 === 0) {
       // Ticks-per-round in CS2 ~ 1900. Rough estimate; capped at 95%.
       progressPct = Math.min(95, 50 + Math.round((rounds.length / 30) * 45));
-      onProgress(progressPct, `Parseando (round ${rounds.length}/~30)`);
+      onProgress(progressPct, `Parseando (round ${rounds.length}/~30)`, "parse");
     }
   });
 
