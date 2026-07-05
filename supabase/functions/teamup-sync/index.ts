@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
 
     const { data: integ } = await admin
       .from("integrations")
-      .select("teamup_calendar_key, teamup_api_key")
+      .select("teamup_calendar_key, teamup_api_key, teamup_password")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -43,6 +43,10 @@ Deno.serve(async (req) => {
     }
     const calKey = integ.teamup_calendar_key;
     const apiKey = integ.teamup_api_key;
+    const calPass = (integ as { teamup_password?: string | null }).teamup_password ?? "";
+    const teamupHeaders: Record<string, string> = { "Teamup-Token": apiKey };
+    if (calPass) teamupHeaders["Teamup-Password"] = calPass;
+
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const action = body.action as string;
