@@ -267,37 +267,72 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         {/* Progress area */}
         {stage !== "idle" && (
           <div className="rounded-md border border-border bg-card/40 p-3 space-y-3">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between text-xs gap-3">
+              <div className="flex items-center gap-2 min-w-0">
                 {stage === "error" ? (
-                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                ) : stage === "cancelled" ? (
+                  <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
                 ) : stage === "done" ? (
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                 ) : (
-                  <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                  <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
                 )}
-                <span className={cn(stage === "error" && "text-destructive", stage === "done" && "text-success")}>
-                  {stage === "error" ? error : STAGES.find((s) => s.key === stage)?.label}
+                <span className={cn("truncate", stage === "error" && "text-destructive", stage === "cancelled" && "text-muted-foreground", stage === "done" && "text-success")}>
+                  {stage === "error"
+                    ? `Falló en "${STAGES.find((s) => s.key === failedStage)?.label ?? "el proceso"}": ${error}`
+                    : stage === "cancelled"
+                      ? `Cancelado en "${STAGES.find((s) => s.key === failedStage)?.label ?? "el proceso"}"`
+                      : STAGES.find((s) => s.key === stage)?.label}
                 </span>
               </div>
-              {fileName && <span className="text-muted-foreground text-[10px] truncate max-w-[200px]">{fileName}</span>}
+              <div className="flex items-center gap-2 shrink-0">
+                {fileName && <span className="text-muted-foreground text-[10px] truncate max-w-[160px]">{fileName}</span>}
+                {(stage === "uploading" || stage === "parsing" || stage === "matching" || stage === "saving") && (
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={cancelUpload}>
+                    <Ban className="h-3 w-3 mr-1" /> Cancelar
+                  </Button>
+                )}
+                {(stage === "error" || stage === "cancelled") && lastFile && (
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-accent/40 text-accent hover:bg-accent/10" onClick={retryUpload}>
+                    <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
+                  </Button>
+                )}
+              </div>
             </div>
-            <Progress value={stage === "error" ? 0 : currentPct} className="h-1.5" />
+            <Progress value={stage === "error" || stage === "cancelled" ? currentPct : currentPct} className="h-1.5" />
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               {STAGES.map((s) => {
-                const active = stageActive(s.key);
+                const order = STAGES.map((x) => x.key);
+                const stageIdx = order.indexOf(stage);
+                const sIdx = order.indexOf(s.key);
+                const done = stage === "done" ? true : sIdx < stageIdx;
                 const isCurrent = stage === s.key;
+                const isFailed = (stage === "error" || stage === "cancelled") && failedStage === s.key;
                 const Icon = s.icon;
                 return (
                   <div
                     key={s.key}
                     className={cn(
                       "flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded border transition-colors",
-                      active ? "border-accent/40 bg-accent/10 text-accent" : "border-border bg-muted/20 text-muted-foreground",
-                      isCurrent && stage !== "done" && "animate-pulse",
+                      isFailed
+                        ? "border-destructive/60 bg-destructive/10 text-destructive"
+                        : done
+                          ? "border-success/40 bg-success/10 text-success"
+                          : isCurrent
+                            ? "border-accent/50 bg-accent/10 text-accent animate-pulse"
+                            : "border-border bg-muted/20 text-muted-foreground",
                     )}
                   >
-                    <Icon className="h-3 w-3 shrink-0" />
+                    {isFailed ? (
+                      <XCircle className="h-3 w-3 shrink-0" />
+                    ) : done ? (
+                      <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    ) : isCurrent ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                    ) : (
+                      <Icon className="h-3 w-3 shrink-0" />
+                    )}
                     <span className="truncate">{s.label}</span>
                   </div>
                 );
