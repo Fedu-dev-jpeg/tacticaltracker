@@ -24,4 +24,18 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
+  // @deademx/cs2 + @deademx/engine ship browser code that uses Vite's own
+  // `?worker&inline` syntax. Pre-bundling with esbuild fails on that (esbuild
+  // doesn't know the Vite worker suffix), so we skip the optimizer entirely
+  // and let Vite serve those modules through its dev pipeline. `seek-bzip`
+  // is CJS and must be prebundled; listing it in `include` ensures the
+  // optimizer produces the bundle even though it's only referenced from a
+  // Web Worker (Vite's dep discovery scans main-thread entries only).
+  optimizeDeps: {
+    include: ["seek-bzip"],
+    exclude: ["@deademx/cs2", "@deademx/engine"],
+  },
+  worker: {
+    format: "es",
+  },
 }));

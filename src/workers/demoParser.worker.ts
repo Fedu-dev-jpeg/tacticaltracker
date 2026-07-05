@@ -16,9 +16,26 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — seek-bzip has no types
 import Bunzip from "seek-bzip";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — @deademx/cs2 has no types
-import { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType } from "@deademx/cs2";
+
+// @deademx/cs2 is loaded from its prebuilt UMD bundle. Its ESM entry drags in
+// `?worker&inline` imports (Vite-only syntax) and a bunch of CJS deps that
+// esbuild's optimizer can't handle, so the module-graph route crashes the
+// worker with a bare "error" event. The UMD (dist/deadem-cs2.min.js) is
+// self-contained — it registers itself as `self.deademCs2`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DeademCs2Api = any;
+let deademCs2: DeademCs2Api | null = null;
+async function loadDeadem(): Promise<DeademCs2Api> {
+  if (deademCs2) return deademCs2;
+  // Vite must not try to transform this URL — the file is a plain UMD script.
+  const umdUrl = "/node_modules/@deademx/cs2/dist/deadem-cs2.min.js";
+  await import(/* @vite-ignore */ umdUrl);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const api = (self as any).deademCs2;
+  if (!api) throw new Error("deadem UMD no expuso `deademCs2` en el worker global");
+  deademCs2 = api;
+  return api;
+}
 
 export interface RawParsedRound {
   round_number: number;
@@ -107,6 +124,10 @@ async function parseFile(
   }
 
   onProgress(50, "Parseando eventos");
+
+  // Load the deadem UMD lazily so any load error is reported through the
+  // normal message channel instead of a bare worker `error` event.
+  const { Parser, ParserConfiguration, InterceptorStage, MessagePacketType, StringTableType, DemoPacketType } = await loadDeadem();
 
   // Feed the parser a WHATWG stream backed by the in-memory bytes.
   const blob = new Blob([bytes.buffer as ArrayBuffer]);
