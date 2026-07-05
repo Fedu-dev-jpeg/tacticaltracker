@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       .from("matches")
       .insert({
         date: new Date().toISOString(),
-        type: "OFFICIAL",
+        type: matchType,
         map,
         rival,
         score_us: scoreUs,
