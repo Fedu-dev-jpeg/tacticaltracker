@@ -882,6 +882,11 @@ function JobRow({
               <RotateCcw className="h-3 w-3 mr-1" /> Reintentar
             </Button>
           )}
+          {job.stage === "error" && (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-destructive/40 text-destructive hover:bg-destructive/10" onClick={onShowError}>
+              <AlertCircle className="h-3 w-3 mr-1" /> Ver error
+            </Button>
+          )}
           {!active && (
             <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1" title="Quitar de la lista">
               <Trash2 className="h-3 w-3" />
