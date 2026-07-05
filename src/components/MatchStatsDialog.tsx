@@ -67,7 +67,24 @@ const ROLE_COLORS: Record<string, string> = {
   "Mid": "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
 };
 
-export default function MatchStatsDialog({ data, trigger }: { data: DemoData; trigger?: React.ReactNode }) {
+export interface MatchStatsMeta {
+  date?: string;
+  matchType?: string;
+  rival?: string;
+  savedAt?: string; // ISO — when demo_data was persisted
+}
+
+export default function MatchStatsDialog({
+  data,
+  trigger,
+  meta,
+  mode = "live",
+}: {
+  data: DemoData;
+  trigger?: React.ReactNode;
+  meta?: MatchStatsMeta;
+  mode?: "live" | "stored";
+}) {
   const [full, setFull] = useState(false);
 
   return (
@@ -80,7 +97,11 @@ export default function MatchStatsDialog({ data, trigger }: { data: DemoData; tr
         )}
       </DialogTrigger>
       <DialogContent className={cn("bg-background border-border p-0", full ? "max-w-6xl max-h-[92vh] overflow-y-auto" : "max-w-3xl")}>
-        {!full ? <MiniView data={data} onFull={() => setFull(true)} /> : <FullView data={data} onBack={() => setFull(false)} />}
+        {!full ? (
+          <MiniView data={data} meta={meta} mode={mode} onFull={() => setFull(true)} />
+        ) : (
+          <FullView data={data} meta={meta} mode={mode} onBack={() => setFull(false)} />
+        )}
       </DialogContent>
     </Dialog>
   );
