@@ -61,6 +61,9 @@ interface Job {
   abort: AbortController;
   attempt: number; // 1-indexed current attempt
   maxAttempts: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  durationMs: number | null;
 }
 
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6] as const;
@@ -73,10 +76,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [result, setResult] = useState<ParsedDemo | null>(null);
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({}); // steam_id -> team_member.id
   const [assigning, setAssigning] = useState<string | null>(null);
-  // Concurrency + retry settings (persisted in memory for the session)
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(2);
-  const [autoRetry, setAutoRetry] = useState<boolean>(true);
-  const [maxAttempts, setMaxAttempts] = useState<number>(3);
+  // Concurrency + retry settings (persisted across reloads)
+  const [maxConcurrent, setMaxConcurrent] = useLocalStorage<number>("demo-uploader:maxConcurrent", 2);
+  const [autoRetry, setAutoRetry] = useLocalStorage<boolean>("demo-uploader:autoRetry", true);
+  const [maxAttempts, setMaxAttempts] = useLocalStorage<number>("demo-uploader:maxAttempts", 3);
+  const [paused, setPaused] = useLocalStorage<boolean>("demo-uploader:paused", false);
+  const [errorJobId, setErrorJobId] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
   // Refs so async pipeline sees current values without re-creating callbacks
   const startedRef = useRef<Set<string>>(new Set());
   const retryTimeoutsRef = useRef<Map<string, number>>(new Map());
