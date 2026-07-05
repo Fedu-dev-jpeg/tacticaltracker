@@ -80,18 +80,35 @@ export default function MatchStatsDialog({
   );
 }
 
+function displayTeamName(name: string | undefined | null, fallback: string): string {
+  const n = (name ?? "").trim();
+  if (!n || /^sin definir$/i.test(n) || n === "?") return fallback;
+  return n;
+}
+
+function fmtScore(demo: DemoData): { t1: string; t2: string; known: boolean } {
+  const t1 = demo.match.score.team1;
+  const t2 = demo.match.score.team2;
+  const rounds = demo.match.total_rounds;
+  if (rounds <= 0 && t1 === 0 && t2 === 0) return { t1: "—", t2: "—", known: false };
+  return { t1: String(t1), t2: String(t2), known: true };
+}
+
 function ScoreHeader({ demo }: { demo: DemoData }) {
+  const s = fmtScore(demo);
+  const team1Name = displayTeamName(demo.match.teams.team1.name, "Equipo 1");
+  const team2Name = displayTeamName(demo.match.teams.team2.name, "Equipo 2");
   return (
     <div className="flex items-center justify-center gap-6 py-4 border-y border-border">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-xs">?</div>
-        <span>{demo.match.teams.team1.name}</span>
+        <span>{team1Name}</span>
       </div>
-      <div className="font-heading text-3xl font-bold tabular-nums">
-        {demo.match.score.team1} - {demo.match.score.team2}
+      <div className={cn("font-heading text-3xl font-bold tabular-nums", !s.known && "text-muted-foreground")}>
+        {s.t1} - {s.t2}
       </div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>{demo.match.teams.team2.name}</span>
+        <span>{team2Name}</span>
         <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-xs">?</div>
       </div>
     </div>
