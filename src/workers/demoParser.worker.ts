@@ -236,6 +236,9 @@ async function parseFile(
     if (!desc) return;
     const event = zipEvent(desc, raw.keys);
 
+    // Debug: tally every event name we see so we can diagnose missing scores.
+    eventCounts.set(desc.name, (eventCounts.get(desc.name) ?? 0) + 1);
+
     switch (desc.name) {
       case "round_start": {
         roundNumber += 1;
@@ -245,9 +248,24 @@ async function parseFile(
         if (roundNumber === 1) snapshotPlayersFromStringTable();
         break;
       }
-      case "round_end": {
-        // event.winner: 2 = T, 3 = CT (Valve CSTeam enum).
-        const side: "CT" | "TERRORIST" = event.winner === 3 ? "CT" : "TERRORIST";
+      case "round_end":
+      case "round_officially_ended":
+      case "cs_win_panel_round": {
+        // `round_end` fires when the outcome is decided; `round_officially_ended`
+        // fires at freeze time after; `cs_win_panel_round` shows the summary
+        // panel. Some CS2 demos ship only one of these — accept whichever wins
+        // first for a given round number and dedupe by round index.
+        if (rounds.length >= roundNumber && roundNumber > 0) break; // already recorded
+        // Valve CSTeam enum: 2 = T, 3 = CT. Some events use `final_event` /
+        // `winner_team` instead of `winner`.
+        const winnerRaw = event.winner ?? event.winner_team ?? event.final_event;
+        const winnerNum = Number(winnerRaw);
+        // If we can't tell, skip — better no round than a wrong one.
+        if (winnerNum !== 2 && winnerNum !== 3) {
+          debugMissedRoundEnd = (debugMissedRoundEnd ?? 0) + 1;
+          break;
+        }
+        const side: "CT" | "TERRORIST" = winnerNum === 3 ? "CT" : "TERRORIST";
         const reasonNum = Number(event.reason ?? 0);
         rounds.push({
           round_number: rounds.length + 1,
