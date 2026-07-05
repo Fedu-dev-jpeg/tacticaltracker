@@ -223,7 +223,27 @@ export default function Playbook() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      {/* Codewords Reference */}
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center">
+          <BookOpen className="h-5 w-5 text-accent" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-heading font-bold">Playbook</h1>
+          <p className="text-xs text-muted-foreground">Estrategias del equipo, roles y utilidad</p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="estrategias" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="estrategias" className="gap-2"><BookOpen className="h-3.5 w-3.5" /> Estrategias</TabsTrigger>
+          <TabsTrigger value="individual" className="gap-2"><Users className="h-3.5 w-3.5" /> Individual / Core</TabsTrigger>
+          <TabsTrigger value="protocolos" className="gap-2"><ScrollText className="h-3.5 w-3.5" /> Protocolos</TabsTrigger>
+          <TabsTrigger value="setups" className="gap-2"><Settings2 className="h-3.5 w-3.5" /> Setups</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="estrategias" className="space-y-6 mt-0">
+          {/* Codewords Reference */}
       <div className="bg-card rounded-lg border border-border overflow-hidden">
         <button onClick={() => setShowCodewords(!showCodewords)} className="w-full flex items-center gap-2 p-3 hover:bg-secondary/30 transition-colors text-left">
           <MessageSquare className="h-4 w-4 text-accent" />
