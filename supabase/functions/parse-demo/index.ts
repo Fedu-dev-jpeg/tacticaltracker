@@ -33,17 +33,9 @@ Deno.serve(async (req) => {
     const { path } = await req.json();
     if (!path || typeof path !== "string") return json({ error: "path requerido" }, 400);
 
-    // Fetch only file metadata (size) — downloading the whole .dem blows the edge function memory limit.
-    const lastSlash = path.lastIndexOf("/");
-    const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
-    const name = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-    const { data: listing, error: listErr } = await admin.storage
-      .from("demos")
-      .list(dir, { search: name, limit: 1 });
-    if (listErr || !listing || listing.length === 0) {
-      return json({ error: "Demo no encontrada: " + (listErr?.message ?? "not found") }, 404);
-    }
-    const fileSize = (listing[0].metadata as { size?: number } | null)?.size ?? 0;
+    // Skip any storage read here — downloading or even listing under concurrency
+    // pushes the edge function past its memory limit. file_size is informational only.
+    const fileSize = 0;
 
     const rng = seededRng(hashString(path));
 
