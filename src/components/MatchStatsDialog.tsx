@@ -372,15 +372,19 @@ function FullTeamTable({ label, players, totalRounds = 0 }: { label: string; pla
               return (
                 <tr key={p.steamid} className="border-t border-border/40">
                   <td className="px-3 py-2 flex items-center gap-2">
-                    <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{p.name[0]}</AvatarFallback></Avatar>
+                    <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{(p.name ?? "?")[0]}</AvatarFallback></Avatar>
                     <span>{p.name}</span>
                   </td>
                   <td className="px-3 py-2"><RolePill role={p.role_deduced} /></td>
                   <td className="px-2 py-2 text-right font-mono">{kda(p)}</td>
                   <td className={cn("px-2 py-2 text-right font-mono", pm >= 0 ? "text-emerald-400" : "text-red-400")}>{pm >= 0 ? "+" : ""}{pm}</td>
-                  <td className="px-2 py-2 text-right font-mono">{p.stats.adr.toFixed(1)}</td>
-                  <td className={cn("px-2 py-2 text-right font-mono", p.stats.kast < 60 ? "text-red-400" : "")}>{p.stats.kast.toFixed(0)}%</td>
-                  <td className={cn("px-2 py-2 text-right font-mono", p.stats.rating >= 1.0 ? "text-emerald-400" : p.stats.rating >= 0.9 ? "" : "text-red-400")}>{p.stats.rating.toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right font-mono">{fmtAdr(p, totalRounds)}</td>
+                  {(() => { const k = fmtKast(p); return (
+                    <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && p.stats.kast < 60 && "text-red-400")}>{k.text}</td>
+                  ); })()}
+                  {(() => { const r = fmtRating(p); return (
+                    <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && p.stats.rating >= 1.0 && "text-emerald-400", r.known && p.stats.rating < 0.9 && "text-red-400")}>{r.text}</td>
+                  ); })()}
                   <td className="px-2 py-2 text-right font-mono">{p.stats.hs_kills}</td>
                   <td className="px-2 py-2 text-right font-mono">{p.stats.damage}</td>
                   <td className="px-2 py-2 text-right font-mono">{p.stats.first_kills}/{p.stats.first_deaths}</td>
