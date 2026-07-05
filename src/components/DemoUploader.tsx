@@ -244,7 +244,14 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
           });
           // Clear the transient progress label once parsing finishes.
           updateJob(job.id, { error: null });
+          console.log(`[demo-parser] ${job.fileName} → parsed`, {
+            map: rawParsed?.map,
+            players: rawParsed?.players?.length,
+            rounds: rawParsed?.rounds?.length,
+            score: rawParsed?.score,
+          });
         } catch (parseErr) {
+          console.error(`[demo-parser] ${job.fileName} failed:`, parseErr);
           throw new Error("Parser local: " + (parseErr as Error).message);
         }
         throwIfAborted();
@@ -264,17 +271,24 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         current = "matching";
         updateJob(job.id, { stage: current });
         throwIfAborted();
+        // Defensive: strip any BigInt values from the payload before invoke()
+        // JSON-encodes it (BigInts throw at JSON.stringify time).
+        const bigintSafe = JSON.parse(JSON.stringify(rawParsed, (_k, v) => typeof v === "bigint" ? String(v) : v));
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
           body: {
             path,
             rival: job.overrides?.rival,
             match_type: job.overrides?.matchType,
             map: job.overrides?.map, // user override — server prefers parsed value
-            parsed: rawParsed,
+            parsed: bigintSafe,
           },
         });
         throwIfAborted();
-        if (fnErr) throw new Error("Parser: " + fnErr.message);
+        if (fnErr) {
+          console.error(`[demo-parser] edge function error for ${job.fileName}:`, fnErr, "data:", data);
+          throw new Error("Parser: " + fnErr.message);
+        }
+
 
 
         current = "matching";
