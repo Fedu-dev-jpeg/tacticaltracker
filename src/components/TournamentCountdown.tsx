@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { TOURNAMENT_DATE } from "@/types/match";
 import { Timer, Trophy } from "lucide-react";
 
 function diff(target: Date) {
@@ -11,12 +10,19 @@ function diff(target: Date) {
   return { ms, days, hours, minutes, seconds };
 }
 
-export default function TournamentCountdown() {
-  const [t, setT] = useState(() => diff(TOURNAMENT_DATE));
+interface Props {
+  target: Date;
+  name?: string;
+  format?: string;
+}
+
+export default function TournamentCountdown({ target, name, format }: Props) {
+  const [t, setT] = useState(() => diff(target));
   useEffect(() => {
-    const id = window.setInterval(() => setT(diff(TOURNAMENT_DATE)), 1000);
+    setT(diff(target));
+    const id = window.setInterval(() => setT(diff(target)), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [target]);
 
   const over = t.ms === 0;
   const cells: { label: string; value: number }[] = [
@@ -25,6 +31,14 @@ export default function TournamentCountdown() {
     { label: "Min", value: t.minutes },
     { label: "Seg", value: t.seconds },
   ];
+
+  const dateLabel = target.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
     <div className="relative overflow-hidden rounded-lg border border-accent/40 bg-gradient-to-br from-accent/15 via-card to-card p-5 card-glow">
@@ -35,8 +49,12 @@ export default function TournamentCountdown() {
             {over ? <Trophy className="h-5 w-5 text-primary-foreground" /> : <Timer className="h-5 w-5 text-primary-foreground" />}
           </div>
           <div>
-            <p className="stat-label">{over ? "El torneo ya empezó" : "Cuenta regresiva al Torneo"}</p>
-            <p className="text-sm font-heading font-bold text-accent">25/04/2026 · 15:00</p>
+            <p className="stat-label">
+              {over ? "El torneo ya empezó" : "Cuenta regresiva al Torneo"}
+            </p>
+            <p className="text-sm font-heading font-bold text-accent">
+              {name ? `${name} · ` : ""}{dateLabel}{format ? ` · ${format}` : ""}
+            </p>
           </div>
         </div>
         <div className="flex gap-2 sm:gap-3">
