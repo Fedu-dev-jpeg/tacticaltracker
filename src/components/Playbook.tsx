@@ -421,6 +421,7 @@ export default function Playbook() {
               submitLabel="Guardar"
               onSubmit={async (s) => { const newId = crypto.randomUUID(); const newStrat = { ...s, id: newId }; setStrategies((prev) => [newStrat, ...prev]); setShowForm(false); await supabase.from("strategies").insert({ id: newId, map: s.map, side: s.side, type: s.type, name: s.name, description: s.description, player_roles: s.playerRoles as any, notes: s.notes, link: s.link, status: s.status }); toast.success("Estrategia agregada"); }}
               onCancel={() => setShowForm(false)}
+              memberByName={memberByName}
             />
           ) : (
             <Button onClick={() => setShowForm(true)} className="gradient-accent text-accent-foreground w-full">
