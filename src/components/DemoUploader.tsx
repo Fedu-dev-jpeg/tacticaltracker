@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { parseDemoHeader } from "@/lib/demoParser";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
 
