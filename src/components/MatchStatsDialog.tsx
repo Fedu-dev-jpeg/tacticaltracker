@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { BarChart3, User, Users, Bomb, Skull, Clock, Shield, Download, FileJson, FileSpreadsheet, Filter, X, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportEconomyCSV, exportFullJSON, exportRoundsCSV, exportRoundsJSON } from "@/lib/exportStats";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 interface PlayerBlob {
   tag: string;
@@ -86,6 +87,8 @@ export default function MatchStatsDialog({
   mode?: "live" | "stored";
 }) {
   const [full, setFull] = useState(false);
+  // Stable storage key per demo so filters/highlights survive dialog reopens
+  const storageKey = `stats-filters:${data.map}|${data.rival}|${data.score_us}-${data.score_them}|${data.total_rounds}`;
 
   return (
     <Dialog>
@@ -96,11 +99,11 @@ export default function MatchStatsDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className={cn("bg-background border-border p-0", full ? "max-w-6xl max-h-[92vh] overflow-y-auto" : "max-w-3xl")}>
+      <DialogContent className={cn("bg-background border-border p-0", full ? "max-w-6xl max-h-[92vh] overflow-y-auto" : "max-w-3xl max-h-[92vh] overflow-y-auto")}>
         {!full ? (
-          <MiniView data={data} meta={meta} mode={mode} onFull={() => setFull(true)} />
+          <MiniView data={data} meta={meta} mode={mode} storageKey={storageKey} onFull={() => setFull(true)} />
         ) : (
-          <FullView data={data} meta={meta} mode={mode} onBack={() => setFull(false)} />
+          <FullView data={data} meta={meta} mode={mode} storageKey={storageKey} onBack={() => setFull(false)} />
         )}
       </DialogContent>
     </Dialog>
@@ -164,7 +167,7 @@ function ExportMenu({ data, meta }: { data: DemoData; meta?: MatchStatsMeta }) {
   );
 }
 
-function MiniView({ data, meta, mode, onFull }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; onFull: () => void }) {
+function MiniView({ data, meta, mode, storageKey, onFull }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; storageKey: string; onFull: () => void }) {
   return (
     <div className="p-5 space-y-3">
       <DialogHeader className="mb-1">
@@ -181,6 +184,7 @@ function MiniView({ data, meta, mode, onFull }: { data: DemoData; meta?: MatchSt
       </div>
       <MiniTeamTable label={data.team_them.name} players={data.team_them.players} />
       <MiniTeamTable label={data.team_us.name} players={data.team_us.players} className="mt-3" />
+      <RoundsTimeline rounds={data.rounds} storageKey={storageKey} compact />
     </div>
   );
 }
@@ -237,7 +241,7 @@ function RolePills({ roles }: { roles: string[] }) {
   );
 }
 
-function FullView({ data, meta, mode, onBack }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; onBack: () => void }) {
+function FullView({ data, meta, mode, storageKey, onBack }: { data: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; storageKey: string; onBack: () => void }) {
   return (
     <div className="p-5 space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -289,7 +293,7 @@ function FullView({ data, meta, mode, onBack }: { data: DemoData; meta?: MatchSt
       </div>
 
       {/* Round Analysis */}
-      <RoundsTimeline rounds={data.rounds} />
+      <RoundsTimeline rounds={data.rounds} storageKey={storageKey} />
 
       {/* Charts */}
       <PerformanceCharts data={data} />
@@ -356,12 +360,19 @@ function isClutchRound(r: Round) {
   return r.winner === "us" && r.survivors === 1 && r.enemy_remaining >= 1;
 }
 
-function RoundsTimeline({ rounds }: { rounds: Round[] }) {
-  const [side, setSide] = useState<SideFilter>("all");
-  const [result, setResult] = useState<ResultFilter>("all");
-  const [reasons, setReasons] = useState<Set<Reason>>(new Set());
-  const [onlyPistol, setOnlyPistol] = useState(false);
-  const [onlyClutch, setOnlyClutch] = useState(false);
+interface RoundsFilterState {
+  side: SideFilter;
+  result: ResultFilter;
+  reasons: Reason[];
+  onlyPistol: boolean;
+  onlyClutch: boolean;
+}
+const DEFAULT_FILTERS: RoundsFilterState = { side: "all", result: "all", reasons: [], onlyPistol: false, onlyClutch: false };
+
+function RoundsTimeline({ rounds, storageKey, compact }: { rounds: Round[]; storageKey: string; compact?: boolean }) {
+  const [filters, setFilters] = useLocalStorage<RoundsFilterState>(storageKey, DEFAULT_FILTERS);
+  const { side, result, reasons, onlyPistol, onlyClutch } = filters;
+  const reasonSet = useMemo(() => new Set<Reason>(reasons), [reasons]);
 
   const matches = useMemo(() => {
     const set = new Set<number>();
@@ -369,25 +380,22 @@ function RoundsTimeline({ rounds }: { rounds: Round[] }) {
       if (side !== "all" && r.us_side !== side) return;
       if (result === "win" && r.winner !== "us") return;
       if (result === "loss" && r.winner !== "them") return;
-      if (reasons.size > 0 && !reasons.has(r.reason as Reason)) return;
+      if (reasonSet.size > 0 && !reasonSet.has(r.reason as Reason)) return;
       if (onlyPistol && !r.is_pistol) return;
       if (onlyClutch && !isClutchRound(r)) return;
       set.add(r.n);
     });
     return set;
-  }, [rounds, side, result, reasons, onlyPistol, onlyClutch]);
+  }, [rounds, side, result, reasonSet, onlyPistol, onlyClutch]);
 
-  const toggleReason = (r: Reason) => {
-    setReasons((prev) => {
-      const next = new Set(prev);
-      if (next.has(r)) next.delete(r); else next.add(r);
-      return next;
-    });
-  };
-  const resetFilters = () => {
-    setSide("all"); setResult("all"); setReasons(new Set()); setOnlyPistol(false); setOnlyClutch(false);
-  };
-  const filtersActive = side !== "all" || result !== "all" || reasons.size > 0 || onlyPistol || onlyClutch;
+  const setSide = (s: SideFilter) => setFilters((f) => ({ ...f, side: s }));
+  const setResult = (r: ResultFilter) => setFilters((f) => ({ ...f, result: r }));
+  const toggleReason = (r: Reason) =>
+    setFilters((f) => ({ ...f, reasons: f.reasons.includes(r) ? f.reasons.filter((x) => x !== r) : [...f.reasons, r] }));
+  const setOnlyPistol = (v: boolean) => setFilters((f) => ({ ...f, onlyPistol: v }));
+  const setOnlyClutch = (v: boolean) => setFilters((f) => ({ ...f, onlyClutch: v }));
+  const resetFilters = () => setFilters(DEFAULT_FILTERS);
+  const filtersActive = side !== "all" || result !== "all" || reasonSet.size > 0 || onlyPistol || onlyClutch;
 
   const half1 = rounds.slice(0, 12);
   const half2 = rounds.slice(12);
@@ -395,8 +403,10 @@ function RoundsTimeline({ rounds }: { rounds: Round[] }) {
   return (
     <div className="rounded-lg border border-border p-4 space-y-3">
       <div className="text-center">
-        <h3 className="font-heading font-bold">Round Analysis</h3>
-        <p className="text-xs text-muted-foreground">Round by round breakdown with winners, survivors, and round reasons</p>
+        <h3 className="font-heading font-bold">{compact ? "Round Timeline" : "Round Analysis"}</h3>
+        <p className="text-xs text-muted-foreground">
+          {compact ? "Filtros y timeline · se guardan al cerrar el diálogo" : "Round by round breakdown with winners, survivors, and round reasons"}
+        </p>
       </div>
 
       {/* Filters */}
@@ -425,14 +435,18 @@ function RoundsTimeline({ rounds }: { rounds: Round[] }) {
               {r === "all" ? "Todos" : r === "win" ? "Ganadas" : "Perdidas"}
             </FilterChip>
           ))}
-          <span className="text-muted-foreground ml-2">Motivo:</span>
-          {REASONS.map((r) => (
-            <FilterChip key={r} active={reasons.has(r)} onClick={() => toggleReason(r)}>
-              {r}
-            </FilterChip>
-          ))}
-          <FilterChip active={onlyPistol} onClick={() => setOnlyPistol((v) => !v)}>Pistol</FilterChip>
-          <FilterChip active={onlyClutch} onClick={() => setOnlyClutch((v) => !v)}>Clutch</FilterChip>
+          {!compact && (
+            <>
+              <span className="text-muted-foreground ml-2">Motivo:</span>
+              {REASONS.map((r) => (
+                <FilterChip key={r} active={reasonSet.has(r)} onClick={() => toggleReason(r)}>
+                  {r}
+                </FilterChip>
+              ))}
+            </>
+          )}
+          <FilterChip active={onlyPistol} onClick={() => setOnlyPistol(!onlyPistol)}>Pistol</FilterChip>
+          <FilterChip active={onlyClutch} onClick={() => setOnlyClutch(!onlyClutch)}>Clutch</FilterChip>
         </div>
       </div>
 
