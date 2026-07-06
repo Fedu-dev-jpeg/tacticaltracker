@@ -32,9 +32,18 @@ type DeademCs2Api = any;
 let deademCs2: DeademCs2Api | null = null;
 async function loadDeadem(): Promise<DeademCs2Api> {
   if (deademCs2) return deademCs2;
-  // In dev Vite serves node_modules; in production the UMD is copied to public/.
-  const umdUrl = "/deadem-cs2.min.js";
-  await import(/* @vite-ignore */ umdUrl);
+  // The UMD bundle is copied to public/. Do not use dynamic import here:
+  // Lovable/Vite rewrites public asset imports to `?import`, but this file is
+  // not an ESM module. Load it as a script payload and execute it in the worker
+  // global so it registers `self.deademCs2`.
+  const umdUrl = new URL("/deadem-cs2.min.js", self.location.origin).toString();
+  const response = await fetch(umdUrl, { cache: "force-cache" });
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar deadem UMD (${response.status} ${response.statusText}) desde ${umdUrl}`);
+  }
+  const source = await response.text();
+  const runUmd = new Function("globalThis", "self", `${source}\n//# sourceURL=${umdUrl}`);
+  runUmd(self, self);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const api = (self as any).deademCs2;
   if (!api) throw new Error("deadem UMD no expuso `deademCs2` en el worker global");
