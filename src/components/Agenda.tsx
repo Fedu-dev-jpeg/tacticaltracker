@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import TeamupConnect from "@/components/TeamupConnect";
+import PraccCompare from "@/components/PraccCompare";
 
 interface AgendaEvent {
   id: string;
@@ -523,6 +524,7 @@ export default function Agenda() {
   return (
     <div className="space-y-4 max-w-5xl mx-auto animate-slide-up">
       <TeamupConnect onSynced={fetchEvents} />
+      <PraccCompare />
       {/* Header */}
       <div className="bg-card rounded-lg border border-border p-4 card-glow">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
