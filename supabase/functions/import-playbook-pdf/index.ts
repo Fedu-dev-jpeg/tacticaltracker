@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +23,7 @@ interface ParsedStrat {
 }
 
 const MAX_PDF_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_TEXT_CHARS = 200_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -64,7 +64,11 @@ Deno.serve(async (req) => {
     let fullText = "";
     if (hasRawText) {
       fullText = String(raw_text).trim();
+      if (fullText.length > MAX_TEXT_CHARS) {
+        return json({ error: "texto demasiado largo para importar" }, 413);
+      }
     } else {
+      const { extractText, getDocumentProxy } = await import("https://esm.sh/unpdf@0.12.1");
       // Decode base64
       const bin = Uint8Array.from(atob(pdf_base64), (c) => c.charCodeAt(0));
       // Extract text with unpdf
@@ -127,6 +131,8 @@ function json(body: unknown, status = 200) {
 function parseStrategies(text: string): ParsedStrat[] {
   const cleaned = cleanImportedText(text);
   const inferredDefaultSide = inferDefaultSide(cleaned);
+  const tacticalFirst = parseTacticalStyle(cleaned, inferredDefaultSide);
+  if (tacticalFirst.length > 0) return tacticalFirst;
   // Split into blocks by `---` line
   const blocks = cleaned
     .split(/\n\s*-{3,}\s*\n/)
@@ -138,8 +144,7 @@ function parseStrategies(text: string): ParsedStrat[] {
     const strat = parseBlock(block, inferredDefaultSide);
     if (strat) result.push(strat);
   }
-  if (result.length > 0) return result;
-  return parseTacticalStyle(cleaned, inferredDefaultSide);
+  return result;
 }
 
 function parseBlock(block: string, defaultSide: "CT" | "TR"): ParsedStrat | null {
@@ -265,14 +270,20 @@ function parseTacticalStyle(text: string, defaultSide: "CT" | "TR"): ParsedStrat
     }
 
     // New strategy start markers.
+    const typedEq = line.match(/^=+\s*([^:=]+?)\s*::\s*(.+?)\s*=*\s*(?:si|no)?$/i);
     const inlineEq = line.match(/^=+\s*(.+?)\s*=+\s*(?:si|no)?$/i);
     const linkHeading = line.match(/^(.+?)\s*\(link\)\s*$/i);
-    if (inlineEq || linkHeading) {
+    const doubleHeader = line.match(/^==\s*([^:=]+?)\s*::\s*(.+?)\s*$/i);
+    if (typedEq || doubleHeader || inlineEq || linkHeading) {
       flush();
-      const name = (inlineEq?.[1] ?? linkHeading?.[1] ?? "").trim();
+      const explicitType = (typedEq?.[1] ?? doubleHeader?.[1] ?? "").trim();
+      const explicitName = (typedEq?.[2] ?? doubleHeader?.[2] ?? "").trim();
+      const freeName = (inlineEq?.[1] ?? linkHeading?.[1] ?? "").trim();
+      const nextType = explicitType ? (normalizeTypeHeading(explicitType) ?? explicitType) : currentType;
+      const name = explicitName || freeName;
       current = {
         name,
-        type: currentType,
+        type: nextType,
         side: currentSide,
         description: "",
         playerRoles: {},
@@ -315,6 +326,9 @@ function parseTacticalStyle(text: string, defaultSide: "CT" | "TR"): ParsedStrat
 
     if (/^https?:\/\//i.test(line)) {
       current.link = line;
+      continue;
+    }
+    if (/^(link|notas?)\s*:\s*[—-]?\s*$/i.test(line) || /^\(pendiente\)$/i.test(line)) {
       continue;
     }
 
