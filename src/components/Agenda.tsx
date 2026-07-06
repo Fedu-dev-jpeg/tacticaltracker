@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAgendaEvents, useInvalidateAgenda } from "@/hooks/useAgendaEvents";
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval,
   isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, subMonths,
@@ -56,7 +57,8 @@ type ViewMode = "day" | "week" | "month";
 type RepeatMode = "none" | "weekdays" | "days";
 
 export default function Agenda() {
-  const [events, setEvents] = useState<AgendaEvent[]>([]);
+  const { data: events = [], isLoading: loading, refetch } = useAgendaEvents();
+  const invalidateAgenda = useInvalidateAgenda();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -64,7 +66,6 @@ export default function Agenda() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [editingEvent, setEditingEvent] = useState<AgendaEvent | null>(null);
   const [form, setForm] = useState({ title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training" });
-  const [loading, setLoading] = useState(true);
   const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -83,8 +84,6 @@ export default function Agenda() {
     numDays: 7,
   });
 
-  useEffect(() => { fetchEvents(); }, []);
-
   useEffect(() => {
     if (pendingBulkConfirm && !bulkDialogOpen) {
       const timer = setTimeout(() => { setPendingBulkConfirm(false); setBulkConfirmOpen(true); }, 300);
@@ -92,13 +91,8 @@ export default function Agenda() {
     }
   }, [pendingBulkConfirm, bulkDialogOpen]);
 
-  const fetchEvents = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from("agenda_events").select("*").order("date").order("time_start");
-    if (error) { toast.error("Error al cargar agenda"); console.error(error); }
-    else setEvents(data || []);
-    setLoading(false);
-  };
+  const fetchEvents = () => { invalidateAgenda(); };
+
 
   // ── Teamup helpers ──
   const pushToTeamup = async (row: AgendaEvent, mode: "create" | "update") => {
@@ -257,17 +251,17 @@ export default function Agenda() {
     const ev = events.find((x) => x.id === eventId);
     if (!ev || ev.date === newDateStr) return;
 
-    // Optimistic update
-    setEvents((prev) => prev.map((x) => x.id === eventId ? { ...x, date: newDateStr } : x));
-
+    // Optimistic update via refetch after mutation; fire-and-forget
     const { error } = await supabase.from("agenda_events").update({ date: newDateStr }).eq("id", eventId);
     if (error) {
       toast.error("Error al mover evento");
       fetchEvents();
       return;
     }
+    fetchEvents();
     toast.success(`Movido a ${format(targetDate, "EEE d MMM", { locale: es })}`);
   };
+
 
   // ── Dialog helpers ──
   const openNewEvent = (date: Date) => {

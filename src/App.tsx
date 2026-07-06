@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { AGENDA_QUERY_KEY, fetchAgendaEvents } from "@/hooks/useAgendaEvents";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -70,6 +72,17 @@ function Routed() {
 function AppContent() {
   const { user, loading } = useAuth();
 
+  // Prefetch agenda events as soon as the user is authenticated so opening
+  // /agenda later renders instantly from cache instead of triggering a fetch.
+  useEffect(() => {
+    if (!user) return;
+    queryClient.prefetchQuery({
+      queryKey: AGENDA_QUERY_KEY,
+      queryFn: fetchAgendaEvents,
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [user]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -85,6 +98,7 @@ function AppContent() {
     </AppShell>
   );
 }
+
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
