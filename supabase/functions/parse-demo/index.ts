@@ -49,6 +49,7 @@ interface RawParsed {
   demo_version: string;
   total_rounds: number;
   score: { ct: number; t: number };
+  final_score?: { ct: number; t: number } | null;
   rounds: RawRound[];
   players: RawPlayer[];
   duration_ticks: number;
@@ -176,11 +177,12 @@ Deno.serve(async (req) => {
 
     const { data: settingsRow } = await admin
       .from("team_settings")
-      .select("team_name")
+      .select("value")
+      .eq("key", "team_name")
       .limit(1)
       .maybeSingle();
-    const teamName = (typeof settingsRow?.team_name === "string" && settingsRow.team_name.trim())
-      ? settingsRow.team_name.trim()
+    const teamName = (typeof settingsRow?.value === "string" && settingsRow.value.trim())
+      ? settingsRow.value.trim()
       : "Tactical Chaos";
 
     // ── Fetch our roster and bucket players by SteamID ───────────────────
@@ -241,10 +243,13 @@ Deno.serve(async (req) => {
 
     // The worker reads final CT/T score from CCSTeam.m_iScore. Assign it to
     // our roster by the side we occupy at the match end, not by summed rounds.
-    const finalRoundTotal = parsed.score.ct + parsed.score.t;
+    const officialScore = parsed.final_score && (parsed.final_score.ct + parsed.final_score.t) > 0
+      ? parsed.final_score
+      : parsed.score;
+    const finalRoundTotal = officialScore.ct + officialScore.t;
     const team1FinalSide = finalRoundTotal > 12 ? opposite(team1FirstHalfSide) : team1FirstHalfSide;
-    const scoreTeam1 = team1FinalSide === "CT" ? parsed.score.ct : parsed.score.t;
-    const scoreTeam2 = team1FinalSide === "CT" ? parsed.score.t : parsed.score.ct;
+    const scoreTeam1 = team1FinalSide === "CT" ? officialScore.ct : officialScore.t;
+    const scoreTeam2 = team1FinalSide === "CT" ? officialScore.t : officialScore.ct;
     if (finalRoundTotal > 30) throw new Error("Invalid round count");
     if (finalRoundTotal < 13) throw new Error("Match too short");
     if (parsed.rounds.length > finalRoundTotal) {

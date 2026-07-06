@@ -89,9 +89,11 @@ export interface RawParsedDemo {
   demo_version: string;
   total_rounds: number;
   score: { ct: number; t: number };      // final CT vs T rounds
+  final_score: { ct: number; t: number } | null;
   rounds: RawParsedRound[];
   players: RawParsedPlayer[];
   duration_ticks: number;
+  round_economies: Array<{ team_ct_avg_equip: number; team_t_avg_equip: number }>;
 }
 
 // CS:GO/CS2 round_end reasons (subset we care about).
@@ -823,9 +825,14 @@ async function parseFile(
     demo_version: demoVersion,
     total_rounds: officialTotalRounds,
     score,
+    final_score: finalTotalRounds > 0 ? score : null,
     rounds,
     players: activePlayers,
     duration_ticks: lastTick,
+    round_economies: rounds.map((round) => ({
+      team_ct_avg_equip: round.economy?.CT.avg_equip ?? 0,
+      team_t_avg_equip: round.economy?.TERRORIST.avg_equip ?? 0,
+    })),
   };
 }
 
