@@ -994,8 +994,8 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                           <td className="px-2 py-2 text-right font-mono">{p.assists}</td>
                           <td className="px-2 py-2 text-right font-mono">{p.adr}</td>
                           <td className="px-2 py-2 text-right font-mono">{p.hs_pct}%</td>
-                          <td className="px-2 py-2 text-right font-mono">{p.kast_pct}%</td>
-                          <td className="px-2 py-2 text-right font-mono text-accent">{p.rating}</td>
+                          <td className="px-2 py-2 text-right font-mono text-muted-foreground">{p.kast_pct != null && p.kast_pct > 0 ? `${p.kast_pct}%` : "—"}</td>
+                          <td className="px-2 py-2 text-right font-mono text-accent">{p.rating != null && p.rating > 0 ? p.rating : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1107,7 +1107,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                       <span className="text-muted-foreground truncate">→ {p.matched_player_name ?? "sin vincular"}</span>
                       <span className="ml-auto tabular-nums">{p.kills}/{p.deaths}/{p.assists}</span>
                       <span className="tabular-nums text-muted-foreground w-14 text-right">ADR {p.adr}</span>
-                      <span className="tabular-nums text-accent w-12 text-right">{p.rating}</span>
+                      <span className="tabular-nums text-accent w-12 text-right">{p.rating != null && p.rating > 0 ? p.rating : "—"}</span>
                     </div>
                   ))}
                 </div>
