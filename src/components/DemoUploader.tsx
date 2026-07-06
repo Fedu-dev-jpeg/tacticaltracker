@@ -17,6 +17,7 @@ import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { parseDemoFull } from "@/lib/demoParser";
+import { parseCs2CamMatch } from "@/lib/cs2camParser";
 import { startJobLog, log as demoLog, downloadJobLog, copyJobLog } from "@/lib/demoLog";
 
 type Stage = "queued" | "uploading" | "parsing" | "matching" | "saving" | "done" | "error" | "cancelled";
@@ -70,6 +71,8 @@ export interface ParserStageInfo {
 interface Job {
   id: string;
   fileName: string;
+  source: "file" | "cs2cam";
+  cs2camUrl?: string;
   file: File | null;
   stage: Stage;
   failedStage: Stage | null;
@@ -116,6 +119,8 @@ function serializeJobs(jobs: Job[]) {
     .map((j) => ({
       id: j.id,
       fileName: j.fileName,
+      source: j.source,
+      cs2camUrl: j.cs2camUrl,
       stage: j.stage,
       failedStage: j.failedStage,
       error: j.error,
@@ -136,6 +141,7 @@ function loadPersistedJobs(): Job[] {
     const parsed = JSON.parse(raw) as Array<Omit<Job, "file" | "abort">>;
     return parsed.map((j) => ({
       ...j,
+      source: j.source ?? "file",
       file: null,
       abort: new AbortController(),
     }));
@@ -162,6 +168,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [attemptFilter, setAttemptFilter] = useState<AttemptFilter>("all");
+  const [cs2CamUrl, setCs2CamUrl] = useState("");
   // Post-parse review dialog: show detected map/rival tags/players and let user confirm/fix.
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
   const [reviewDraft, setReviewDraft] = useState<DemoOverrides>({ rival: "", matchType: "OFFICIAL", map: "Mirage" });
@@ -241,10 +248,13 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         if (job.abort.signal.aborted) throw new DOMException("Cancelado por el usuario", "AbortError");
       };
       let current: Stage = "uploading";
+      let effectiveOverrides = job.overrides;
       const t0 = Date.now();
       startJobLog(job.id, job.fileName);
       demoLog(job.id, "uploader", "pipeline-start", {
         file: job.fileName,
+        source: job.source,
+        cs2cam_url: job.cs2camUrl ?? null,
         size: job.file?.size ?? null,
         attempt: job.attempt,
         maxAttempts: job.maxAttempts,
@@ -252,7 +262,8 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         overrides: job.overrides ?? null,
       });
       try {
-        if (!job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
+        const isCs2CamJob = job.source === "cs2cam";
+        if (!isCs2CamJob && !job.file) throw new Error("Archivo no disponible tras recargar la página — subilo de nuevo");
 
         // 1. Parse the demo end-to-end in a Web Worker.
         current = "parsing";
@@ -268,26 +279,59 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         });
         let rawParsed: Awaited<ReturnType<typeof parseDemoFull>> | null = null;
         try {
-          rawParsed = await parseDemoFull(
-            job.file,
-            (pct, label, stage) => {
-              const now = Date.now();
-              setJobs((prev) => prev.map((j) => {
-                if (j.id !== job.id) return j;
-                const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
-                if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
-                  stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
-                }
-                const existing = stages[stage];
-                stages[stage] = existing
-                  ? { ...existing, pct, label, endedAt: null }
-                  : { pct, label, startedAt: now, endedAt: null };
-                return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
-              }));
-            },
-            (scope, event, data, level) => demoLog(job.id, scope, event, data, level),
-            { debug: parserDebugMode },
-          );
+          if (isCs2CamJob) {
+            if (!job.cs2camUrl) throw new Error("Falta URL de cs2.cam");
+            const imported = await parseCs2CamMatch(
+              job.cs2camUrl,
+              (pct, label) => {
+                const now = Date.now();
+                const stage: ParserStageKey = "parse";
+                setJobs((prev) => prev.map((j) => {
+                  if (j.id !== job.id) return j;
+                  const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+                  if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
+                    stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
+                  }
+                  const existing = stages[stage];
+                  stages[stage] = existing
+                    ? { ...existing, pct, label, endedAt: null }
+                    : { pct, label, startedAt: now, endedAt: null };
+                  return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
+                }));
+              },
+              (scope, event, data, level) => demoLog(job.id, scope, event, data, level),
+            );
+            rawParsed = imported.parsed;
+            if (!effectiveOverrides) {
+              effectiveOverrides = {
+                rival: imported.hints.rival && imported.hints.rival !== "Sin definir" ? imported.hints.rival : "",
+                matchType: "OFFICIAL",
+                map: imported.hints.map || "Mirage",
+              };
+              updateJob(job.id, { overrides: effectiveOverrides });
+            }
+          } else {
+            rawParsed = await parseDemoFull(
+              job.file as File,
+              (pct, label, stage) => {
+                const now = Date.now();
+                setJobs((prev) => prev.map((j) => {
+                  if (j.id !== job.id) return j;
+                  const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
+                  if (j.parserStageCurrent && j.parserStageCurrent !== stage && stages[j.parserStageCurrent]) {
+                    stages[j.parserStageCurrent] = { ...stages[j.parserStageCurrent], endedAt: now };
+                  }
+                  const existing = stages[stage];
+                  stages[stage] = existing
+                    ? { ...existing, pct, label, endedAt: null }
+                    : { pct, label, startedAt: now, endedAt: null };
+                  return { ...j, parserStages: stages, parserStageCurrent: stage, parserPct: pct, error: `${label} (${pct}%)` };
+                }));
+              },
+              (scope, event, data, level) => demoLog(job.id, scope, event, data, level),
+              { debug: parserDebugMode },
+            );
+          }
           setJobs((prev) => prev.map((j) => {
             if (j.id !== job.id) return j;
             const stages = { ...(j.parserStages ?? {}) } as Record<ParserStageKey, ParserStageInfo>;
@@ -309,31 +353,35 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         }
         throwIfAborted();
 
-        // 2. Upload raw .dem to storage for archival.
-        current = "uploading";
-        demoLog(job.id, "uploader", "stage-start", { stage: current });
-        updateJob(job.id, { stage: current });
-        const path = `${Date.now()}-${job.file.name}`;
-        const tUp = Date.now();
-        const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file, {
-          contentType: "application/octet-stream",
-        });
-        throwIfAborted();
-        if (upErr) {
-          demoLog(job.id, "storage", "upload-failed", { path, message: upErr.message }, "warn");
-          console.warn(`[demo-upload] storage falló para ${job.fileName}: ${upErr.message}`);
+        // 2. Upload raw .dem to storage for archival (file jobs only).
+        let path = `url-import-${Date.now()}`;
+        if (!isCs2CamJob) {
+          current = "uploading";
+          demoLog(job.id, "uploader", "stage-start", { stage: current });
+          updateJob(job.id, { stage: current });
+          path = `${Date.now()}-${(job.file as File).name}`;
+          const tUp = Date.now();
+          const { error: upErr } = await supabase.storage.from("demos").upload(path, job.file as File, {
+            contentType: "application/octet-stream",
+          });
+          throwIfAborted();
+          if (upErr) {
+            demoLog(job.id, "storage", "upload-failed", { path, message: upErr.message }, "warn");
+            console.warn(`[demo-upload] storage falló para ${job.fileName}: ${upErr.message}`);
+          } else {
+            demoLog(job.id, "storage", "upload-ok", { path, elapsed_ms: Date.now() - tUp });
+          }
         } else {
-          demoLog(job.id, "storage", "upload-ok", { path, elapsed_ms: Date.now() - tUp });
+          path = `cs2cam:${job.cs2camUrl ?? "unknown"}`;
         }
-
-        // 3. Send parsed payload to edge function → validate + insert.
+        // 2/3. Send parsed payload to edge function → validate + insert.
         current = "matching";
         demoLog(job.id, "uploader", "stage-start", { stage: current });
         updateJob(job.id, { stage: current });
         throwIfAborted();
         const bigintSafe = JSON.parse(JSON.stringify(rawParsed, (_k, v) => typeof v === "bigint" ? String(v) : v));
         demoLog(job.id, "edge", "invoke-parse-demo", {
-          path, rival: job.overrides?.rival, match_type: job.overrides?.matchType, map: job.overrides?.map,
+          path, rival: effectiveOverrides?.rival, match_type: effectiveOverrides?.matchType, map: effectiveOverrides?.map,
           parsed_summary: {
             map: bigintSafe?.map,
             total_rounds: bigintSafe?.total_rounds,
@@ -347,9 +395,9 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
           body: {
             path,
-            rival: job.overrides?.rival,
-            match_type: job.overrides?.matchType,
-            map: job.overrides?.map,
+            rival: effectiveOverrides?.rival,
+            match_type: effectiveOverrides?.matchType,
+            map: effectiveOverrides?.map,
             debug_mode: parserDebugMode,
             parsed: bigintSafe,
           },
@@ -469,6 +517,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       const newJobs: Job[] = valid.map((f) => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${f.name}`,
         fileName: f.name,
+        source: "file",
         file: f,
         stage: "queued",
         failedStage: null,
@@ -488,6 +537,38 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     [autoRetry, maxAttempts],
   );
 
+  const startCs2CamJob = useCallback(() => {
+    const url = cs2CamUrl.trim();
+    if (!url) {
+      toast.error("Pegá un link de cs2.cam");
+      return;
+    }
+    if (!/^https?:\/\/([^/]+\.)?cs2\.cam\//i.test(url)) {
+      toast.error("El link debe ser de cs2.cam");
+      return;
+    }
+    const job: Job = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-cs2cam`,
+      fileName: `cs2.cam import`,
+      source: "cs2cam",
+      cs2camUrl: url,
+      file: null,
+      stage: "queued",
+      failedStage: null,
+      error: null,
+      result: null,
+      abort: new AbortController(),
+      attempt: 1,
+      maxAttempts: autoRetry ? maxAttempts : 1,
+      startedAt: null,
+      finishedAt: null,
+      durationMs: null,
+      overrides: undefined,
+    };
+    setJobs((prev) => [...prev, job]);
+    setCs2CamUrl("");
+  }, [autoRetry, cs2CamUrl, maxAttempts]);
+
 
   const cancelJob = useCallback((id: string) => {
     setJobs((prev) => {
@@ -506,7 +587,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
     setJobs((prev) => {
       const j = prev.find((x) => x.id === id);
       if (!j) return prev;
-      if (!j.file) { blocked = true; return prev; }
+      if (j.source === "file" && !j.file) { blocked = true; return prev; }
       startedRef.current.delete(id);
       return prev.map((x) =>
         x.id === id
@@ -523,7 +604,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
       let count = 0;
       const next = prev.map((x) => {
         if (x.stage !== "error") return x;
-        if (!x.file) { skipped++; return x; }
+        if (x.source === "file" && !x.file) { skipped++; return x; }
         startedRef.current.delete(x.id);
         count++;
         return { ...x, stage: "queued" as Stage, failedStage: null, error: null, result: null, abort: new AbortController(), attempt: 1, maxAttempts: autoRetry ? maxAttempts : 1, startedAt: null, finishedAt: null, durationMs: null };
@@ -669,6 +750,30 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               }
             />
           )}
+        </div>
+
+        <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+          <div className="text-xs font-medium">Importar desde link de cs2.cam</div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={cs2CamUrl}
+              onChange={(e) => setCs2CamUrl(e.target.value)}
+              placeholder="https://cs2.cam/en/cs2demoviewer?match_id=...&map_number=..."
+              className="h-8 text-xs"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 text-xs border-accent/40 text-accent hover:bg-accent/10"
+              onClick={startCs2CamJob}
+            >
+              <Link2 className="h-3.5 w-3.5 mr-1" />
+              Importar URL
+            </Button>
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Paso 1: usa match-info (resultado + rondas). Paso 2: baja round-data-msgpack para derivar K/D/A/ADR/KAST/Rating.
+          </div>
         </div>
 
         {/* Concurrency + auto-retry settings */}
