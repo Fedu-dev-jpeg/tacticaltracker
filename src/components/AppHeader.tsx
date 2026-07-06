@@ -22,7 +22,7 @@ export function AppHeader() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30_000);
+    const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -37,18 +37,18 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-40 h-14 flex items-center gap-4 px-4 border-b border-border bg-card/70 backdrop-blur-md">
       <SidebarTrigger />
-      <div className="text-xs uppercase tracking-widest text-muted-foreground">
-        <span className="text-accent">TacticalTracker</span>
-        <span className="mx-2">/</span>
-        <span className="text-foreground">{section}</span>
+      <div className="text-[9px] font-mono tracking-[0.14em] uppercase flex items-center gap-2">
+        <span className="text-accent">[ TACTICAL ]</span>
+        <span className="text-muted-foreground/30">—</span>
+        <span className="text-muted-foreground">{section.toUpperCase()}</span>
       </div>
       <div className="ml-auto flex items-center gap-6 text-xs">
         <Stat label="WIN" value={wins} color="text-success" />
         <Stat label="DRW" value={draws} color="text-muted-foreground" />
         <Stat label="LOSS" value={losses} color="text-destructive" />
         <Stat label="WR%" value={`${wr}%`} color="text-accent" />
-        <div className="text-muted-foreground font-mono hidden sm:block">
-          {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        <div className="text-muted-foreground font-mono hidden sm:block text-[11px]">
+          {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </div>
       </div>
     </header>
@@ -58,8 +58,8 @@ export function AppHeader() {
 function Stat({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
     <div className="flex flex-col items-center leading-none">
-      <span className={`font-heading font-bold text-sm ${color}`}>{value}</span>
-      <span className="text-[9px] uppercase tracking-widest text-muted-foreground mt-0.5">{label}</span>
+      <span className={`font-mono font-bold text-sm ${color}`}>{value}</span>
+      <span className="text-[7px] font-mono uppercase tracking-[0.1em] text-muted-foreground mt-0.5">{label}</span>
     </div>
   );
 }
