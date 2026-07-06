@@ -125,7 +125,7 @@ export function migrateLegacyDemoData(input: unknown): DemoData | null {
       total_rounds: totalRounds,
       score: { team1: raw.score_us, team2: raw.score_them },
       teams: {
-        team1: { name: raw.team_us?.name ?? "Nosotros", first_half_side: startingSide, player_steamids: team1Players.map((p) => p.steam_id) },
+        team1: { name: raw.team_us?.name ?? "Tactical Chaos", first_half_side: startingSide, player_steamids: team1Players.map((p) => p.steam_id) },
         team2: { name: raw.team_them?.name ?? raw.rival ?? "Rival", first_half_side: startingSide === "CT" ? "TERRORIST" : "CT", player_steamids: team2Players.map((p) => p.steam_id) },
       },
     },

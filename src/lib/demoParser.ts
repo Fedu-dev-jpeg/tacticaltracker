@@ -39,6 +39,7 @@ export interface RawParsedDemo {
   demo_version: string;
   total_rounds: number;
   score: { ct: number; t: number };
+  final_score: { ct: number; t: number } | null;
   rounds: Array<{
     round_number: number;
     winner_side: "CT" | "TERRORIST";
@@ -56,6 +57,7 @@ export interface RawParsedDemo {
     first_kills: number; first_deaths: number;
   }>;
   duration_ticks: number;
+  round_economies: Array<{ team_ct_avg_equip: number; team_t_avg_equip: number }>;
 }
 
 const MAGIC_CS2 = "PBDEMS2\0";

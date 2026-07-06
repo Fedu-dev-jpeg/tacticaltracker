@@ -72,15 +72,22 @@ export interface RawParsedPlayer {
   first_deaths: number;
 }
 
+export interface RawRoundEconomy {
+  team_ct_avg_equip: number;
+  team_t_avg_equip: number;
+}
+
 export interface RawParsedDemo {
   map: string;             // e.g. "de_ancient"
   server_name: string;
   demo_version: string;
   total_rounds: number;
   score: { ct: number; t: number };      // final CT vs T rounds
+  final_score: { ct: number; t: number } | null; // from CCSTeam.m_iScore (authoritative)
   rounds: RawParsedRound[];
   players: RawParsedPlayer[];
   duration_ticks: number;
+  round_economies: RawRoundEconomy[];    // per-round economy data indexed by round_number-1
 }
 
 // CS:GO/CS2 round_end reasons (subset we care about).
@@ -169,11 +176,10 @@ async function parseFile(
 
   const parser = new Parser(new ParserConfiguration({
     breakInterval: 500,
-    // In CS2 the round winner and end reason live on CCSGameRulesProxy entity
-    // props (m_iRoundEndWinnerTeam / m_eRoundEndReason), NOT on the game event
-    // payload. Decoding just that one class keeps us fast (~4-6× vs full) while
-    // preserving the data we need to score rounds.
-    entityClasses: [ 'CCSGameRulesProxy' ],
+    // CCSGameRulesProxy: round winner/reason, totalRoundsPlayed
+    // CCSTeam: m_iScore for authoritative final score
+    // CCSPlayerPawn: current_equip_value for economy tracking
+    entityClasses: [ 'CCSGameRulesProxy', 'CCSTeam', 'CCSPlayerPawn', 'CCSPlayerController' ],
   }));
 
   // ── State collected during parsing ─────────────────────────────────────
@@ -206,6 +212,15 @@ async function parseFile(
   let lastRoundEndTick = -1;
   // BUG 3 FIX: Snapshot player teams at round 1 for starting side.
   let startingSideSnapshotDone = false;
+  // FIX 3: Track CCSTeam.m_iScore for authoritative final score.
+  let matchEndTick = -1;
+  let matchEnded = false;
+  // FIX 4: Track m_totalRoundsPlayed from CCSGameRulesProxy.
+  let totalRoundsPlayed = 0;
+  // FIX 5: Economy tracking per round.
+  const roundEconomies: RawRoundEconomy[] = [];
+  let currentRoundCtEquips: number[] = [];
+  let currentRoundTEquips: number[] = [];
   // Lookup victim/attacker current team from user_info string table.
   const getTeam = (userid: number): number | null => {
     const demo = parser.getDemo();
@@ -341,6 +356,21 @@ async function parseFile(
             players: [...players.values()].map((p) => ({ name: p.name, side: p.team_first_half })),
           });
         }
+        // FIX 5: Snapshot economy at round_freeze_end (buy phase just ended).
+        // Save the avg equip values collected from entity updates for this round.
+        if (matchStarted && (currentRoundCtEquips.length > 0 || currentRoundTEquips.length > 0)) {
+          const ctAvg = currentRoundCtEquips.length > 0
+            ? Math.round(currentRoundCtEquips.reduce((a, b) => a + b, 0) / currentRoundCtEquips.length)
+            : 0;
+          const tAvg = currentRoundTEquips.length > 0
+            ? Math.round(currentRoundTEquips.reduce((a, b) => a + b, 0) / currentRoundTEquips.length)
+            : 0;
+          roundEconomies.push({ team_ct_avg_equip: ctAvg, team_t_avg_equip: tAvg });
+        } else if (matchStarted) {
+          roundEconomies.push({ team_ct_avg_equip: 0, team_t_avg_equip: 0 });
+        }
+        currentRoundCtEquips = [];
+        currentRoundTEquips = [];
         break;
       }
       case "round_start": {
@@ -358,8 +388,9 @@ async function parseFile(
       case "bomb_defused": bombDefused = true; break;
       case "round_end":
       case "round_officially_ended":
-      case "cs_win_panel_round":
-      case "cs_win_panel_match": {
+      case "cs_win_panel_round": {
+        // FIX 4: Ignore all round events after cs_win_panel_match (post-match/GOTV).
+        if (matchEnded) break;
         if (rounds.length >= roundNumber && roundNumber > 0) break; // dedupe by round number
         // BUG 2 FIX: Deduplicate by tick — if two end events share the same tick, skip.
         if (lastTick === lastRoundEndTick && lastRoundEndTick > 0) break;
@@ -369,6 +400,16 @@ async function parseFile(
         lastRoundEndTick = lastTick;
         let winnerNum = Number(event.winner ?? event.winner_team ?? event.final_event ?? NaN);
         if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner != null) winnerNum = pendingWinner;
+        // FIX 4: Filter halftime transitions (winner=1 or 0, reason=10).
+        if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner == null) {
+          const reasonNum = Number(event.reason ?? pendingReason ?? 0);
+          if (reasonNum === 10 || winnerNum === 1 || winnerNum === 0) {
+            wlog("worker:parse", "skipping-halftime-transition", { tick: lastTick, winnerNum, reasonNum });
+            pendingWinner = null;
+            pendingReason = 0;
+            break;
+          }
+        }
         let fallback = false;
         if (winnerNum !== 2 && winnerNum !== 3) {
           if (bombExploded) { winnerNum = 2; fallback = true; }
@@ -397,6 +438,47 @@ async function parseFile(
         deathsT = 0;
         bombExploded = false;
         bombDefused = false;
+        break;
+      }
+      case "cs_win_panel_match": {
+        // FIX 3 & 4: Mark match as ended. Record the last round if pending.
+        if (matchEnded) break;
+        matchEnded = true;
+        matchEndTick = lastTick;
+        wlog("worker:parse", "match-ended", { tick: lastTick, rounds_so_far: rounds.length });
+
+        // The final round may not have a round_officially_ended before this event.
+        // If there are pending kills and a winner, record it as the final round.
+        if (pendingWinner != null && (pendingWinner === 2 || pendingWinner === 3)) {
+          const finalSide: "CT" | "TERRORIST" = pendingWinner === 3 ? "CT" : "TERRORIST";
+          const finalReasonNum = Number(pendingReason ?? 0);
+          rounds.push({
+            round_number: rounds.length + 1,
+            winner_side: finalSide,
+            end_reason: ROUND_END_REASON[finalReasonNum] ?? (finalSide === "CT" ? "ct_elimination" : "t_elimination"),
+            is_pistol: rounds.length === 0 || rounds.length === 12,
+            kills: currentRoundKills,
+          });
+          currentRoundKills = [];
+          currentRoundHasOpening = false;
+          pendingWinner = null;
+          pendingReason = 0;
+        } else if (currentRoundKills.length > 0) {
+          // Infer winner from kill data if no pending winner entity update.
+          let inferredWinner = 3; // default CT
+          if (bombExploded) inferredWinner = 2;
+          else if (deathsT >= 5 && deathsCT < 5) inferredWinner = 3;
+          else if (deathsCT >= 5 && deathsT < 5) inferredWinner = 2;
+          const finalSide: "CT" | "TERRORIST" = inferredWinner === 3 ? "CT" : "TERRORIST";
+          rounds.push({
+            round_number: rounds.length + 1,
+            winner_side: finalSide,
+            end_reason: bombExploded ? "target_bombed" : bombDefused ? "bomb_defused" : (finalSide === "CT" ? "ct_elimination" : "t_elimination"),
+            is_pistol: rounds.length === 0 || rounds.length === 12,
+            kills: currentRoundKills,
+          });
+          currentRoundKills = [];
+        }
         break;
       }
       case "player_death": {
@@ -444,6 +526,10 @@ async function parseFile(
     }
   });
 
+  // FIX 3: Track CCSTeam.m_iScore for authoritative final score.
+  let teamScoreCT = 0;
+  let teamScoreT = 0;
+
   // CS2 game events do NOT include the round winner. Track it from
   // CCSGameRulesProxy entity mutations: m_iRoundEndWinnerTeam (2=T, 3=CT)
   // and m_eRoundEndReason. The values are set slightly before the
@@ -451,24 +537,68 @@ async function parseFile(
   parser.registerPostInterceptor(InterceptorStage.ENTITY_PACKET, (
     _dp: unknown,
     _mp: unknown,
-    events: Array<{ operation: unknown; entity: { class?: { name?: string } }; getChanges: () => Record<string, unknown> }>,
+    events: Array<{ operation: unknown; entity: { class?: { name?: string }; properties?: Record<string, unknown> }; getChanges: () => Record<string, unknown> }>,
   ) => {
     for (const ev of events) {
       if (ev.operation !== EntityOperation.UPDATE && ev.operation !== EntityOperation.CREATE) continue;
-      if (ev.entity?.class?.name !== 'CCSGameRulesProxy') continue;
-      const changes = ev.getChanges();
-      for (const k of Object.keys(changes)) gameRulesFieldsSeen.add(k);
-      // Field names differ by CS2 build — match any key containing the substring.
-      let w: unknown, r: unknown;
-      for (const [k, v] of Object.entries(changes)) {
-        if (w === undefined && /RoundEndWinnerTeam|m_iRoundWinner\b/i.test(k)) w = v;
-        if (r === undefined && /RoundEndReason/i.test(k)) r = v;
+      const className = ev.entity?.class?.name ?? "";
+
+      if (className === 'CCSGameRulesProxy') {
+        const changes = ev.getChanges();
+        for (const k of Object.keys(changes)) gameRulesFieldsSeen.add(k);
+        let w: unknown, r: unknown;
+        for (const [k, v] of Object.entries(changes)) {
+          if (w === undefined && /RoundEndWinnerTeam|m_iRoundWinner\b/i.test(k)) w = v;
+          if (r === undefined && /RoundEndReason/i.test(k)) r = v;
+          // FIX 4: Track m_totalRoundsPlayed.
+          if (/totalRoundsPlayed/i.test(k)) {
+            const n = Number(v);
+            if (Number.isFinite(n) && n > totalRoundsPlayed) totalRoundsPlayed = n;
+          }
+        }
+        if (w !== undefined && w !== null) {
+          const n = Number(w);
+          if (n === 2 || n === 3) pendingWinner = n;
+        }
+        if (r !== undefined && r !== null) pendingReason = Number(r);
       }
-      if (w !== undefined && w !== null) {
-        const n = Number(w);
-        if (n === 2 || n === 3) pendingWinner = n;
+
+      // FIX 3: Track CCSTeam score updates.
+      if (className === 'CCSTeam' || /^CCSTeam/i.test(className)) {
+        const changes = ev.getChanges();
+        for (const [k, v] of Object.entries(changes)) {
+          if (/m_iScore\b/i.test(k)) {
+            const score = Number(v);
+            if (!Number.isFinite(score)) continue;
+            // Determine which team this entity is (CT=3, T=2) from m_iTeamNum.
+            const props = ev.entity?.properties ?? {};
+            const teamNum = Number(props["m_iTeamNum"] ?? changes["m_iTeamNum"] ?? 0);
+            if (teamNum === 3) teamScoreCT = score;
+            else if (teamNum === 2) teamScoreT = score;
+            else {
+              // Heuristic: if score > current CT score, it's probably the higher team.
+              if (score > teamScoreCT) teamScoreCT = score;
+              else teamScoreT = score;
+            }
+          }
+        }
       }
-      if (r !== undefined && r !== null) pendingReason = Number(r);
+
+      // FIX 5: Track current_equip_value from player pawn entities.
+      if (/CCSPlayerPawn|CCSPlayerController/i.test(className)) {
+        const changes = ev.getChanges();
+        for (const [k, v] of Object.entries(changes)) {
+          if (/current_equip_value|m_unCurrentEquipmentValue/i.test(k)) {
+            const val = Number(v);
+            if (!Number.isFinite(val) || val <= 0) continue;
+            // Determine team from entity properties.
+            const props = ev.entity?.properties ?? {};
+            const teamNum = Number(props["m_iTeamNum"] ?? changes["m_iTeamNum"] ?? 0);
+            if (teamNum === 3) currentRoundCtEquips.push(val);
+            else if (teamNum === 2) currentRoundTEquips.push(val);
+          }
+        }
+      }
     }
   });
 
@@ -486,15 +616,30 @@ async function parseFile(
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
 
-  // Post-filter: drop coaches only.
+  // Post-filter: drop coaches by name regex AND known SteamID64s.
   const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
-  const activePlayers = [...players.values()].filter((p) => !COACH_RE.test(p.name ?? ""));
-  const droppedCoaches = [...players.values()].filter((p) => COACH_RE.test(p.name ?? "")).map((p) => p.name);
+  const KNOWN_COACH_STEAMIDS = new Set([
+    "76561199108435769", // nahu3jt
+    "76561198098107455", // Quero10
+  ]);
+  const activePlayers = [...players.values()].filter((p) =>
+    !COACH_RE.test(p.name ?? "") && !KNOWN_COACH_STEAMIDS.has(p.steamid)
+  );
+  const droppedCoaches = [...players.values()].filter((p) =>
+    COACH_RE.test(p.name ?? "") || KNOWN_COACH_STEAMIDS.has(p.steamid)
+  ).map((p) => p.name);
 
-  // Derive score from rounds.
+  // Derive score from rounds (fallback if CCSTeam.m_iScore not available).
   let ct = 0, t = 0;
   for (const r of rounds) {
     if (r.winner_side === "CT") ct += 1; else t += 1;
+  }
+
+  // FIX 3: Use CCSTeam.m_iScore as authoritative score if available.
+  const hasFinalScore = (teamScoreCT + teamScoreT) > 0;
+  const finalScore = hasFinalScore ? { ct: teamScoreCT, t: teamScoreT } : null;
+  if (hasFinalScore) {
+    wlog("worker:parse", "final-score-from-entity", { ct: teamScoreCT, t: teamScoreT });
   }
 
   // Diagnostic log: the top event names + count of round_end packets we saw
@@ -508,11 +653,16 @@ async function parseFile(
     demo_version: demoVersion,
     rounds_captured: rounds.length,
     score_ct_t: { ct, t },
+    final_score: finalScore,
+    match_ended: matchEnded,
+    match_end_tick: matchEndTick,
+    total_rounds_played_entity: totalRoundsPlayed,
     players_kept: activePlayers.length,
     players_dropped: players.size - activePlayers.length,
     dropped_coaches: droppedCoaches,
     missed_round_ends: debugMissedRoundEnd,
     fallback_winner_deductions: fallbackUsed,
+    round_economies_count: roundEconomies.length,
     top_events: Object.fromEntries(topEvents),
     total_event_types: eventCounts.size,
     game_rules_fields_seen: [...gameRulesFieldsSeen].sort(),
@@ -533,9 +683,11 @@ async function parseFile(
     demo_version: demoVersion,
     total_rounds: rounds.length,
     score: { ct, t },
+    final_score: finalScore,
     rounds,
     players: activePlayers,
     duration_ticks: lastTick,
+    round_economies: roundEconomies,
   };
 }
 
