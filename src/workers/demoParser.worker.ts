@@ -210,7 +210,7 @@ async function parseFile(
   let deathsT = 0;
   let bombExploded = false;
   let bombDefused = false;
-  let fallbackUsed = 0;
+  const fallbackUsed = 0;
   // BUG 2 FIX: Track round_freeze_end to identify warmup vs real rounds.
   let firstFreezeEndTick = -1;
   let matchStarted = false;
@@ -462,7 +462,6 @@ async function parseFile(
         lastRoundEndTick = lastTick;
         let winnerNum = Number(event.winner ?? event.winner_team ?? event.final_event ?? NaN);
         if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner != null) winnerNum = pendingWinner;
-        let fallback = false;
         if (winnerNum !== 2 && winnerNum !== 3) {
           debugMissedRoundEnd += 1;
           pendingWinner = null;
@@ -479,9 +478,7 @@ async function parseFile(
         rounds.push({
           round_number: officialRoundNumber,
           winner_side: side,
-          end_reason: ROUND_END_REASON[reasonNum] ?? (fallback
-            ? (bombExploded ? "target_bombed" : bombDefused ? "bomb_defused" : side === "CT" ? "ct_elimination" : "t_elimination")
-            : (side === "CT" ? "ct_elimination" : "t_elimination")),
+          end_reason: ROUND_END_REASON[reasonNum] ?? (side === "CT" ? "ct_elimination" : "t_elimination"),
           is_pistol: officialRoundNumber === 1 || officialRoundNumber === 13,
           economy: economyByRound.get(officialRoundNumber),
           kills: currentRoundKills,
@@ -681,7 +678,7 @@ async function parseFile(
   if (rounds.length > officialTotalRounds) rounds.splice(officialTotalRounds);
 
   // Post-filter: drop coaches only.
-  const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
+  const COACH_RE = /(^|\s|[[(._-])coach\b/i;
   const activePlayers = [...players.values()].filter((p) => !COACH_RE.test(p.name ?? ""));
   const droppedCoaches = [...players.values()].filter((p) => COACH_RE.test(p.name ?? "")).map((p) => p.name);
 

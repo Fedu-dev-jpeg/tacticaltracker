@@ -53,6 +53,14 @@ interface RawParsed {
   players: RawPlayer[];
   duration_ticks: number;
 }
+interface TeamMemberRow {
+  user_id: string | null;
+  steam_id: string | null;
+  steam_tag: string | null;
+  player_name: string | null;
+  is_coach: boolean | null;
+  steam_avatar_url: string | null;
+}
 
 const MAP_ALIAS: Record<string, string> = {
   de_mirage: "Mirage", de_inferno: "Inferno", de_nuke: "Nuke", de_anubis: "Anubis",
@@ -92,7 +100,7 @@ function opposite(side: Side): Side {
 }
 
 // Coach filter — matches names like "COACH nahu3jt", "COACH Quero10"
-const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
+const COACH_RE = /(^|\s|[[(._-])coach\b/i;
 const KNOWN_COACH_STEAM_IDS = new Set([
   "76561199108435769",
   "76561198098107455",
@@ -178,16 +186,16 @@ Deno.serve(async (req) => {
     // ── Fetch our roster and bucket players by SteamID ───────────────────
     const { data: teamRaw } = await admin
       .from("team_members")
-      .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url")
-    const allTeamMembers = teamRaw ?? [];
-    const roster = allTeamMembers.filter((m: any) => m.steam_id && !m.is_coach);
+      .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url");
+    const allTeamMembers = (teamRaw ?? []) as TeamMemberRow[];
+    const roster = allTeamMembers.filter((m) => m.steam_id && !m.is_coach);
     const coachSteamIds = new Set<string>(KNOWN_COACH_STEAM_IDS);
-    for (const member of allTeamMembers.filter((m: any) => m.is_coach)) {
+    for (const member of allTeamMembers.filter((m) => m.is_coach)) {
       for (const variant of steamIdVariants(member.steam_id)) coachSteamIds.add(variant);
     }
     // BUG 1 FIX: team_members stores SteamID3 (account_id), parser emits SteamID64.
     // Build a lookup from SteamID3 → roster entry.
-    const rosterBySteamId = new Map<string, any>();
+    const rosterBySteamId = new Map<string, TeamMemberRow>();
     for (const r of roster) {
       for (const variant of steamIdVariants(r.steam_id)) rosterBySteamId.set(variant, r);
     }
@@ -206,7 +214,7 @@ Deno.serve(async (req) => {
     const team1Players: RawPlayer[] = [];
     const team2Players: RawPlayer[] = [];
     // Map SteamID64 → roster entry for matched players (for avatar/user_id lookup).
-    const rosterMatchBySid64 = new Map<string, any>();
+    const rosterMatchBySid64 = new Map<string, TeamMemberRow>();
     for (const p of nonCoachPlayers) {
       const sid64 = String(p.steamid ?? "");
       const rosterEntry = [...steamIdVariants(sid64)].map((variant) => rosterBySteamId.get(variant)).find(Boolean);
