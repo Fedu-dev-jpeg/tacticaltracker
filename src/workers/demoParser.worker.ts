@@ -32,8 +32,8 @@ type DeademCs2Api = any;
 let deademCs2: DeademCs2Api | null = null;
 async function loadDeadem(): Promise<DeademCs2Api> {
   if (deademCs2) return deademCs2;
-  // Vite must not try to transform this URL — the file is a plain UMD script.
-  const umdUrl = "/node_modules/@deademx/cs2/dist/deadem-cs2.min.js";
+  // In dev Vite serves node_modules; in production the UMD is copied to public/.
+  const umdUrl = "/deadem-cs2.min.js";
   await import(/* @vite-ignore */ umdUrl);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const api = (self as any).deademCs2;
