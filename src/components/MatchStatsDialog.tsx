@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { BarChart3, Users, Bomb, Skull, Clock, Shield, Download, FileJson, FileSpreadsheet, Filter, X, Archive } from "lucide-react";
+import { BarChart3, Users, Bomb, Skull, Clock, Shield, Download, FileJson, FileSpreadsheet, Filter, X, Archive, Sparkles, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { cn } from "@/lib/utils";
 import { exportEconomyCSV, exportFullJSON, exportRoundsCSV, exportRoundsJSON, exportKillsCSV } from "@/lib/exportStats";
@@ -264,6 +264,7 @@ function FullView({ demo, meta, mode, storageKey, onBack }: { demo: DemoData; me
   const team1All = Object.values(demo.players).filter((p) => p.team === "team1");
   const team2All = Object.values(demo.players).filter((p) => p.team === "team2");
   const charts = useMemo(() => buildChartData(demo), [demo]);
+  const insights = useMemo(() => buildIndividualInsights(demo), [demo]);
 
   // Side splits based on first_half_side
   const filterBySide = (players: DemoPlayer[], team: "team1" | "team2", side: Side) => {
@@ -325,9 +326,144 @@ function FullView({ demo, meta, mode, storageKey, onBack }: { demo: DemoData; me
         </Tabs>
       </div>
 
+      <IndividualInsightsPanel insights={insights} />
+
       <RoundsTimeline demo={demo} storageKey={storageKey} />
       <RoundsDetail demo={demo} />
       <PerformanceCharts charts={charts} />
+    </div>
+  );
+}
+
+interface PlayerInsight {
+  steamid: string;
+  name: string;
+  team: "team1" | "team2";
+  rating: number;
+  kast: number;
+  adr: number;
+  k: number;
+  d: number;
+  a: number;
+  hsPct: number;
+  impact: number;
+  fkfdDiff: number;
+}
+
+function buildIndividualInsights(demo: DemoData): {
+  top: PlayerInsight[];
+  alerts: string[];
+  highlights: string[];
+} {
+  const totalRounds = Math.max(1, demo.match.total_rounds);
+  const rows: PlayerInsight[] = Object.values(demo.players).map((p) => {
+    const rating = p.stats.rating ?? 0;
+    const kast = p.stats.kast ?? 0;
+    const adr = p.stats.adr > 200 && p.stats.damage > 0 ? p.stats.damage / totalRounds : p.stats.adr;
+    const hsPct = p.stats.kills > 0 ? (p.stats.hs_kills / p.stats.kills) * 100 : 0;
+    const kpr = p.stats.kills / totalRounds;
+    const apr = p.stats.assists / totalRounds;
+    const impact = 2.13 * kpr + 0.42 * apr - 0.41;
+    const fkfdDiff = p.stats.first_kills - p.stats.first_deaths;
+    return {
+      steamid: p.steamid,
+      name: p.name,
+      team: p.team,
+      rating,
+      kast,
+      adr,
+      k: p.stats.kills,
+      d: p.stats.deaths,
+      a: p.stats.assists,
+      hsPct,
+      impact,
+      fkfdDiff,
+    };
+  });
+
+  const top = [...rows].sort((a, b) => {
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    if (b.impact !== a.impact) return b.impact - a.impact;
+    return (b.k - b.d) - (a.k - a.d);
+  }).slice(0, 6);
+
+  const highlights: string[] = [];
+  const alerts: string[] = [];
+  const best = top[0];
+  if (best) highlights.push(`${best.name} fue el mejor impacto del servidor (Rating ${best.rating.toFixed(2)}, ADR ${best.adr.toFixed(1)}).`);
+  const highEntry = [...rows].sort((a, b) => b.fkfdDiff - a.fkfdDiff)[0];
+  if (highEntry && highEntry.fkfdDiff >= 3) highlights.push(`${highEntry.name} dominó las aperturas (+${highEntry.fkfdDiff} FK-FD).`);
+  const highKast = [...rows].sort((a, b) => b.kast - a.kast)[0];
+  if (highKast && highKast.kast >= 75) highlights.push(`${highKast.name} tuvo alta consistencia (${highKast.kast.toFixed(0)}% KAST).`);
+
+  const lowRating = rows.filter((r) => r.rating > 0 && r.rating < 0.85);
+  if (lowRating.length >= 2) alerts.push(`Rendimiento bajo en ${lowRating.length} jugadores (${lowRating.map((p) => p.name).join(", ")}).`);
+  const lowAdr = rows.filter((r) => r.adr > 0 && r.adr < 65);
+  if (lowAdr.length >= 2) alerts.push(`Daño por ronda bajo en ${lowAdr.length} jugadores (${lowAdr.map((p) => p.name).join(", ")}).`);
+  const negativeEntries = rows.filter((r) => r.fkfdDiff <= -3);
+  if (negativeEntries.length > 0) alerts.push(`Aperturas negativas: ${negativeEntries.map((p) => `${p.name} (${p.fkfdDiff})`).join(", ")}.`);
+
+  return { top, alerts, highlights };
+}
+
+function IndividualInsightsPanel({
+  insights,
+}: {
+  insights: ReturnType<typeof buildIndividualInsights>;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-accent" />
+        <h3 className="font-heading font-bold text-sm">Insights individuales</h3>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="rounded-md border border-border/50 bg-muted/10 p-3 space-y-1">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Highlights</div>
+          {insights.highlights.length === 0 ? (
+            <div className="text-xs text-muted-foreground">Sin highlights detectables para este match.</div>
+          ) : insights.highlights.map((h, i) => (
+            <div key={i} className="text-xs">{h}</div>
+          ))}
+        </div>
+        <div className="rounded-md border border-border/50 bg-muted/10 p-3 space-y-1">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 text-amber-400" />
+            Alertas
+          </div>
+          {insights.alerts.length === 0 ? (
+            <div className="text-xs text-muted-foreground">No hay alertas críticas.</div>
+          ) : insights.alerts.map((a, i) => (
+            <div key={i} className="text-xs text-amber-300">{a}</div>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-md border border-border/50 overflow-hidden">
+        <table className="w-full text-xs">
+          <thead className="text-[10px] uppercase text-muted-foreground bg-muted/20">
+            <tr>
+              <th className="px-2 py-1.5 text-left">Top impacto</th>
+              <th className="px-2 py-1.5 text-right">Rating</th>
+              <th className="px-2 py-1.5 text-right">ADR</th>
+              <th className="px-2 py-1.5 text-right">KAST</th>
+              <th className="px-2 py-1.5 text-right">FK-FD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {insights.top.map((p) => (
+              <tr key={p.steamid} className="border-t border-border/40">
+                <td className="px-2 py-1.5">{p.name}</td>
+                <td className="px-2 py-1.5 text-right font-mono">{p.rating.toFixed(2)}</td>
+                <td className="px-2 py-1.5 text-right font-mono">{p.adr.toFixed(1)}</td>
+                <td className="px-2 py-1.5 text-right font-mono">{p.kast.toFixed(0)}%</td>
+                <td className={cn("px-2 py-1.5 text-right font-mono", p.fkfdDiff >= 0 ? "text-emerald-400" : "text-red-400")}>
+                  {p.fkfdDiff >= 0 ? "+" : ""}{p.fkfdDiff}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

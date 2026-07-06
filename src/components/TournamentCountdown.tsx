@@ -14,9 +14,10 @@ interface Props {
   target: Date;
   name?: string;
   format?: string;
+  onOpenTournaments?: () => void;
 }
 
-export default function TournamentCountdown({ target, name, format }: Props) {
+export default function TournamentCountdown({ target, name, format, onOpenTournaments }: Props) {
   const [t, setT] = useState(() => diff(target));
   useEffect(() => {
     setT(diff(target));
@@ -71,6 +72,17 @@ export default function TournamentCountdown({ target, name, format }: Props) {
           ))}
         </div>
       </div>
+      {onOpenTournaments && (
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={onOpenTournaments}
+            className="text-xs px-2.5 py-1 rounded-md border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
+          >
+            Ver en Torneos
+          </button>
+        </div>
+      )}
     </div>
   );
 }
