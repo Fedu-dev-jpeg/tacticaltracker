@@ -201,7 +201,7 @@ export default function HistoryView({ matches, onDelete, onUpdate, onExport, onI
                         <MatchStatsDialog
                           data={m.demo_data as DemoData}
                           mode="stored"
-                          meta={{ date: m.date, matchType: m.type, rival: m.rival, savedAt: m.date }}
+                          meta={{ date: m.date, matchType: m.type, rival: m.rival, savedAt: m.date, scoreUs: m.scoreUs, scoreThem: m.scoreThem }}
                           trigger={
                             <button className="text-muted-foreground hover:text-accent transition-colors" title="Ver stats (demo parseada)">
                               <BarChart3 className="h-4 w-4" />

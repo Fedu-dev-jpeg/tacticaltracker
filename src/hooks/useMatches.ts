@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Match, MapName } from "@/types/match";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import type { Database } from "@/integrations/supabase/types";
+
+type MatchUpdate = Database["public"]["Tables"]["matches"]["Update"];
 
 export function useMatches() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -43,7 +46,7 @@ export function useMatches() {
   }, [user, fetchMatches]);
 
   const updateMatch = useCallback(async (id: string, data: Partial<Match>) => {
-    const updates: Record<string, unknown> = {};
+    const updates: MatchUpdate = {};
     if (data.date !== undefined) updates.date = data.date;
     if (data.type !== undefined) updates.type = data.type;
     if (data.map !== undefined) updates.map = data.map;
@@ -60,7 +63,7 @@ export function useMatches() {
     if (data.trFinalizacion !== undefined) updates.tr_finalizacion = data.trFinalizacion;
     if (data.startingSide !== undefined) updates.starting_side = data.startingSide;
     if (data.notes !== undefined) updates.notes = data.notes;
-    await supabase.from("matches").update(updates as any).eq("id", id);
+    await supabase.from("matches").update(updates).eq("id", id);
     fetchMatches();
   }, [fetchMatches]);
 

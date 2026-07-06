@@ -45,6 +45,10 @@ export interface RawParsedDemo {
     winner_side: "CT" | "TERRORIST";
     end_reason: string;
     is_pistol: boolean;
+    economy?: {
+      CT: { avg_equip: number; buy_type: "full_eco" | "eco" | "half_buy" | "full_buy" | "pistol" };
+      TERRORIST: { avg_equip: number; buy_type: "full_eco" | "eco" | "half_buy" | "full_buy" | "pistol" };
+    };
     kills: Array<{
       attacker: string; victim: string; assister: string | null;
       weapon: string; headshot: boolean; is_opening: boolean; tick: number;
@@ -55,6 +59,7 @@ export interface RawParsedDemo {
     team_first_half: "CT" | "TERRORIST" | null;
     kills: number; deaths: number; assists: number; hs_kills: number; damage: number;
     first_kills: number; first_deaths: number;
+    kast: number | null; rating: number | null;
   }>;
   duration_ticks: number;
   round_economies: Array<{ team_ct_avg_equip: number; team_t_avg_equip: number }>;
