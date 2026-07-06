@@ -32,15 +32,19 @@ interface TeamObjective {
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color?: string }) {
   return (
-    <div className="bg-card rounded-lg border border-border p-4 card-glow animate-slide-up">
+    <div className="cyber-card p-4 animate-slide-up relative">
+      <span className="cyber-corner cyber-corner-tl" />
+      <span className="cyber-corner cyber-corner-tr" />
+      <span className="cyber-corner cyber-corner-bl" />
+      <span className="cyber-corner cyber-corner-br" />
       <div className="flex items-center gap-3">
-        <div className={cn("p-2 rounded-lg", color ?? "gradient-primary")}>
+        <div className={cn("p-2 rounded-sm", color ?? "gradient-primary")}>
           <Icon className="h-5 w-5 text-primary-foreground" />
         </div>
         <div>
           <p className="stat-label">{label}</p>
           <p className="stat-value">{value}</p>
-          {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+          {sub && <p className="text-xs text-muted-foreground font-mono">{sub}</p>}
         </div>
       </div>
     </div>
@@ -218,7 +222,7 @@ export default function Dashboard({ matches }: DashboardProps) {
       {/* Last 10 */}
       <div className="bg-card rounded-lg border border-border p-6 card-glow">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-muted-foreground">Últimos 10 Partidos</h3>
+          <h3 className="text-[9px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground">// ÚLTIMOS 10 PARTIDOS</h3>
         </div>
         {last10.length === 0 ? (
           <p className="text-muted-foreground text-sm text-center py-8">Sin partidos registrados</p>
@@ -248,7 +252,7 @@ export default function Dashboard({ matches }: DashboardProps) {
                   return (
                     <tr key={m.id} className="border-b border-border/40 hover:bg-secondary/20 transition-colors">
                       <td className="py-2.5 px-2 text-xs text-muted-foreground">{format(new Date(m.date), "dd/MM/yy")}</td>
-                      <td className="py-2.5 px-2"><span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold uppercase">{(m as unknown as { type?: string }).type || "treino"}</span></td>
+                      <td className="py-2.5 px-2"><span className="text-[9px] px-1.5 py-0.5 rounded-[2px] bg-accent/10 border border-accent/20 text-accent font-mono uppercase tracking-[0.06em]">{(m as unknown as { type?: string }).type || "treino"}</span></td>
                       <td className="py-2.5 px-2 flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent" />{m.map}</td>
                       <td className="py-2.5 px-2 font-semibold">{m.rival || "—"}</td>
                       <td className={cn("text-center py-2.5 px-2 font-mono font-bold", win ? "text-success" : "text-destructive")}>{m.scoreUs}-{m.scoreThem}</td>

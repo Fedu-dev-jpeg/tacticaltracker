@@ -2,77 +2,246 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @layer base {
   :root {
-    --background: 220 30% 5%;
-    --foreground: 210 30% 96%;
+    /* ── Backgrounds ── */
+    --background: 216 30% 5%;           /* #07090F */
+    --foreground: 200 55% 88%;          /* #C8E4F0 */
 
-    --card: 220 25% 8%;
-    --card-foreground: 210 30% 96%;
+    --card: 216 26% 7%;                 /* #0A0D14 */
+    --card-foreground: 200 55% 88%;
 
-    --popover: 220 25% 10%;
-    --popover-foreground: 210 30% 96%;
+    --popover: 216 26% 9%;
+    --popover-foreground: 200 55% 88%;
 
-    --primary: 215 75% 22%;
-    --primary-foreground: 210 40% 98%;
+    /* ── Primary = Cyan ── */
+    --primary: 192 100% 50%;            /* #00CFFF */
+    --primary-foreground: 216 40% 5%;
 
-    --secondary: 220 22% 14%;
-    --secondary-foreground: 210 30% 90%;
+    --secondary: 216 22% 10%;
+    --secondary-foreground: 200 35% 65%;
 
-    --muted: 220 20% 12%;
-    --muted-foreground: 215 18% 60%;
+    --muted: 216 22% 9%;
+    --muted-foreground: 210 35% 32%;    /* #3A5070 */
 
-    --accent: 210 100% 55%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 192 100% 50%;             /* #00CFFF */
+    --accent-foreground: 216 40% 5%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 350 100% 60%;        /* #FF3860 */
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 145 60% 45%;
-    --success-foreground: 0 0% 100%;
+    --success: 150 100% 50%;            /* #00FF80 */
+    --success-foreground: 150 60% 8%;
 
-    --border: 220 22% 15%;
-    --input: 220 22% 15%;
-    --ring: 210 100% 55%;
+    --border: 216 28% 13%;
+    --input: 216 28% 13%;
+    --ring: 192 100% 50%;
 
-    --radius: 0.5rem;
+    --radius: 0.25rem;                  /* Angular — 4px */
 
-    --sidebar-background: 220 30% 6%;
-    --sidebar-foreground: 210 25% 85%;
-    --sidebar-primary: 210 100% 55%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 25% 12%;
-    --sidebar-accent-foreground: 210 100% 65%;
-    --sidebar-border: 220 25% 12%;
-    --sidebar-ring: 210 100% 55%;
+    /* ── Sidebar ── */
+    --sidebar-background: 216 28% 6%;
+    --sidebar-foreground: 200 35% 55%;
+    --sidebar-primary: 192 100% 50%;
+    --sidebar-primary-foreground: 216 40% 5%;
+    --sidebar-accent: 216 26% 9%;
+    --sidebar-accent-foreground: 192 100% 60%;
+    --sidebar-border: 216 28% 10%;
+    --sidebar-ring: 192 100% 50%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(215 75% 22%), hsl(210 100% 40%));
-    --gradient-accent: linear-gradient(135deg, hsl(210 100% 55%), hsl(200 100% 65%));
-    --gradient-success: linear-gradient(135deg, hsl(145 60% 45%), hsl(145 60% 55%));
-    --shadow-card: 0 4px 20px -4px hsla(0, 0%, 0%, 0.6);
-    --shadow-glow-primary: 0 0 24px -6px hsla(210, 100%, 55%, 0.5);
-    --shadow-glow-accent: 0 0 24px -6px hsla(210, 100%, 55%, 0.5);
+    /* ── Custom tokens ── */
+    --gradient-primary: linear-gradient(135deg, hsl(210 80% 18%), hsl(192 100% 50%));
+    --gradient-accent:  linear-gradient(135deg, hsl(192 100% 50%), hsl(150 100% 50%));
+    --gradient-success: linear-gradient(135deg, hsl(150 100% 50%), hsl(150 70% 38%));
+    --shadow-card:      0 4px 24px -4px hsla(0, 0%, 0%, 0.75);
+    --shadow-glow-primary: 0 0 24px -6px hsla(192, 100%, 50%, 0.35);
+    --shadow-glow-accent:  0 0 24px -6px hsla(192, 100%, 50%, 0.35);
+
+    /* ── Cyber Grid dot pattern ── */
+    --dot-pattern: radial-gradient(circle, rgba(0,207,255,0.07) 1px, transparent 1px);
+    --dot-size: 22px 22px;
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground font-body antialiased; }
-  h1, h2, h3, h4, h5, h6 { @apply font-heading font-bold tracking-tight; }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+    /* Dot grid on the main content area */
+    background-color: hsl(var(--background));
+    background-image: var(--dot-pattern);
+    background-size: var(--dot-size);
+  }
+
+  /* Sidebar overrides dot pattern */
+  [data-sidebar="sidebar"] {
+    background-image: none !important;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-bold tracking-tight;
+  }
+
+  /* All stat/data text: monospace */
+  .stat-value {
+    @apply text-3xl font-mono font-bold tracking-tight;
+  }
+  .stat-label {
+    @apply text-[9px] uppercase tracking-[0.14em] text-muted-foreground font-mono;
+  }
 }
 
+/* ─────────────────────────────────────────────────
+   CYBER CARD — card with tactical corner brackets
+───────────────────────────────────────────────── */
 @layer utilities {
+  .cyber-card {
+    position: relative;
+    @apply bg-card border border-primary/15 rounded-sm;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.3s ease;
+  }
+  .cyber-card:hover {
+    box-shadow: var(--shadow-glow-primary);
+  }
+
+  /* Corner bracket decorations */
+  .cyber-card::before,
+  .cyber-card::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Use data-corner spans instead (see below) for full control */
+
+  /* Accent corner shortcut via box-shadow */
+  .cyber-card-glow {
+    box-shadow: var(--shadow-card), var(--shadow-glow-primary);
+  }
+
+  /* Corner bracket element — place 4 of these inside .cyber-card */
+  .cyber-corner {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: hsl(var(--accent));
+    border-style: solid;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .cyber-corner-tl { top: 7px; left: 7px;  border-width: 1.5px 0 0 1.5px; }
+  .cyber-corner-tr { top: 7px; right: 7px;  border-width: 1.5px 1.5px 0 0; }
+  .cyber-corner-bl { bottom: 7px; left: 7px;  border-width: 0 0 1.5px 1.5px; }
+  .cyber-corner-br { bottom: 7px; right: 7px;  border-width: 0 1.5px 1.5px 0; }
+
+  /* Sidebar top/bottom glow lines */
+  .cyber-line-top {
+    height: 2px;
+    background: linear-gradient(90deg, hsl(var(--accent)), transparent);
+    flex-shrink: 0;
+  }
+  .cyber-line-bottom {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, hsl(var(--accent)), transparent);
+    flex-shrink: 0;
+  }
+
+  /* Dot grid background (apply to main content area) */
+  .cyber-grid-bg {
+    background-color: hsl(var(--background));
+    background-image: var(--dot-pattern);
+    background-size: var(--dot-size);
+  }
+
+  /* Angular progress bar */
+  .cyber-progress {
+    @apply h-[3px] bg-muted rounded-none overflow-hidden;
+  }
+  .cyber-progress-fill {
+    @apply h-full rounded-none;
+  }
+
+  /* Section label: "// NAV" style */
+  .cyber-section-label {
+    @apply text-[8px] font-mono uppercase tracking-[0.16em] text-muted-foreground/40 px-3 py-2;
+  }
+
+  /* Status badge: SYSTEM ACTIVE */
+  .cyber-status {
+    @apply flex items-center gap-1.5 px-3 py-1.5 text-[8px] font-mono tracking-[0.12em] uppercase;
+    color: hsl(var(--success));
+  }
+  .cyber-status::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: hsl(var(--success));
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  /* Glow utilities */
   .card-glow {
     box-shadow: var(--shadow-card);
     transition: box-shadow 0.3s ease;
   }
-  .card-glow:hover { box-shadow: var(--shadow-glow-accent); }
+  .card-glow:hover {
+    box-shadow: var(--shadow-glow-accent);
+  }
+
   .gradient-primary { background: var(--gradient-primary); }
-  .gradient-accent { background: var(--gradient-accent); }
+  .gradient-accent  { background: var(--gradient-accent); }
   .gradient-success { background: var(--gradient-success); }
-  .stat-value { @apply text-3xl font-heading font-bold tracking-tight; }
-  .stat-label { @apply text-xs uppercase tracking-widest text-muted-foreground; }
-  .text-glow-accent { text-shadow: 0 0 12px hsla(210, 100%, 55%, 0.6); }
+
+  .text-glow-accent {
+    text-shadow: 0 0 12px hsla(192, 100%, 50%, 0.6);
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   Sidebar nav item active state override
+───────────────────────────────────────────────── */
+@layer components {
+  /* Active nav: left cyan border + subtle bg */
+  [data-active="true"] [data-sidebar="menu-button"] {
+    background: rgba(0, 207, 255, 0.08) !important;
+    border-left: 2px solid hsl(192 100% 50%) !important;
+    border-radius: 3px !important;
+    color: hsl(192 100% 50%) !important;
+    padding-left: 7px !important;
+  }
+
+  [data-sidebar="menu-button"]:not([data-active="true"]):hover {
+    background: rgba(0, 207, 255, 0.04) !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   Animations
+───────────────────────────────────────────────── */
+@layer base {
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes scan-line {
+    from { transform: translateY(-100%); }
+    to   { transform: translateY(100vh); }
+  }
 }

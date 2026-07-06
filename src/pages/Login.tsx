@@ -49,26 +49,39 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="absolute inset-0 pointer-events-none opacity-30" style={{
-        background: "radial-gradient(circle at 30% 20%, hsl(210 100% 55% / 0.15), transparent 60%)"
-      }} />
-      <Card className="w-full max-w-sm border-border relative card-glow">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 60% at 15% 10%, rgba(0,207,255,0.12) 0%, transparent 60%)",
+          backgroundImage:
+            "radial-gradient(circle, rgba(0,207,255,0.05) 1px, transparent 1px)",
+          backgroundSize: "22px 22px",
+        }}
+      />
+      <Card className="w-full max-w-sm border-accent/20 bg-card relative cyber-card">
+        <span className="cyber-corner cyber-corner-tl" />
+        <span className="cyber-corner cyber-corner-tr" />
+        <span className="cyber-corner cyber-corner-bl" />
+        <span className="cyber-corner cyber-corner-br" />
         <CardHeader className="text-center space-y-4 pb-2">
           <div className="flex justify-center">
             <img src="/logo.png" alt="TacticalTracker" className="h-16 w-16" />
           </div>
           <div>
-            <h1 className="text-2xl font-heading font-bold tracking-widest text-accent text-glow-accent">
+            <h1 className="text-2xl font-heading font-bold tracking-[0.12em] text-accent text-glow-accent">
               TACTICALTRACKER
             </h1>
-            <p className="text-muted-foreground text-xs mt-1 uppercase tracking-widest">CS2 Team Tracker</p>
+            <p className="text-muted-foreground text-[9px] mt-1 uppercase tracking-[0.16em] font-mono">
+              CS2 Team Tracker · ONLINE
+            </p>
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Usuario</label>
+              <label className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">// USUARIO</label>
               <Input
                 placeholder="ej: Boke, kud, koda, ray, pakito, ema, fedu..."
                 value={email}
@@ -78,7 +91,7 @@ export default function Login() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Contraseña</label>
+              <label className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">// CONTRASEÑA</label>
               <Input
                 type="password"
                 placeholder="••••••"
@@ -94,12 +107,16 @@ export default function Login() {
                 checked={rememberMe}
                 onCheckedChange={(c) => setRememberMe(c === true)}
               />
-              <label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer">
+              <label htmlFor="remember" className="text-xs text-muted-foreground cursor-pointer font-mono uppercase tracking-wide">
                 Recordar mi usuario
               </label>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Entrando..." : "Entrar"}
+            <Button
+              type="submit"
+              className="w-full rounded-[3px] bg-accent/10 border border-accent/25 text-accent hover:bg-accent/20 font-mono uppercase tracking-[0.08em]"
+              disabled={loading}
+            >
+              {loading ? "CONECTANDO..." : "ENTRAR AL SISTEMA"}
             </Button>
           </form>
         </CardContent>
