@@ -71,31 +71,46 @@ export default function PraccCompare() {
     if (typeof window !== "undefined") window.localStorage.setItem("pracc:feed_url", url);
     setLoading(true);
     const t = toast.loading("Comparando agenda con PRACC...");
-    const { data, error } = await supabase.functions.invoke("pracc-compare", {
-      body: { feed_url: url, days_back: 30, days_forward: 45 },
-    });
+    const payload = { feed_url: url, days_back: 30, days_forward: 45 };
+    let edgeReason = "";
 
-    if (error || (data as { error?: string })?.error) {
-      try {
-        const local = await compareLocally(url);
-        setResult(local);
+    try {
+      const { data, error } = await supabase.functions.invoke("pracc-compare", { body: payload });
+      if (!error && !(data as { error?: string })?.error) {
         setLoading(false);
-        const reason = error?.message ?? (data as { error?: string })?.error ?? "edge-error";
-        toast.success("Comparación lista (modo fallback local)", { id: t, description: reason });
-        return;
-      } catch (localError) {
-        setLoading(false);
-        const edgeReason = error?.message ?? (data as { error?: string })?.error ?? "error desconocido";
-        toast.error("No se pudo comparar", {
-          id: t,
-          description: `${edgeReason} · fallback local: ${(localError as Error).message}`,
-        });
+        setResult(data as CompareResult);
+        toast.success("Comparación lista", { id: t });
         return;
       }
+      edgeReason = error?.message ?? (data as { error?: string })?.error ?? "edge-error";
+    } catch (invokeError) {
+      edgeReason = (invokeError as Error).message || "invoke-failed";
     }
-    setLoading(false);
-    setResult(data as CompareResult);
-    toast.success("Comparación lista", { id: t });
+
+    // Secondary fallback: direct HTTP call to the Edge Function endpoint.
+    try {
+      const direct = await compareViaEdgeHttp(payload);
+      setResult(direct);
+      setLoading(false);
+      toast.success("Comparación lista (fallback edge HTTP)", { id: t, description: edgeReason });
+      return;
+    } catch (directErr) {
+      edgeReason = `${edgeReason} · edge-http: ${(directErr as Error).message}`;
+    }
+
+    try {
+      const local = await compareLocally(url);
+      setResult(local);
+      setLoading(false);
+      toast.success("Comparación lista (modo fallback local)", { id: t, description: edgeReason });
+      return;
+    } catch (localError) {
+      setLoading(false);
+      toast.error("No se pudo comparar", {
+        id: t,
+        description: `${edgeReason} · fallback local: ${(localError as Error).message}`,
+      });
+    }
   };
 
   return (
@@ -180,7 +195,9 @@ async function compareLocally(feedUrl: string): Promise<CompareResult> {
   const endDate = end.toISOString().slice(0, 10);
 
   const [feedRes, agendaRes] = await Promise.all([
-    fetch(feedUrl, { headers: { Accept: "application/json, text/calendar, text/plain, */*" } }),
+    fetchWithTimeout(feedUrl, {
+      headers: { Accept: "application/json, text/calendar, text/plain, */*" },
+    }, 15000),
     supabase
       .from("agenda_events")
       .select("id, title, description, event_type, date, time_start, time_end")
@@ -233,6 +250,62 @@ async function compareLocally(feedUrl: string): Promise<CompareResult> {
     })),
     missing_in_agenda: missingInAgenda.map(toCompareEvent),
   };
+}
+
+async function compareViaEdgeHttp(payload: { feed_url: string; days_back: number; days_forward: number }): Promise<CompareResult> {
+  const session = (await supabase.auth.getSession()).data.session;
+  if (!session?.access_token) {
+    throw new Error("sin sesión autenticada");
+  }
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+  if (!supabaseUrl || !supabaseKey) throw new Error("config supabase incompleta");
+
+  const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/pracc-compare`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: supabaseKey,
+    },
+    body: JSON.stringify(payload),
+  }, 15000);
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = null;
+  }
+  if (!res.ok) {
+    const fnError = typeof parsed === "object" && parsed ? String((parsed as { error?: string }).error ?? text) : text;
+    throw new Error(`http ${res.status}: ${fnError || "sin detalle"}`);
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("respuesta inválida");
+  }
+  const err = (parsed as { error?: string }).error;
+  if (err) throw new Error(err);
+  return parsed as CompareResult;
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Failed to fetch (posible CORS, URL inválida o red)");
+    }
+    if ((error as { name?: string }).name === "AbortError") {
+      throw new Error("timeout al consultar feed");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 function parseExternalFeed(raw: string, contentType: string): ExternalComparable[] {

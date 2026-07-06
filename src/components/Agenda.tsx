@@ -34,10 +34,19 @@ const EVENT_TYPES: Record<string, { label: string; color: string }> = {
   training: { label: "Entrenamiento", color: "bg-accent/20 border-accent/40 text-accent" },
   scrim: { label: "Scrim", color: "bg-blue-500/20 border-blue-500/40 text-blue-400" },
   match: { label: "Partido Oficial", color: "bg-red-500/20 border-red-500/40 text-red-400" },
+  tactical: { label: "Sesión táctica", color: "bg-orange-500/20 border-orange-500/40 text-orange-300" },
   review: { label: "Review / Demo", color: "bg-purple-500/20 border-purple-500/40 text-purple-400" },
   meeting: { label: "Reunión", color: "bg-green-500/20 border-green-500/40 text-green-400" },
   off: { label: "Día Libre", color: "bg-muted/40 border-muted text-muted-foreground" },
 };
+
+const EVENT_TYPE_KEYWORDS: Array<{ type: keyof typeof EVENT_TYPES; pattern: RegExp }> = [
+  { type: "tactical", pattern: /\b(tactico|táctico|sesion tactica|sesión táctica|tactical)\b/i },
+  { type: "match", pattern: /\b(torneo|partido oficial|oficial|vs\.?|bo1|bo3|bo5)\b/i },
+  { type: "review", pattern: /\b(analisis pos treino|análisis post treino|analisis demo|análisis demo|review|demo)\b/i },
+  { type: "meeting", pattern: /\b(reunion tecnica|reunión técnica|reunion|reunión)\b/i },
+  { type: "scrim", pattern: /\b(scrim|pracc|practice|entreno vs)\b/i },
+];
 
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 // date-fns getDay: 0=Sun,1=Mon... we want Mon=0
@@ -315,9 +324,20 @@ export default function Agenda() {
     }));
   };
 
+  const resolveEventType = (ev: AgendaEvent): keyof typeof EVENT_TYPES => {
+    const text = `${ev.title} ${ev.description}`.toLowerCase();
+    for (const rule of EVENT_TYPE_KEYWORDS) {
+      if (rule.pattern.test(text)) return rule.type;
+    }
+    if (ev.event_type in EVENT_TYPES) {
+      return ev.event_type as keyof typeof EVENT_TYPES;
+    }
+    return "training";
+  };
+
   // ── Event card (draggable) ──
   const EventCard = ({ ev, compact = false }: { ev: AgendaEvent; compact?: boolean }) => {
-    const typeInfo = EVENT_TYPES[ev.event_type] || EVENT_TYPES.training;
+    const typeInfo = EVENT_TYPES[resolveEventType(ev)];
     const isDragging = draggedEventId === ev.id;
     return (
       <div
@@ -486,7 +506,7 @@ export default function Agenda() {
                   </div>
                   <div className="space-y-0.5">
                     {dayEvents.slice(0, 2).map((ev) => {
-                      const typeInfo = EVENT_TYPES[ev.event_type] || EVENT_TYPES.training;
+                      const typeInfo = EVENT_TYPES[resolveEventType(ev)];
                       return (
                         <div key={ev.id} className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate border", typeInfo.color)}>
                           {ev.title}

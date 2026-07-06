@@ -45,10 +45,21 @@ export default function PlaybookImportDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [map, setMap] = useState<MapName>("Nuke");
-  const [side, setSide] = useState<"CT" | "TR">("CT");
+  const [rawText, setRawText] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const runImport = useCallback(async (payload: { pdf_base64?: string; raw_text?: string }) => {
+    const { data, error: fnErr } = await supabase.functions.invoke("import-playbook-pdf", {
+      body: { ...payload, map, book },
+    });
+    if (fnErr) throw new Error(fnErr.message);
+    if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+    setResult(data as ImportResult);
+    toast.success(`Importadas ${(data as ImportResult).imported} estrategias en ${map}`);
+    onImported();
+  }, [map, book, onImported]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -69,15 +80,7 @@ export default function PlaybookImportDialog({
           binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
         }
         const base64 = btoa(binary);
-
-        const { data, error: fnErr } = await supabase.functions.invoke("import-playbook-pdf", {
-          body: { pdf_base64: base64, map, book, default_side: side },
-        });
-        if (fnErr) throw new Error(fnErr.message);
-        if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
-        setResult(data as ImportResult);
-        toast.success(`Importadas ${(data as ImportResult).imported} estrategias en ${map}`);
-        onImported();
+        await runImport({ pdf_base64: base64 });
       } catch (e) {
         setError(String((e as Error).message));
         toast.error("No se pudo importar el PDF");
@@ -85,8 +88,27 @@ export default function PlaybookImportDialog({
         setLoading(false);
       }
     },
-    [map, side, book, onImported],
+    [runImport],
   );
+
+  const handleTextImport = useCallback(async () => {
+    const text = rawText.trim();
+    if (!text) {
+      toast.error("Pegá el texto del playbook antes de importar");
+      return;
+    }
+    setError(null);
+    setResult(null);
+    setLoading(true);
+    try {
+      await runImport({ raw_text: text });
+    } catch (e) {
+      setError(String((e as Error).message));
+      toast.error("No se pudo importar el texto");
+    } finally {
+      setLoading(false);
+    }
+  }, [rawText, runImport]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -101,28 +123,18 @@ export default function PlaybookImportDialog({
             <FileUp className="h-4 w-4 text-accent" /> Importar Playbook desde PDF
           </DialogTitle>
           <DialogDescription>
-            Subí un PDF con estrategias en el formato definido abajo. Se cargan automáticamente en el mapa que elijas.
+            Subí un PDF o pegá texto con el formato táctico. Se cargan en el mapa elegido y el lado (CT/TR) se detecta automáticamente.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <Label className="text-xs">Mapa destino</Label>
               <Select value={map} onValueChange={(v) => setMap(v as MapName)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {MAPS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Lado por defecto</Label>
-              <Select value={side} onValueChange={(v) => setSide(v as "CT" | "TR")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CT">CT</SelectItem>
-                  <SelectItem value="TR">TR</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -174,6 +186,21 @@ export default function PlaybookImportDialog({
               </>
             )}
           </label>
+
+          <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+            <Label className="text-xs">O pegar texto directamente</Label>
+            <textarea
+              className="min-h-[180px] w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+              placeholder="Pegá acá el playbook completo (con títulos, lados, roles, notas, links...)"
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              disabled={loading}
+            />
+            <Button variant="outline" className="w-full" onClick={handleTextImport} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileUp className="h-4 w-4 mr-2" />}
+              Importar texto en {map}
+            </Button>
+          </div>
 
           {error && (
             <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md p-3">
