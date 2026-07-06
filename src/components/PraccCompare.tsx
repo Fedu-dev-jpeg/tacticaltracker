@@ -74,12 +74,23 @@ export default function PraccCompare() {
     const payload = { feed_url: url, days_back: 30, days_forward: 45 };
     let edgeReason = "";
 
+    // Prefer local/proxy comparison first so UI works even when Edge transport is blocked.
+    try {
+      const local = await compareLocally(url);
+      setResult(local);
+      setLoading(false);
+      toast.success("Comparación lista", { id: t });
+      return;
+    } catch (localFirstErr) {
+      edgeReason = `local-first: ${(localFirstErr as Error).message}`;
+    }
+
     try {
       const { data, error } = await supabase.functions.invoke("pracc-compare", { body: payload });
       if (!error && !(data as { error?: string })?.error) {
         setLoading(false);
         setResult(data as CompareResult);
-        toast.success("Comparación lista", { id: t });
+        toast.success("Comparación lista (respaldo edge)", { id: t });
         return;
       }
       edgeReason = error?.message ?? (data as { error?: string })?.error ?? "edge-error";
