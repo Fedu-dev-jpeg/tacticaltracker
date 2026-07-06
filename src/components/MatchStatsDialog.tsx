@@ -23,6 +23,8 @@ export interface MatchStatsMeta {
   matchType?: string;
   rival?: string;
   savedAt?: string; // ISO — when demo_data was persisted
+  scoreUs?: number;
+  scoreThem?: number;
 }
 
 export default function MatchStatsDialog({
@@ -31,12 +33,24 @@ export default function MatchStatsDialog({
   meta,
   mode = "live",
 }: {
-  data: DemoData | any;
+  data: DemoData | unknown;
   trigger?: React.ReactNode;
   meta?: MatchStatsMeta;
   mode?: "live" | "stored";
 }) {
-  const demo = useMemo(() => migrateLegacyDemoData(data), [data]);
+  const demo = useMemo(() => {
+    const migrated = migrateLegacyDemoData(data);
+    if (!migrated || typeof meta?.scoreUs !== "number" || typeof meta?.scoreThem !== "number") return migrated;
+    return {
+      ...migrated,
+      match: {
+        ...migrated.match,
+        total_rounds: meta.scoreUs + meta.scoreThem,
+        score: { team1: meta.scoreUs, team2: meta.scoreThem },
+      },
+      rounds: migrated.rounds.filter((r) => r.round_number <= meta.scoreUs + meta.scoreThem),
+    };
+  }, [data, meta?.scoreThem, meta?.scoreUs]);
   const [full, setFull] = useState(false);
 
   if (!demo) {
@@ -417,19 +431,9 @@ function RoundsTimeline({ demo, storageKey, compact }: { demo: DemoData; storage
   const { side, result, reasons, onlyPistol, onlyClutch } = filters;
   const reasonSet = useMemo(() => new Set<EndReason>(reasons), [reasons]);
   const rounds = demo.rounds;
-
-  if (!rounds || rounds.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border p-4 text-center">
-        <h3 className="font-heading font-bold text-sm">{compact ? "Round Timeline" : "Round Analysis"}</h3>
-        <p className="text-xs text-muted-foreground mt-1">Pendiente de parser completo — el análisis por rounds aún no está disponible para esta demo.</p>
-      </div>
-    );
-  }
-
   const matches = useMemo(() => {
     const set = new Set<number>();
-    rounds.forEach((r) => {
+    rounds?.forEach((r) => {
       const t1Won = team1WonRound(demo, r);
       const team1SideThisRound = teamSide(demo, "team1", r.round_number);
       if (side !== "all" && team1SideThisRound !== side) return;
@@ -442,6 +446,15 @@ function RoundsTimeline({ demo, storageKey, compact }: { demo: DemoData; storage
     });
     return set;
   }, [demo, rounds, side, result, reasonSet, onlyPistol, onlyClutch]);
+
+  if (!rounds || rounds.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border p-4 text-center">
+        <h3 className="font-heading font-bold text-sm">{compact ? "Round Timeline" : "Round Analysis"}</h3>
+        <p className="text-xs text-muted-foreground mt-1">Pendiente de parser completo — el análisis por rounds aún no está disponible para esta demo.</p>
+      </div>
+    );
+  }
 
   const setSide = (s: SideFilter) => setFilters((f) => ({ ...f, side: s }));
   const setResult = (r: ResultFilter) => setFilters((f) => ({ ...f, result: r }));

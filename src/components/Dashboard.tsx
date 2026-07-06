@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ComponentType } from "react";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
 import { differenceInDays, startOfWeek, format } from "date-fns";
@@ -30,7 +30,13 @@ interface TeamObjective {
   completed: boolean;
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color?: string }) {
+type IconComponent = ComponentType<{ className?: string }>;
+type ChartTooltipProps<T> = { active?: boolean; payload?: Array<{ payload: T }> };
+type MapWinRateDatum = { name: MapName; played: number; wins: number; losses: number; winRate: number };
+type PistolDatum = { name: string; value: number; side: "CT" | "TR"; key: "ctPistol" | "trPistol" | "ctSecondRound" | "trSecondRound" };
+type TrendDatum = { idx: number; diff: number; win: boolean; map: MapName; rival: string; date: string; score: string };
+
+function StatCard({ icon: Icon, label, value, sub, color }: { icon: IconComponent; label: string; value: string | number; sub?: string; color?: string }) {
   return (
     <div className="cyber-card p-4 animate-slide-up relative">
       <span className="cyber-corner cyber-corner-tl" />
@@ -264,7 +270,7 @@ export default function Dashboard({ matches }: DashboardProps) {
                           <MatchStatsDialog
                             data={m.demo_data as DemoData}
                             mode="stored"
-                            meta={{ date: m.date, matchType: m.type, rival: m.rival, savedAt: m.date }}
+                            meta={{ date: m.date, matchType: m.type, rival: m.rival, savedAt: m.date, scoreUs: m.scoreUs, scoreThem: m.scoreThem }}
                             trigger={<button className="text-accent hover:text-accent/80" title="Ver stats"><BarChart3 className="h-4 w-4 mx-auto" /></button>}
                           />
                         ) : (
@@ -350,9 +356,9 @@ function FilterChipRow({
   );
 }
 
-function MapWinRateCard({ matches, mapData, colors }: { matches: Match[]; mapData: any[]; colors: ChartColors }) {
+function MapWinRateCard({ matches, mapData, colors }: { matches: Match[]; mapData: MapWinRateDatum[]; colors: ChartColors }) {
   const data = mapData.filter((d) => d.played > 0);
-  const MapTooltip = ({ active, payload }: any) => {
+  const MapTooltip = ({ active, payload }: ChartTooltipProps<MapWinRateDatum>) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
@@ -432,7 +438,7 @@ function PistolConversionCard({ matches, colors }: { matches: Match[]; colors: C
     { name: "TR 2nd Rd", value: getConversionRate(filtered, "TR"), side: "TR", key: "trSecondRound" },
   ] as const;
 
-  const PistolTooltip = ({ active, payload }: any) => {
+  const PistolTooltip = ({ active, payload }: ChartTooltipProps<PistolDatum>) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     const key = d.key as "ctPistol" | "trPistol" | "ctSecondRound" | "trSecondRound";
@@ -487,7 +493,7 @@ function PistolConversionCard({ matches, colors }: { matches: Match[]; colors: C
         <>
           <div className="h-64 cursor-pointer" onClick={() => setShowBreakdown(true)} title="Click para ver detalle por mapa">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pistolData as any} layout="vertical" barCategoryGap="30%">
+              <BarChart data={pistolData} layout="vertical" barCategoryGap="30%">
                 <CartesianGrid stroke="hsl(220 16% 18%)" horizontal={false} />
                 <XAxis type="number" domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
                 <YAxis type="category" dataKey="name" stroke="hsl(215 15% 55%)" fontSize={11} width={80} />
@@ -553,7 +559,7 @@ function PctCell({ v }: { v: number }) {
   );
 }
 
-function ResultsTrendCard({ matches, bestMap, worstMap, colors }: { matches: Match[]; bestMap: any; worstMap: any; colors: ChartColors }) {
+function ResultsTrendCard({ matches, bestMap, worstMap, colors }: { matches: Match[]; bestMap: MapWinRateDatum | undefined; worstMap: MapWinRateDatum | undefined; colors: ChartColors }) {
   const [filterType, setFilterType] = useState<"all" | MatchType>("all");
   const [filterMap, setFilterMap] = useState<"all" | MapName>("all");
 
@@ -572,7 +578,7 @@ function ResultsTrendCard({ matches, bestMap, worstMap, colors }: { matches: Mat
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .slice(-12);
   let running = 0;
-  const trendData = trendMatches.map((m, i) => {
+  const trendData: TrendDatum[] = trendMatches.map((m, i) => {
     running += isWin(m) ? 1 : -1;
     return { idx: i + 1, diff: running, win: isWin(m), map: m.map, rival: m.rival, date: m.date, score: `${m.scoreUs}-${m.scoreThem}` };
   });
@@ -586,7 +592,7 @@ function ResultsTrendCard({ matches, bestMap, worstMap, colors }: { matches: Mat
     if (cur > longest) longest = cur;
   });
 
-  const TrendTooltip = ({ active, payload }: any) => {
+  const TrendTooltip = ({ active, payload }: ChartTooltipProps<TrendDatum>) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (

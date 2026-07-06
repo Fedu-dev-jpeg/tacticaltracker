@@ -130,9 +130,8 @@ export default function PendingConfirmations() {
         score_us: draft.score_us,
         score_them: draft.score_them,
         starting_side: draft.starting_side,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         confirmed: true,
-      } as any)
+      })
       .eq("id", m.id);
     if (mErr) {
       setSavingId(null);
@@ -143,8 +142,7 @@ export default function PendingConfirmations() {
     for (const [statId, p] of Object.entries(draft.players)) {
       await supabase
         .from("player_stats")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ role: p.role || null, kills: p.kills, deaths: p.deaths, assists: p.assists } as any)
+        .update({ role: p.role || null, kills: p.kills, deaths: p.deaths, assists: p.assists })
         .eq("id", statId);
     }
     setSavingId(null);

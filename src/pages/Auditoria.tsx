@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ShieldAlert } from "lucide-react";
+import type { Json } from "@/integrations/supabase/types";
 
 type AuditRow = {
   id: string;
@@ -34,8 +35,8 @@ type AuditRow = {
   user_id: string | null;
   user_email: string | null;
   changed_at: string;
-  old_data: any;
-  new_data: any;
+  old_data: Json | null;
+  new_data: Json | null;
 };
 
 const TABLE_LABELS: Record<string, string> = {

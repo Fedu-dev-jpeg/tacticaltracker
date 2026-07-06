@@ -437,9 +437,10 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
 
   // Clean up pending retry timers on unmount
   useEffect(() => {
+    const retryTimeouts = retryTimeoutsRef.current;
     return () => {
-      retryTimeoutsRef.current.forEach((t) => window.clearTimeout(t));
-      retryTimeoutsRef.current.clear();
+      retryTimeouts.forEach((t) => window.clearTimeout(t));
+      retryTimeouts.clear();
     };
   }, []);
 
@@ -1012,7 +1013,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         const reviewJob = reviewJobId ? jobs.find((j) => j.id === reviewJobId) ?? null : null;
         const parsed = reviewJob?.result ?? null;
         const rivalTags = parsed?.demo_data
-          ? Object.values(parsed.demo_data.players ?? {}).filter((p: any) => p.team === "team2").map((p: any) => p.name)
+          ? Object.values(parsed.demo_data.players ?? {}).filter((p) => p.team === "team2").map((p) => p.name)
           : [];
         const usPlayers = parsed?.players ?? [];
         const closeReview = () => { if (!savingReview) setReviewJobId(null); };

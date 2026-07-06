@@ -221,9 +221,10 @@ async function parseFile(
   let matchEndTick: number | null = null;
   const roundNumbersSeen = new Set<number>();
   const teamEntityState = new Map<unknown, { side: "CT" | "TERRORIST" | null; score: number | null }>();
-  const playerEntityState = new Map<unknown, { steamid: string | null; equip: number | null }>();
+  const playerEntityState = new Map<unknown, { steamid: string | null; name: string | null; equip: number | null; kills: number | null; deaths: number | null; assists: number | null }>();
   const equipBySteamid = new Map<string, number>();
   const economyByRound = new Map<number, { CT: RawParsedEconomySide; TERRORIST: RawParsedEconomySide }>();
+  const playersBySteamid = new Map<string, RawParsedPlayer>();
   // Lookup victim/attacker current team from user_info string table.
   const getTeam = (userid: number): number | null => {
     const demo = parser.getDemo();
@@ -322,8 +323,6 @@ async function parseFile(
     for (const entry of userInfo.getEntries()) {
       const v = entry.value;
       if (!v || !Number.isInteger(v.userid)) continue;
-      if (players.has(v.userid)) continue;
-
       // Reject fake players (bots) and any HLTV/SourceTV relay slot.
       if (v.fakeplayer === true || v.ishltv === true || v.is_hltv === true) continue;
       const name: string = v.name ?? "";
@@ -335,7 +334,16 @@ async function parseFile(
       // Real SteamID64 starts with 76561; reject slots that don't have one.
       if (!/^7656119\d{10}$/.test(steamid)) continue;
 
-      players.set(v.userid, {
+      const existing = players.get(v.userid) ?? playersBySteamid.get(steamid);
+      if (existing) {
+        existing.name = name || existing.name;
+        existing.userid = v.userid;
+        players.set(v.userid, existing);
+        playersBySteamid.set(steamid, existing);
+        continue;
+      }
+
+      const player = {
         steamid,
         userid: v.userid,
         name: name || "unknown",
@@ -343,8 +351,38 @@ async function parseFile(
         kills: 0, deaths: 0, assists: 0, hs_kills: 0, damage: 0,
         first_kills: 0, first_deaths: 0,
         kast: null, rating: null,
+      };
+      players.set(v.userid, {
+        ...player,
       });
+      playersBySteamid.set(steamid, players.get(v.userid)!);
     }
+  };
+
+  const resolvePlayer = (event: Record<string, unknown>, keys: string[]): RawParsedPlayer | undefined => {
+    for (const key of keys) {
+      const value = event[key];
+      if (value == null) continue;
+      const asString = String(value);
+      if (/^7656119\d{10}$/.test(asString)) {
+        const bySteam = playersBySteamid.get(asString);
+        if (bySteam) return bySteam;
+      }
+      const asNumber = Number(value);
+      if (Number.isFinite(asNumber)) {
+        const byUserid = players.get(asNumber);
+        if (byUserid) return byUserid;
+      }
+    }
+    return undefined;
+  };
+
+  const eventIdentity = (event: Record<string, unknown>, keys: string[]): string => {
+    for (const key of keys) {
+      const value = event[key];
+      if (value != null) return String(value);
+    }
+    return "";
   };
 
   parser.registerPostInterceptor(InterceptorStage.DEMO_PACKET, (demoPacket: {
@@ -500,10 +538,13 @@ async function parseFile(
         break;
       }
       case "player_death": {
-        const attacker = players.get(Number(event.attacker));
-        const victim = players.get(Number(event.userid));
-        const assister = players.get(Number(event.assister));
-        const isSelf = Number(event.attacker) === Number(event.userid);
+        const attacker = resolvePlayer(event, ["attacker", "attacker_steamid", "attacker_xuid"]);
+        const victim = resolvePlayer(event, ["userid", "victim", "victim_steamid", "victim_xuid"]);
+        const assister = resolvePlayer(event, ["assister", "assister_steamid", "assister_xuid"]);
+        const attackerId = eventIdentity(event, ["attacker", "attacker_steamid", "attacker_xuid"]);
+        const victimId = eventIdentity(event, ["userid", "victim", "victim_steamid", "victim_xuid"]);
+        const assisterId = eventIdentity(event, ["assister", "assister_steamid", "assister_xuid"]);
+        const isSelf = attackerId !== "" && attackerId === victimId;
         const isOpening = !currentRoundHasOpening;
         if (attacker && !isSelf) {
           attacker.kills += 1;
@@ -514,11 +555,11 @@ async function parseFile(
           victim.deaths += 1;
           if (isOpening) victim.first_deaths += 1;
         }
-        if (assister && Number(event.assister) !== Number(event.userid) && Number(event.assister) !== Number(event.attacker)) {
+        if (assister && assisterId !== "" && assisterId !== victimId && assisterId !== attackerId) {
           assister.assists += 1;
         }
         // Tally victim's side for fallback winner deduction.
-        const vTeam = getTeam(Number(event.userid));
+        const vTeam = victim ? getTeam(victim.userid) : getTeam(Number(event.userid));
         if (vTeam === 3) deathsCT += 1;
         else if (vTeam === 2) deathsT += 1;
         currentRoundHasOpening = true;
@@ -534,9 +575,10 @@ async function parseFile(
         break;
       }
       case "player_hurt": {
-        const attacker = players.get(Number(event.attacker));
+        const attacker = resolvePlayer(event, ["attacker", "attacker_steamid", "attacker_xuid"]);
+        const victim = resolvePlayer(event, ["userid", "victim", "victim_steamid", "victim_xuid"]);
         const dmg = Number(event.dmg_health ?? 0);
-        if (attacker && Number(event.attacker) !== Number(event.userid)) {
+        if (attacker && (!victim || attacker.steamid !== victim.steamid)) {
           attacker.damage += Math.min(100, Math.max(0, dmg));
         }
         break;
@@ -596,12 +638,28 @@ async function parseFile(
         }
         teamEntityState.set(ev.entity, state);
       } else if (className === 'CCSPlayerController' || className === 'CCSPlayerPawn') {
-        const state = playerEntityState.get(ev.entity) ?? { steamid: null, equip: null };
+        const state = playerEntityState.get(ev.entity) ?? { steamid: null, name: null, equip: null, kills: null, deaths: null, assists: null };
         for (const [k, v] of Object.entries(changes)) {
           if (/current_equip_value|CurrentEquipmentValue|unCurrentEquipmentValue|equipment.*value/i.test(k)) {
             equipmentFieldsSeen.add(k);
             const equip = Number(v);
             if (Number.isFinite(equip)) state.equip = equip;
+          }
+          if (/m_iKills|\bkills\b/i.test(k)) {
+            const kills = Number(v);
+            if (Number.isFinite(kills)) state.kills = kills;
+          }
+          if (/m_iDeaths|\bdeaths\b/i.test(k)) {
+            const deaths = Number(v);
+            if (Number.isFinite(deaths)) state.deaths = deaths;
+          }
+          if (/m_iAssists|\bassists\b/i.test(k)) {
+            const assists = Number(v);
+            if (Number.isFinite(assists)) state.assists = assists;
+          }
+          if (/m_iszPlayerName|player.?name|m_szName|\bname\b/i.test(k)) {
+            const name = String(v ?? "").trim();
+            if (name) state.name = name;
           }
           if (/m_steamID|steamid|xuid/i.test(k)) {
             const steamid = String(v ?? "");
@@ -627,6 +685,16 @@ async function parseFile(
 
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
+
+  for (const state of playerEntityState.values()) {
+    const player = state.steamid
+      ? playersBySteamid.get(state.steamid)
+      : [...players.values()].find((p) => state.name && p.name.trim().toLowerCase() === state.name.trim().toLowerCase());
+    if (!player) continue;
+    if (state.kills != null) player.kills = state.kills;
+    if (state.deaths != null) player.deaths = state.deaths;
+    if (state.assists != null) player.assists = state.assists;
+  }
 
   const finalScoreFromTeams = (() => {
     const out = { ct: 0, t: 0 };

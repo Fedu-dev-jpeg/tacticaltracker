@@ -16,6 +16,7 @@ import MatchView from "@/components/MatchView";
 import SteamAvatar from "@/components/SteamAvatar";
 import { useTeamMembers, TeamMember } from "@/hooks/useTeamMembers";
 import { toast } from "sonner";
+import type { Json } from "@/integrations/supabase/types";
 
 const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Boke: "",
@@ -42,6 +43,20 @@ export interface Strategy {
   status: "Draft" | "Ready" | "Probado";
 }
 
+type StrategyRow = {
+  id: string;
+  map: string;
+  side: string;
+  type: string;
+  name: string;
+  description: string | null;
+  player_roles: Json | null;
+  notes: string | null;
+  link: string | null;
+  status: string;
+  book?: string | null;
+};
+
 const STRAT_TYPE_ORDER = ["Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Setup", "Dominio", "Retake", "Postplant", "Finalización", "Calls de base", "Sorpresa"];
 const STRAT_TYPES = [...STRAT_TYPE_ORDER];
 
@@ -59,7 +74,7 @@ function getDefaultStrategies(): Strategy[] {
   return [];
 }
 
-function dbRowToStrategy(row: any): Strategy {
+function dbRowToStrategy(row: StrategyRow): Strategy {
   return {
     id: row.id,
     map: row.map as MapName,
@@ -67,7 +82,7 @@ function dbRowToStrategy(row: any): Strategy {
     type: row.type,
     name: row.name,
     description: row.description || "",
-    playerRoles: (row.player_roles as Record<string, string>) || {},
+    playerRoles: (row.player_roles as Record<string, string> | null) || {},
     notes: row.notes || "",
     link: row.link || "",
     status: row.status as Strategy["status"],
@@ -183,7 +198,7 @@ export default function Playbook() {
     setStrategies((prev) => [dup, ...prev]);
     await supabase.from("strategies").insert({
       id: newId, map: dup.map, side: dup.side, type: dup.type, name: dup.name,
-      description: dup.description, player_roles: dup.playerRoles as any,
+      description: dup.description, player_roles: dup.playerRoles as Json,
       notes: dup.notes, link: dup.link, status: dup.status,
     });
     toast.success("Estrategia duplicada");
@@ -200,7 +215,7 @@ export default function Playbook() {
     setEditingStrat(null);
     await supabase.from("strategies").update({
       map: updated.map, side: updated.side, type: updated.type, name: updated.name,
-      description: updated.description, player_roles: updated.playerRoles as any,
+      description: updated.description, player_roles: updated.playerRoles as Json,
       notes: updated.notes, link: updated.link, status: updated.status,
     }).eq("id", updated.id);
     toast.success("Estrategia actualizada");
@@ -419,7 +434,7 @@ export default function Playbook() {
               initialData={{ id: "", map: selectedMap, side: "TR", type: STRAT_TYPES[0], name: "", description: "", playerRoles: {}, notes: "", link: "", status: "Draft" }}
               title="Nueva Estrategia"
               submitLabel="Guardar"
-              onSubmit={async (s) => { const newId = crypto.randomUUID(); const newStrat = { ...s, id: newId }; setStrategies((prev) => [newStrat, ...prev]); setShowForm(false); await supabase.from("strategies").insert({ id: newId, map: s.map, side: s.side, type: s.type, name: s.name, description: s.description, player_roles: s.playerRoles as any, notes: s.notes, link: s.link, status: s.status }); toast.success("Estrategia agregada"); }}
+              onSubmit={async (s) => { const newId = crypto.randomUUID(); const newStrat = { ...s, id: newId }; setStrategies((prev) => [newStrat, ...prev]); setShowForm(false); await supabase.from("strategies").insert({ id: newId, map: s.map, side: s.side, type: s.type, name: s.name, description: s.description, player_roles: s.playerRoles as Json, notes: s.notes, link: s.link, status: s.status }); toast.success("Estrategia agregada"); }}
               onCancel={() => setShowForm(false)}
               memberByName={memberByName}
             />
