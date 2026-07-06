@@ -32,6 +32,28 @@ interface CompareResult {
   missing_in_agenda: CompareEvent[];
 }
 
+interface AgendaComparable {
+  id: string;
+  title: string;
+  description: string;
+  event_type: string;
+  date: string;
+  time_start: string;
+  time_end: string;
+  start: Date;
+}
+
+interface ExternalComparable {
+  source_id?: string | null;
+  title: string;
+  description?: string;
+  date: string;
+  time_start: string;
+  time_end: string;
+  start: Date;
+  searching: boolean;
+}
+
 export default function PraccCompare() {
   const [feedUrl, setFeedUrl] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -52,15 +74,26 @@ export default function PraccCompare() {
     const { data, error } = await supabase.functions.invoke("pracc-compare", {
       body: { feed_url: url, days_back: 30, days_forward: 45 },
     });
+
+    if (error || (data as { error?: string })?.error) {
+      try {
+        const local = await compareLocally(url);
+        setResult(local);
+        setLoading(false);
+        const reason = error?.message ?? (data as { error?: string })?.error ?? "edge-error";
+        toast.success("Comparación lista (modo fallback local)", { id: t, description: reason });
+        return;
+      } catch (localError) {
+        setLoading(false);
+        const edgeReason = error?.message ?? (data as { error?: string })?.error ?? "error desconocido";
+        toast.error("No se pudo comparar", {
+          id: t,
+          description: `${edgeReason} · fallback local: ${(localError as Error).message}`,
+        });
+        return;
+      }
+    }
     setLoading(false);
-    if (error) {
-      toast.error("No se pudo comparar", { id: t, description: error.message });
-      return;
-    }
-    if ((data as { error?: string })?.error) {
-      toast.error("No se pudo comparar", { id: t, description: (data as { error: string }).error });
-      return;
-    }
     setResult(data as CompareResult);
     toast.success("Comparación lista", { id: t });
   };
@@ -137,6 +170,242 @@ export default function PraccCompare() {
       </CardContent>
     </Card>
   );
+}
+
+async function compareLocally(feedUrl: string): Promise<CompareResult> {
+  const now = new Date();
+  const start = new Date(now.getTime() - 30 * 86400_000);
+  const end = new Date(now.getTime() + 45 * 86400_000);
+  const startDate = start.toISOString().slice(0, 10);
+  const endDate = end.toISOString().slice(0, 10);
+
+  const [feedRes, agendaRes] = await Promise.all([
+    fetch(feedUrl, { headers: { Accept: "application/json, text/calendar, text/plain, */*" } }),
+    supabase
+      .from("agenda_events")
+      .select("id, title, description, event_type, date, time_start, time_end")
+      .gte("date", startDate)
+      .lte("date", endDate)
+      .order("date")
+      .order("time_start"),
+  ]);
+
+  if (!feedRes.ok) throw new Error(`feed ${feedRes.status}`);
+  if (agendaRes.error) throw new Error(`agenda ${agendaRes.error.message}`);
+
+  const raw = await feedRes.text();
+  const contentType = (feedRes.headers.get("content-type") ?? "").toLowerCase();
+  const external = parseExternalFeed(raw, contentType)
+    .filter((ev) => ev.start >= start && ev.start <= end)
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+  const agenda = (agendaRes.data ?? []).map((row) => ({
+    ...row,
+    start: new Date(`${row.date}T${normalizeTime(row.time_start)}:00`),
+  })) as AgendaComparable[];
+
+  const matchWindowMin = 60;
+  const missingInPracc = agenda.filter((ag) =>
+    !external.some((ex) => sameDay(ag.start, ex.start) && minuteDiff(ag.start, ex.start) <= matchWindowMin)
+  );
+  const missingInAgenda = external.filter((ex) =>
+    !agenda.some((ag) => sameDay(ag.start, ex.start) && minuteDiff(ag.start, ex.start) <= matchWindowMin)
+  );
+  const searching = external.filter((ev) => ev.searching);
+
+  return {
+    summary: {
+      agenda_total: agenda.length,
+      pracc_total: external.length,
+      searching_total: searching.length,
+      missing_in_pracc: missingInPracc.length,
+      missing_in_agenda: missingInAgenda.length,
+      match_window_minutes: matchWindowMin,
+    },
+    searching: searching.map(toCompareEvent),
+    missing_in_pracc: missingInPracc.map((ev) => ({
+      source_id: ev.id,
+      title: ev.title,
+      description: ev.description,
+      date: ev.date,
+      time_start: normalizeTime(ev.time_start),
+      time_end: normalizeTime(ev.time_end),
+    })),
+    missing_in_agenda: missingInAgenda.map(toCompareEvent),
+  };
+}
+
+function parseExternalFeed(raw: string, contentType: string): ExternalComparable[] {
+  if (contentType.includes("application/json") || isLikelyJson(raw)) {
+    return parseExternalJson(raw);
+  }
+  return parseExternalIcs(raw);
+}
+
+function parseExternalJson(raw: string): ExternalComparable[] {
+  const parsed = JSON.parse(raw) as unknown;
+  const candidates: unknown[] = [];
+  if (Array.isArray(parsed)) {
+    candidates.push(...parsed);
+  } else if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    for (const key of ["events", "data", "items", "matches", "requests"]) {
+      if (Array.isArray(obj[key])) candidates.push(...(obj[key] as unknown[]));
+    }
+  }
+
+  const out: ExternalComparable[] = [];
+  for (const c of candidates) {
+    if (!c || typeof c !== "object") continue;
+    const ev = c as Record<string, unknown>;
+    const title = String(ev.title ?? ev.name ?? ev.summary ?? "Sin título");
+    const description = String(ev.description ?? ev.notes ?? "");
+    const startIso =
+      asIso(ev.startIso) ??
+      asIso(ev.start_dt) ??
+      asIso(ev.start) ??
+      asIso(ev.startDate);
+    const endIso =
+      asIso(ev.endIso) ??
+      asIso(ev.end_dt) ??
+      asIso(ev.end) ??
+      asIso(ev.endDate) ??
+      startIso;
+    if (!startIso) continue;
+    const start = new Date(startIso);
+    const end = endIso ? new Date(endIso) : start;
+    out.push({
+      source_id: ev.id != null ? String(ev.id) : null,
+      title,
+      description,
+      date: start.toISOString().slice(0, 10),
+      time_start: start.toISOString().slice(11, 16),
+      time_end: end.toISOString().slice(11, 16),
+      start,
+      searching: isSearching(`${title} ${description}`),
+    });
+  }
+  return out;
+}
+
+function parseExternalIcs(raw: string): ExternalComparable[] {
+  const unfolded = raw.replace(/\r?\n[ \t]/g, "");
+  const lines = unfolded.split(/\r?\n/);
+  const out: ExternalComparable[] = [];
+  let inEvent = false;
+  let fields: Record<string, string> = {};
+
+  const flush = () => {
+    const startIso = parseIcsDate(fields.DTSTART);
+    if (!startIso) return;
+    const endIso = parseIcsDate(fields.DTEND) ?? startIso;
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+    const title = fields.SUMMARY ?? "Sin título";
+    const description = fields.DESCRIPTION ?? "";
+    out.push({
+      source_id: fields.UID ?? null,
+      title,
+      description,
+      date: start.toISOString().slice(0, 10),
+      time_start: start.toISOString().slice(11, 16),
+      time_end: end.toISOString().slice(11, 16),
+      start,
+      searching: isSearching(`${title} ${description}`),
+    });
+  };
+
+  for (const line of lines) {
+    if (line === "BEGIN:VEVENT") {
+      inEvent = true;
+      fields = {};
+      continue;
+    }
+    if (line === "END:VEVENT") {
+      if (inEvent) flush();
+      inEvent = false;
+      fields = {};
+      continue;
+    }
+    if (!inEvent) continue;
+    const sep = line.indexOf(":");
+    if (sep < 0) continue;
+    const key = line.slice(0, sep).split(";")[0].toUpperCase();
+    fields[key] = line.slice(sep + 1).trim();
+  }
+  return out;
+}
+
+function parseIcsDate(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim();
+  if (/^\d{8}T\d{6}Z$/.test(v)) {
+    const y = Number(v.slice(0, 4));
+    const m = Number(v.slice(4, 6)) - 1;
+    const d = Number(v.slice(6, 8));
+    const hh = Number(v.slice(9, 11));
+    const mm = Number(v.slice(11, 13));
+    const ss = Number(v.slice(13, 15));
+    return new Date(Date.UTC(y, m, d, hh, mm, ss)).toISOString();
+  }
+  if (/^\d{8}T\d{6}$/.test(v)) {
+    const y = Number(v.slice(0, 4));
+    const m = Number(v.slice(4, 6)) - 1;
+    const d = Number(v.slice(6, 8));
+    const hh = Number(v.slice(9, 11));
+    const mm = Number(v.slice(11, 13));
+    const ss = Number(v.slice(13, 15));
+    return new Date(y, m, d, hh, mm, ss).toISOString();
+  }
+  if (/^\d{8}$/.test(v)) {
+    const y = Number(v.slice(0, 4));
+    const m = Number(v.slice(4, 6)) - 1;
+    const d = Number(v.slice(6, 8));
+    return new Date(y, m, d).toISOString();
+  }
+  return asIso(v);
+}
+
+function asIso(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function isLikelyJson(text: string): boolean {
+  const t = text.trim();
+  return t.startsWith("{") || t.startsWith("[");
+}
+
+function isSearching(text: string): boolean {
+  return /\b(lfs|looking for scrim|scrim search|request|buscando|searching|offer)\b/i.test(text);
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
+function minuteDiff(a: Date, b: Date): number {
+  return Math.abs(Math.round((a.getTime() - b.getTime()) / 60000));
+}
+
+function normalizeTime(value: string): string {
+  return /^\d{2}:\d{2}$/.test(value) ? value : "00:00";
+}
+
+function toCompareEvent(ev: ExternalComparable): CompareEvent {
+  return {
+    source_id: ev.source_id,
+    title: ev.title,
+    description: ev.description,
+    date: ev.date,
+    time_start: ev.time_start,
+    time_end: ev.time_end,
+    searching: ev.searching,
+  };
 }
 
 function EventList({
