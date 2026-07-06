@@ -81,6 +81,7 @@ export interface RawParsedPlayer {
   userid: number;          // internal demo userid (transient)
   name: string;
   team_first_half: "CT" | "TERRORIST" | null;
+  team_final: "CT" | "TERRORIST" | null;
   kills: number;
   deaths: number;
   assists: number;
@@ -232,12 +233,16 @@ async function parseFile(
   let matchEndTick: number | null = null;
   const roundNumbersSeen = new Set<number>();
   const teamEntityState = new Map<unknown, { side: "CT" | "TERRORIST" | null; score: number | null }>();
-  const playerEntityState = new Map<unknown, { steamid: string | null; name: string | null; equip: number | null; kills: number | null; deaths: number | null; assists: number | null }>();
+  const playerEntityState = new Map<unknown, { steamid: string | null; name: string | null; equip: number | null }>();
   const equipBySteamid = new Map<string, number>();
   const economyByRound = new Map<number, { CT: RawParsedEconomySide; TERRORIST: RawParsedEconomySide }>();
   const playersBySteamid = new Map<string, RawParsedPlayer>();
+  const teamByUserid = new Map<number, number>();
+  const damageEvents: Array<{ attacker: string; victim: string; damage: number }> = [];
   // Lookup victim/attacker current team from user_info string table.
   const getTeam = (userid: number): number | null => {
+    const knownTeam = teamByUserid.get(userid);
+    if (knownTeam === 2 || knownTeam === 3) return knownTeam;
     const demo = parser.getDemo();
     const ui = demo?.stringTableContainer?.getByName?.(StringTableType.USER_INFO.name);
     if (!ui) return null;
@@ -245,6 +250,7 @@ async function parseFile(
       const v = e.value;
       if (v && Number(v.userid) === userid) {
         const tn = Number(v.team_number ?? v.teamnumber ?? v.team);
+        if (tn === 2 || tn === 3) teamByUserid.set(userid, tn);
         return Number.isFinite(tn) ? tn : null;
       }
     }
@@ -359,6 +365,7 @@ async function parseFile(
         userid: v.userid,
         name: name || "unknown",
         team_first_half: null,
+        team_final: null,
         kills: 0, deaths: 0, assists: 0, hs_kills: 0, damage: 0,
         first_kills: 0, first_deaths: 0,
         kast: null, rating: null,
@@ -374,6 +381,7 @@ async function parseFile(
     for (const key of keys) {
       const value = event[key];
       if (value == null) continue;
+      if (Number(value) === 65535) continue;
       const asString = String(value);
       if (/^7656119\d{10}$/.test(asString)) {
         const bySteam = playersBySteamid.get(asString);
@@ -473,7 +481,7 @@ async function parseFile(
               if (!v || !Number.isInteger(v.userid)) continue;
               const p = players.get(v.userid);
               if (!p) continue;
-              const tn = Number(v.team_number ?? v.teamnumber ?? v.team);
+              const tn = getTeam(v.userid);
               if (tn === 2) p.team_first_half = "TERRORIST";
               else if (tn === 3) p.team_first_half = "CT";
             }
@@ -493,6 +501,14 @@ async function parseFile(
         bombExploded = false;
         bombDefused = false;
         if (roundNumber === 1) snapshotPlayersFromStringTable();
+        break;
+      }
+      case "player_team":
+      case "local_player_team":
+      case "local_player_controller_team": {
+        const userid = Number(event.userid ?? event.user_id ?? event.player ?? NaN);
+        const team = Number(event.team ?? event.team_number ?? event.teamnumber ?? NaN);
+        if (Number.isFinite(userid) && (team === 2 || team === 3)) teamByUserid.set(userid, team);
         break;
       }
       case "bomb_exploded": bombExploded = true; break;
@@ -590,7 +606,11 @@ async function parseFile(
         const victim = resolvePlayer(event, ["userid", "victim", "victim_steamid", "victim_xuid"]);
         const dmg = Number(event.dmg_health ?? 0);
         if (attacker && (!victim || attacker.steamid !== victim.steamid)) {
-          attacker.damage += Math.min(100, Math.max(0, dmg));
+          damageEvents.push({
+            attacker: attacker.steamid,
+            victim: victim?.steamid ?? "",
+            damage: Math.min(100, Math.max(0, dmg)),
+          });
         }
         break;
       }
@@ -649,24 +669,12 @@ async function parseFile(
         }
         teamEntityState.set(ev.entity, state);
       } else if (className === 'CCSPlayerController' || className === 'CCSPlayerPawn') {
-        const state = playerEntityState.get(ev.entity) ?? { steamid: null, name: null, equip: null, kills: null, deaths: null, assists: null };
+        const state = playerEntityState.get(ev.entity) ?? { steamid: null, name: null, equip: null };
         for (const [k, v] of Object.entries(changes)) {
           if (/current_equip_value|CurrentEquipmentValue|unCurrentEquipmentValue|equipment.*value/i.test(k)) {
             equipmentFieldsSeen.add(k);
             const equip = Number(v);
             if (Number.isFinite(equip)) state.equip = equip;
-          }
-          if (/m_iKills|\bkills\b/i.test(k)) {
-            const kills = Number(v);
-            if (Number.isFinite(kills)) state.kills = kills;
-          }
-          if (/m_iDeaths|\bdeaths\b/i.test(k)) {
-            const deaths = Number(v);
-            if (Number.isFinite(deaths)) state.deaths = deaths;
-          }
-          if (/m_iAssists|\bassists\b/i.test(k)) {
-            const assists = Number(v);
-            if (Number.isFinite(assists)) state.assists = assists;
           }
           if (/m_iszPlayerName|player.?name|m_szName|\bname\b/i.test(k)) {
             const name = String(v ?? "").trim();
@@ -696,16 +704,6 @@ async function parseFile(
 
   // Ensure we have players even if user_info snapshot never fired earlier.
   snapshotPlayersFromStringTable();
-
-  for (const state of playerEntityState.values()) {
-    const player = state.steamid
-      ? playersBySteamid.get(state.steamid)
-      : [...players.values()].find((p) => state.name && p.name.trim().toLowerCase() === state.name.trim().toLowerCase());
-    if (!player) continue;
-    if (state.kills != null) player.kills = state.kills;
-    if (state.deaths != null) player.deaths = state.deaths;
-    if (state.assists != null) player.assists = state.assists;
-  }
 
   const finalScoreFromTeams = (() => {
     const out = { ct: 0, t: 0 };
@@ -758,8 +756,53 @@ async function parseFile(
 
   // Post-filter: drop coaches only.
   const COACH_RE = /(^|\s|[[(._-])coach\b/i;
-  const activePlayers = [...players.values()].filter((p) => !COACH_RE.test(p.name ?? ""));
-  const droppedCoaches = [...players.values()].filter((p) => COACH_RE.test(p.name ?? "")).map((p) => p.name);
+  const KNOWN_COACH_STEAMIDS = new Set([
+    "76561199108435769",
+    "76561198098107455",
+  ]);
+  const isCoach = (p: RawParsedPlayer) => COACH_RE.test(p.name ?? "") || KNOWN_COACH_STEAMIDS.has(p.steamid);
+  for (const p of players.values()) {
+    p.team_final = sideFromTeamNum(getTeam(p.userid));
+  }
+  const activePlayers = [...players.values()].filter((p) => !isCoach(p));
+  const droppedCoaches = [...players.values()].filter(isCoach).map((p) => p.name);
+
+  // Derive scoreboard from the normalized JSON layer (round kills + hurt events)
+  // instead of trusting entity counters, which include misleading per-round fields
+  // in some CS2 builds.
+  for (const p of activePlayers) {
+    p.kills = 0;
+    p.deaths = 0;
+    p.assists = 0;
+    p.hs_kills = 0;
+    p.damage = 0;
+    p.first_kills = 0;
+    p.first_deaths = 0;
+  }
+  const activeSteamids = new Set(activePlayers.map((p) => p.steamid));
+  for (const r of rounds) {
+    for (const kill of r.kills) {
+      const attacker = activeSteamids.has(kill.attacker) ? playersBySteamid.get(kill.attacker) : undefined;
+      const victim = activeSteamids.has(kill.victim) ? playersBySteamid.get(kill.victim) : undefined;
+      const assister = kill.assister && activeSteamids.has(kill.assister) ? playersBySteamid.get(kill.assister) : undefined;
+      if (attacker && attacker.steamid !== victim?.steamid) {
+        attacker.kills += 1;
+        if (kill.headshot) attacker.hs_kills += 1;
+        if (kill.is_opening) attacker.first_kills += 1;
+      }
+      if (victim) {
+        victim.deaths += 1;
+        if (kill.is_opening) victim.first_deaths += 1;
+      }
+      if (assister && assister.steamid !== attacker?.steamid && assister.steamid !== victim?.steamid) {
+        assister.assists += 1;
+      }
+    }
+  }
+  for (const damageEvent of damageEvents) {
+    const attacker = activeSteamids.has(damageEvent.attacker) ? playersBySteamid.get(damageEvent.attacker) : undefined;
+    if (attacker && damageEvent.attacker !== damageEvent.victim) attacker.damage += damageEvent.damage;
+  }
 
   const playerRoundFlags = new Map<string, Array<{ kill: boolean; assist: boolean; died: boolean }>>();
   for (const p of activePlayers) {

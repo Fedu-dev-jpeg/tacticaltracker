@@ -38,6 +38,7 @@ interface RawRound {
 interface RawPlayer {
   steamid: string; userid: number; name: string;
   team_first_half: Side | null;
+  team_final?: Side | null;
   kills: number; deaths: number; assists: number;
   hs_kills: number; damage: number;
   first_kills: number; first_deaths: number;
@@ -247,7 +248,8 @@ Deno.serve(async (req) => {
       ? parsed.final_score
       : parsed.score;
     const finalRoundTotal = officialScore.ct + officialScore.t;
-    const team1FinalSide = finalRoundTotal > 12 ? opposite(team1FirstHalfSide) : team1FirstHalfSide;
+    const team1FinalSide = team1Players.find((p) => p.team_final)?.team_final
+      ?? (finalRoundTotal > 12 ? opposite(team1FirstHalfSide) : team1FirstHalfSide);
     const scoreTeam1 = team1FinalSide === "CT" ? officialScore.ct : officialScore.t;
     const scoreTeam2 = team1FinalSide === "CT" ? officialScore.t : officialScore.ct;
     if (finalRoundTotal > 30) throw new Error("Invalid round count");

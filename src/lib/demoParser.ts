@@ -57,6 +57,7 @@ export interface RawParsedDemo {
   players: Array<{
     steamid: string; userid: number; name: string;
     team_first_half: "CT" | "TERRORIST" | null;
+    team_final?: "CT" | "TERRORIST" | null;
     kills: number; deaths: number; assists: number; hs_kills: number; damage: number;
     first_kills: number; first_deaths: number;
     kast: number | null; rating: number | null;
