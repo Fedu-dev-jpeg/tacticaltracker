@@ -194,10 +194,8 @@ async function compareLocally(feedUrl: string): Promise<CompareResult> {
   const startDate = start.toISOString().slice(0, 10);
   const endDate = end.toISOString().slice(0, 10);
 
-  const [feedRes, agendaRes] = await Promise.all([
-    fetchWithTimeout(feedUrl, {
-      headers: { Accept: "application/json, text/calendar, text/plain, */*" },
-    }, 15000),
+  const [feedData, agendaRes] = await Promise.all([
+    fetchFeedTextWithFallbacks(feedUrl),
     supabase
       .from("agenda_events")
       .select("id, title, description, event_type, date, time_start, time_end")
@@ -207,11 +205,10 @@ async function compareLocally(feedUrl: string): Promise<CompareResult> {
       .order("time_start"),
   ]);
 
-  if (!feedRes.ok) throw new Error(`feed ${feedRes.status}`);
   if (agendaRes.error) throw new Error(`agenda ${agendaRes.error.message}`);
 
-  const raw = await feedRes.text();
-  const contentType = (feedRes.headers.get("content-type") ?? "").toLowerCase();
+  const raw = feedData.text;
+  const contentType = (feedData.contentType ?? "").toLowerCase();
   const external = parseExternalFeed(raw, contentType)
     .filter((ev) => ev.start >= start && ev.start <= end)
     .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -306,6 +303,58 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+async function fetchFeedTextWithFallbacks(feedUrl: string): Promise<{ text: string; contentType: string }> {
+  const attempts: Array<{
+    label: string;
+    url: string;
+    init?: RequestInit;
+    transform?: (raw: string) => string;
+  }> = [
+    {
+      label: "direct",
+      url: feedUrl,
+      init: { headers: { Accept: "application/json, text/calendar, text/plain, */*" } },
+    },
+    {
+      label: "corsproxy",
+      url: `https://corsproxy.io/?${encodeURIComponent(feedUrl)}`,
+      init: { headers: { Accept: "text/calendar, text/plain, application/json, */*" } },
+    },
+    {
+      label: "allorigins",
+      url: `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`,
+      init: { headers: { Accept: "text/calendar, text/plain, application/json, */*" } },
+    },
+    {
+      label: "jina-ai",
+      url: `https://r.jina.ai/http://${feedUrl.replace(/^https?:\/\//i, "")}`,
+      init: { headers: { Accept: "text/plain, */*" } },
+    },
+  ];
+
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    try {
+      const res = await fetchWithTimeout(attempt.url, attempt.init, 15000);
+      if (!res.ok) {
+        errors.push(`${attempt.label}: http ${res.status}`);
+        continue;
+      }
+      const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+      let text = await res.text();
+      if (attempt.transform) text = attempt.transform(text);
+      if (!text.trim()) {
+        errors.push(`${attempt.label}: respuesta vacía`);
+        continue;
+      }
+      return { text, contentType };
+    } catch (e) {
+      errors.push(`${attempt.label}: ${(e as Error).message}`);
+    }
+  }
+  throw new Error(errors.join(" | "));
 }
 
 function parseExternalFeed(raw: string, contentType: string): ExternalComparable[] {
