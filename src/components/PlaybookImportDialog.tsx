@@ -15,6 +15,16 @@ interface ImportResult {
   strategies: Array<{ name: string; type: string; side: string; warnings: string[] }>;
 }
 
+interface ParsedTextStrategy {
+  name: string;
+  type: string;
+  side: "CT" | "TR";
+  description: string;
+  notes: string;
+  link: string;
+  player_roles: Record<string, string>;
+}
+
 const FORMAT_EXAMPLE = `== Exec :: A-Split Fast
 Lado: TR
 Descripción: Split rápido con 3 A / 2 apps, molly heaven, flash sobre ninja.
@@ -71,15 +81,7 @@ export default function PlaybookImportDialog({
       setResult(null);
       setLoading(true);
       try {
-        // Read as base64
-        const buf = await file.arrayBuffer();
-        let binary = "";
-        const bytes = new Uint8Array(buf);
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-        }
-        const base64 = btoa(binary);
+        const base64 = await fileToBase64(file);
         await runImport({ pdf_base64: base64 });
       } catch (e) {
         setError(String((e as Error).message));
@@ -103,12 +105,28 @@ export default function PlaybookImportDialog({
     try {
       await runImport({ raw_text: text });
     } catch (e) {
-      setError(String((e as Error).message));
+      const msg = String((e as Error).message);
+      if (/pdf_base64 requerido|non-2xx status code/i.test(msg)) {
+        try {
+          const localResult = await importTextLocally(text, map, book);
+          setResult(localResult);
+          toast.success(`Importadas ${localResult.imported} estrategias en ${map} (modo local)`);
+          onImported();
+          setLoading(false);
+          return;
+        } catch (localErr) {
+          setError(String((localErr as Error).message));
+          toast.error("No se pudo importar el texto (modo local)");
+          setLoading(false);
+          return;
+        }
+      }
+      setError(msg);
       toast.error("No se pudo importar el texto");
     } finally {
       setLoading(false);
     }
-  }, [rawText, runImport]);
+  }, [book, map, onImported, rawText, runImport]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -233,4 +251,159 @@ export default function PlaybookImportDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.onload = () => {
+      const res = String(reader.result ?? "");
+      const comma = res.indexOf(",");
+      if (comma < 0) {
+        reject(new Error("No se pudo convertir el PDF"));
+        return;
+      }
+      resolve(res.slice(comma + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function normalizeType(raw: string): string {
+  const l = raw.trim().toLowerCase();
+  if (/^pistol/.test(l)) return "Pistol";
+  if (/^anti/.test(l)) return "Anti-Eco";
+  if (/^forzado/.test(l)) return "Forzado";
+  if (/^defas|^default/.test(l)) return "Default";
+  if (/^exec/.test(l)) return "Exec";
+  if (/^setup/.test(l)) return "Setup";
+  if (/^dominio|^control/.test(l)) return "Dominio";
+  if (/^retake/.test(l)) return "Retake";
+  if (/^postplant/.test(l)) return "Postplant";
+  if (/^final/.test(l)) return "Finalización";
+  if (/^calls?\s+de\s+base/.test(l)) return "Calls de base";
+  if (/^sorpresa/.test(l)) return "Sorpresa";
+  return raw.trim() || "Default";
+}
+
+function parseTextStrategies(rawText: string): ParsedTextStrategy[] {
+  const lines = rawText
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const out: ParsedTextStrategy[] = [];
+  let current: ParsedTextStrategy | null = null;
+  let mode: "desc" | "roles" | "notes" | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    if (!current.name.trim()) return;
+    current.description = current.description.trim();
+    current.notes = current.notes.trim();
+    out.push(current);
+  };
+
+  for (const line of lines) {
+    const header = line.match(/^==\s*([^:=]+?)\s*::\s*(.+?)\s*$/i);
+    if (header) {
+      flush();
+      current = {
+        name: header[2].trim(),
+        type: normalizeType(header[1].trim()),
+        side: "CT",
+        description: "",
+        notes: "",
+        link: "",
+        player_roles: {},
+      };
+      mode = null;
+      continue;
+    }
+    if (!current) continue;
+
+    const side = line.match(/^lado:\s*(ct|tr)\s*$/i);
+    if (side) {
+      current.side = side[1].toUpperCase() as "CT" | "TR";
+      mode = null;
+      continue;
+    }
+    if (/^descripci[oó]n:/i.test(line)) {
+      current.description = line.split(":").slice(1).join(":").trim();
+      mode = "desc";
+      continue;
+    }
+    if (/^roles:/i.test(line)) {
+      mode = "roles";
+      continue;
+    }
+    if (/^notas?:/i.test(line)) {
+      current.notes = line.split(":").slice(1).join(":").trim();
+      mode = "notes";
+      continue;
+    }
+    if (/^link:/i.test(line)) {
+      current.link = line.split(":").slice(1).join(":").trim();
+      mode = null;
+      continue;
+    }
+    if (mode === "roles") {
+      const role = line.replace(/^[-•*]\s*/, "").match(/^([^:]{2,20})\s*:\s*(.+)$/);
+      if (role) {
+        current.player_roles[role[1].trim()] = role[2].trim();
+        continue;
+      }
+    }
+    if (mode === "desc") {
+      current.description += `${current.description ? " " : ""}${line}`;
+      continue;
+    }
+    if (mode === "notes") {
+      current.notes += `${current.notes ? " " : ""}${line}`;
+      continue;
+    }
+  }
+  flush();
+  return out;
+}
+
+async function importTextLocally(
+  text: string,
+  map: MapName,
+  book: "estrategias" | "individual" | "protocolos" | "setups",
+): Promise<ImportResult> {
+  const parsed = parseTextStrategies(text);
+  if (parsed.length === 0) {
+    throw new Error("No se detectaron estrategias en el texto pegado");
+  }
+  const rows = parsed.map((s) => ({
+    map,
+    side: s.side,
+    type: s.type,
+    name: s.name,
+    description: s.description,
+    player_roles: s.player_roles,
+    notes: s.notes,
+    link: s.link,
+    status: "Draft",
+    book,
+  }));
+  const { data, error } = await supabase
+    .from("strategies")
+    .insert(rows)
+    .select("id, name");
+  if (error) throw new Error(error.message);
+
+  return {
+    imported: data?.length ?? rows.length,
+    map,
+    strategies: parsed.map((s) => ({
+      name: s.name,
+      type: s.type,
+      side: s.side,
+      warnings: [],
+    })),
+  };
 }

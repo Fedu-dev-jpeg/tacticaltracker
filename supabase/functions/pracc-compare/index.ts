@@ -24,6 +24,11 @@ interface ExternalEvent {
   searching: boolean;
 }
 
+interface AgendaComparable extends AgendaEventRow {
+  start: Date;
+  end: Date;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return json({}, 200);
 
@@ -101,14 +106,15 @@ Deno.serve(async (req) => {
       const start = parseAgendaDateTime(ev.date, ev.time_start);
       const end = parseAgendaDateTime(ev.date, ev.time_end || ev.time_start);
       return { ...ev, start, end };
-    });
+    }) as AgendaComparable[];
+    const agendaScrim = agendaComparable.filter(isAgendaScrimEvent);
 
     const matchWindowMin = 60;
-    const missingInPracc = agendaComparable.filter((ag) =>
+    const missingInPracc = agendaScrim.filter((ag) =>
       !externalComparable.some((ex) => sameDay(ag.start, ex.start) && minutesDiff(ag.start, ex.start) <= matchWindowMin)
     );
     const missingInAgenda = externalComparable.filter((ex) =>
-      !agendaComparable.some((ag) => sameDay(ag.start, ex.start) && minutesDiff(ag.start, ex.start) <= matchWindowMin)
+      !agendaScrim.some((ag) => sameDay(ag.start, ex.start) && minutesDiff(ag.start, ex.start) <= matchWindowMin)
     );
     const searchingNow = externalComparable.filter((ev) => ev.searching);
 
@@ -121,7 +127,7 @@ Deno.serve(async (req) => {
       },
       range: { start: rangeStartDate, end: rangeEndDate },
       summary: {
-        agenda_total: agendaComparable.length,
+        agenda_total: agendaScrim.length,
         pracc_total: externalComparable.length,
         searching_total: searchingNow.length,
         missing_in_pracc: missingInPracc.length,
@@ -151,6 +157,13 @@ function parseExternalEvents(rawText: string, contentType: string): ExternalEven
     return parseEventsFromJson(parsed);
   }
   return parseEventsFromIcs(rawText);
+}
+
+function isAgendaScrimEvent(ev: AgendaComparable): boolean {
+  const type = (ev.event_type ?? "").toLowerCase();
+  if (type === "scrim" || type === "training") return true;
+  const text = `${ev.title} ${ev.description}`.toLowerCase();
+  return /\b(scrim|pracc|treino|entreno|vs\.?)\b/.test(text);
 }
 
 function parseEventsFromJson(input: unknown): ExternalEvent[] {

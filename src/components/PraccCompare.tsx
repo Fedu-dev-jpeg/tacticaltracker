@@ -213,10 +213,11 @@ async function compareLocally(feedUrl: string): Promise<CompareResult> {
     .filter((ev) => ev.start >= start && ev.start <= end)
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-  const agenda = (agendaRes.data ?? []).map((row) => ({
+  const agendaAll = (agendaRes.data ?? []).map((row) => ({
     ...row,
     start: new Date(`${row.date}T${normalizeTime(row.time_start)}:00`),
   })) as AgendaComparable[];
+  const agenda = agendaAll.filter(isAgendaScrimEvent);
 
   const matchWindowMin = 60;
   const missingInPracc = agenda.filter((ag) =>
@@ -516,6 +517,13 @@ function minuteDiff(a: Date, b: Date): number {
 
 function normalizeTime(value: string): string {
   return /^\d{2}:\d{2}$/.test(value) ? value : "00:00";
+}
+
+function isAgendaScrimEvent(ev: AgendaComparable): boolean {
+  const type = (ev.event_type ?? "").toLowerCase();
+  if (type === "scrim" || type === "training") return true;
+  const text = `${ev.title} ${ev.description}`.toLowerCase();
+  return /\b(scrim|pracc|treino|entreno|vs\.?)\b/.test(text);
 }
 
 function toCompareEvent(ev: ExternalComparable): CompareEvent {
