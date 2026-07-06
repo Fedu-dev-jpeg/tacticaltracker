@@ -155,6 +155,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
   const [autoRetry, setAutoRetry] = useLocalStorage<boolean>("demo-uploader:autoRetry", true);
   const [maxAttempts, setMaxAttempts] = useLocalStorage<number>("demo-uploader:maxAttempts", 3);
   const [paused, setPaused] = useLocalStorage<boolean>("demo-uploader:paused", false);
+  const [parserDebugMode, setParserDebugMode] = useLocalStorage<boolean>("demo-uploader:parserDebugMode", false);
   const [errorJobId, setErrorJobId] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   // Search + filters
@@ -247,6 +248,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         size: job.file?.size ?? null,
         attempt: job.attempt,
         maxAttempts: job.maxAttempts,
+        parser_debug_mode: parserDebugMode,
         overrides: job.overrides ?? null,
       });
       try {
@@ -284,6 +286,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
               }));
             },
             (scope, event, data, level) => demoLog(job.id, scope, event, data, level),
+            { debug: parserDebugMode },
           );
           setJobs((prev) => prev.map((j) => {
             if (j.id !== job.id) return j;
@@ -337,11 +340,19 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
             players_count: bigintSafe?.players?.length,
             rounds_count: bigintSafe?.rounds?.length,
             score: bigintSafe?.score,
+            score_source: bigintSafe?.debug?.score?.source ?? null,
           },
         });
         const tFn = Date.now();
         const { data, error: fnErr } = await supabase.functions.invoke("parse-demo", {
-          body: { path, rival: job.overrides?.rival, match_type: job.overrides?.matchType, map: job.overrides?.map, parsed: bigintSafe },
+          body: {
+            path,
+            rival: job.overrides?.rival,
+            match_type: job.overrides?.matchType,
+            map: job.overrides?.map,
+            debug_mode: parserDebugMode,
+            parsed: bigintSafe,
+          },
         });
         throwIfAborted();
         if (fnErr) {
@@ -416,7 +427,7 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
         startedRef.current.delete(job.id);
       }
     },
-    [onParsed, updateJob, autoRetry],
+    [onParsed, updateJob, autoRetry, parserDebugMode],
   );
 
   // Scheduler: pick up "queued" jobs whenever a slot is free (unless paused)
@@ -706,6 +717,18 @@ export default function DemoUploader({ onParsed }: { onParsed: (d: ParsedDemo) =
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:col-span-3">
+            <Cpu className="h-4 w-4 text-accent shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] text-muted-foreground flex items-center justify-between gap-2">
+                <span>Parser debug mode (guardar JSON diagnóstico)</span>
+                <Switch checked={parserDebugMode} onCheckedChange={setParserDebugMode} />
+              </Label>
+              <div className="text-[10px] text-muted-foreground mt-1">
+                Agrega en <code>demo_data.debug</code> la fuente del score, rondas deduplicadas y métricas de identidad para investigar demos conflictivas.
+              </div>
             </div>
           </div>
         </div>

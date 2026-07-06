@@ -64,6 +64,35 @@ export interface RawParsedDemo {
   }>;
   duration_ticks: number;
   round_economies: Array<{ team_ct_avg_equip: number; team_t_avg_equip: number }>;
+  debug?: {
+    score: {
+      source: "CCSTeam.m_iScore" | "team_score_event" | "round_winners_fallback";
+      from_team_entities: { ct: number; t: number };
+      from_team_score_events: { ct: number; t: number };
+      from_round_winners: { ct: number; t: number };
+      authoritative: { ct: number; t: number };
+    };
+    rounds: {
+      captured: number;
+      official_total: number;
+      deduped_round_numbers: number;
+      missed_round_end_events: number;
+    };
+    players: {
+      total_seen: number;
+      active_kept: number;
+      dropped_coaches: string[];
+      slot_mappings: number;
+      kills_with_missing_identity: number;
+    };
+    parser: {
+      total_event_types: number;
+      top_events: Record<string, number>;
+      game_rules_fields_seen: string[];
+      team_fields_seen: string[];
+      equipment_fields_seen: string[];
+    };
+  };
 }
 
 const MAGIC_CS2 = "PBDEMS2\0";
@@ -107,6 +136,7 @@ export function parseDemoFull(
   file: File,
   onProgress?: ParserProgress,
   onLog?: ParserLog,
+  options?: { debug?: boolean },
 ): Promise<RawParsedDemo> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../workers/demoParser.worker.ts", import.meta.url), { type: "module" });
@@ -131,7 +161,7 @@ export function parseDemoFull(
         reject(new Error(msg.message ?? "Error del worker"));
       }
     };
-    worker.postMessage({ file });
+    worker.postMessage({ file, debug: Boolean(options?.debug) });
   });
 }
 
