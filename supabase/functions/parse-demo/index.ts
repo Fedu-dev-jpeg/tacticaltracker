@@ -36,15 +36,22 @@ interface RawPlayer {
   hs_kills: number; damage: number;
   first_kills: number; first_deaths: number;
 }
+interface RawRoundEconomy {
+  team_ct_avg_equip: number;
+  team_t_avg_equip: number;
+}
+
 interface RawParsed {
   map: string;
   server_name: string;
   demo_version: string;
   total_rounds: number;
   score: { ct: number; t: number };
+  final_score: { ct: number; t: number } | null;
   rounds: RawRound[];
   players: RawPlayer[];
   duration_ticks: number;
+  round_economies: RawRoundEconomy[];
 }
 
 const MAP_ALIAS: Record<string, string> = {
@@ -70,6 +77,11 @@ function steamId64ToId3(sid64: string): string {
 
 // Coach filter — matches names like "COACH nahu3jt", "COACH Quero10"
 const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
+// FIX 2: Known coach SteamID64s as fallback when name prefix is stripped.
+const KNOWN_COACH_STEAMIDS = new Set([
+  "76561199108435769", // nahu3jt
+  "76561198098107455", // Quero10
+]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -139,18 +151,37 @@ Deno.serve(async (req) => {
     const map = (typeof mapOverride === "string" && mapOverride.trim())
       ? mapOverride.trim() : normalizeMap(parsed.map);
 
+    // ── Fetch team name from team_settings ───────────────────────────────
+    const { data: teamNameRow } = await admin
+      .from("team_settings")
+      .select("value")
+      .eq("key", "team_name")
+      .maybeSingle();
+    const ourTeamName = teamNameRow?.value ?? "Tactical Chaos";
+
     // ── Fetch our roster and bucket players by SteamID ───────────────────
     const { data: teamRaw } = await admin
       .from("team_members")
-      .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url")
-      .eq("is_coach", false);
-    const roster = (teamRaw ?? []).filter((m: any) => m.steam_id);
+      .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url");
+    const allMembers = (teamRaw ?? []).filter((m: any) => m.steam_id);
+    const roster = allMembers.filter((m: any) => !m.is_coach);
+    // FIX 2: Build set of coach SteamID3s from DB for filtering.
+    const coachSteamId3s = new Set(
+      allMembers.filter((m: any) => m.is_coach).map((m: any) => String(m.steam_id))
+    );
     // BUG 1 FIX: team_members stores SteamID3 (account_id), parser emits SteamID64.
     // Build a lookup from SteamID3 → roster entry.
     const rosterBySteamId3 = new Map(roster.map((r: any) => [String(r.steam_id), r]));
 
-    // Filter out coaches from parsed players before bucketing.
-    const nonCoachPlayers = parsed.players.filter((p) => !COACH_RE.test(p.name ?? ""));
+    // FIX 2: Filter out coaches from parsed players by name regex, known SteamID64s,
+    // AND DB coach steam_ids (converted from SteamID64 to SteamID3 for comparison).
+    const nonCoachPlayers = parsed.players.filter((p) => {
+      if (COACH_RE.test(p.name ?? "")) return false;
+      if (KNOWN_COACH_STEAMIDS.has(String(p.steamid))) return false;
+      const sid3 = steamId64ToId3(String(p.steamid));
+      if (coachSteamId3s.has(sid3)) return false;
+      return true;
+    });
 
     // BUG 7 FIX: ALL non-coach players must appear. Those matching our roster
     // go to team1, everyone else goes to team2. Never discard a player.
@@ -183,44 +214,96 @@ Deno.serve(async (req) => {
     if (t1WithSide?.team_first_half) team1FirstHalfSide = t1WithSide.team_first_half;
     const team2FirstHalfSide: Side = team1FirstHalfSide === "CT" ? "TERRORIST" : "CT";
 
-    // Compute our score vs theirs from round winners + starting side.
+    // FIX 3: Use authoritative final_score from CCSTeam.m_iScore if available.
+    // This avoids miscounting from ghost rounds or missing round_officially_ended events.
     let scoreTeam1 = 0, scoreTeam2 = 0;
-    for (const r of parsed.rounds) {
-      const firstHalf = r.round_number <= 12;
-      const teamThisRound: Side = firstHalf ? team1FirstHalfSide : (team1FirstHalfSide === "CT" ? "TERRORIST" : "CT");
-      if (r.winner_side === teamThisRound) scoreTeam1 += 1;
-      else scoreTeam2 += 1;
-    }
-    if (parsed.rounds.length === 0) {
-      scoreTeam1 = team1FirstHalfSide === "CT" ? parsed.score.ct : parsed.score.t;
-      scoreTeam2 = team1FirstHalfSide === "CT" ? parsed.score.t : parsed.score.ct;
+    if (parsed.final_score && (parsed.final_score.ct + parsed.final_score.t) > 0) {
+      // Determine which side our team is on at the END of the match.
+      // In a standard MR12 match: if we start CT, after halftime we become T.
+      // The final_score uses CT/T as of the LAST tick. With rounds <= 24:
+      // second half side = opposite of first half side.
+      const totalRoundsFromScore = parsed.final_score.ct + parsed.final_score.t;
+      const isSecondHalf = totalRoundsFromScore > 12;
+      // Our team's side at match end:
+      const team1EndSide: Side = isSecondHalf
+        ? (team1FirstHalfSide === "CT" ? "TERRORIST" : "CT")
+        : team1FirstHalfSide;
+      scoreTeam1 = team1EndSide === "CT" ? parsed.final_score.ct : parsed.final_score.t;
+      scoreTeam2 = team1EndSide === "CT" ? parsed.final_score.t : parsed.final_score.ct;
+      console.log("[parse-demo] using final_score from CCSTeam.m_iScore:", {
+        final_score: parsed.final_score,
+        team1EndSide,
+        scoreTeam1,
+        scoreTeam2,
+      });
+    } else {
+      // Fallback: compute from round winners.
+      for (const r of parsed.rounds) {
+        const firstHalf = r.round_number <= 12;
+        const teamThisRound: Side = firstHalf ? team1FirstHalfSide : (team1FirstHalfSide === "CT" ? "TERRORIST" : "CT");
+        if (r.winner_side === teamThisRound) scoreTeam1 += 1;
+        else scoreTeam2 += 1;
+      }
+      if (parsed.rounds.length === 0) {
+        scoreTeam1 = team1FirstHalfSide === "CT" ? parsed.score.ct : parsed.score.t;
+        scoreTeam2 = team1FirstHalfSide === "CT" ? parsed.score.t : parsed.score.ct;
+      }
     }
 
     const totalRounds = parsed.rounds.length || (parsed.score.ct + parsed.score.t);
+
+    // FIX 6: Sanity checks on score and rounds.
+    if (scoreTeam1 + scoreTeam2 > 30) {
+      return json({ error: "Invalid round count: score exceeds 30 total rounds" }, 400);
+    }
+    if (scoreTeam1 + scoreTeam2 < 13 && totalRounds >= 13) {
+      console.warn("[parse-demo] score sum < 13 but rounds >= 13, possible scoring bug");
+    }
 
     // ── Build DemoData v2 ────────────────────────────────────────────────
     const teamByPid = new Map<string, "team1" | "team2">();
     for (const p of team1Players) teamByPid.set(String(p.steamid), "team1");
     for (const p of team2Players) teamByPid.set(String(p.steamid), "team2");
 
-    const rounds = parsed.rounds.map((r) => ({
-      round_number: r.round_number,
-      is_pistol: r.is_pistol,
-      winner_side: r.winner_side,
-      end_reason: (r.end_reason ?? "ct_elimination") as EndReason,
-      clutch: null,
-      bomb: null,
-      buy_types: { team1: "full_buy", team2: "full_buy" },
-      kills: r.kills.map((k) => ({
-        attacker: k.attacker, victim: k.victim, assister: k.assister,
-        weapon: k.weapon, headshot: k.headshot, wallbang: false,
-        distance: 0, is_opening: k.is_opening, tick: k.tick,
-      })),
-      economy: {
-        team1: { avg_equip: 0, avg_balance: 0, buy_type: "full_buy" },
-        team2: { avg_equip: 0, avg_balance: 0, buy_type: "full_buy" },
-      },
-    }));
+    // FIX 5: Buy type classification thresholds.
+    function classifyBuyType(avgEquip: number, roundNumber: number): string {
+      if (roundNumber === 1 || roundNumber === 13) return "pistol";
+      if (avgEquip < 1000) return "full_eco";
+      if (avgEquip < 2500) return "eco";
+      if (avgEquip < 4000) return "half_buy";
+      return "full_buy";
+    }
+
+    const roundEconomies = parsed.round_economies ?? [];
+    const rounds = parsed.rounds.map((r, idx) => {
+      const econ = roundEconomies[idx] ?? { team_ct_avg_equip: 0, team_t_avg_equip: 0 };
+      // Map CT/T economy to team1/team2 based on which side team1 is on this round.
+      const firstHalf = r.round_number <= 12;
+      const team1SideThisRound: Side = firstHalf ? team1FirstHalfSide : (team1FirstHalfSide === "CT" ? "TERRORIST" : "CT");
+      const team1AvgEquip = team1SideThisRound === "CT" ? econ.team_ct_avg_equip : econ.team_t_avg_equip;
+      const team2AvgEquip = team1SideThisRound === "CT" ? econ.team_t_avg_equip : econ.team_ct_avg_equip;
+      const team1BuyType = classifyBuyType(team1AvgEquip, r.round_number);
+      const team2BuyType = classifyBuyType(team2AvgEquip, r.round_number);
+
+      return {
+        round_number: r.round_number,
+        is_pistol: r.is_pistol,
+        winner_side: r.winner_side,
+        end_reason: (r.end_reason ?? "ct_elimination") as EndReason,
+        clutch: null,
+        bomb: null,
+        buy_types: { team1: team1BuyType, team2: team2BuyType },
+        kills: r.kills.map((k) => ({
+          attacker: k.attacker, victim: k.victim, assister: k.assister,
+          weapon: k.weapon, headshot: k.headshot, wallbang: false,
+          distance: 0, is_opening: k.is_opening, tick: k.tick,
+        })),
+        economy: {
+          team1: { avg_equip: team1AvgEquip, avg_balance: 0, buy_type: team1BuyType },
+          team2: { avg_equip: team2AvgEquip, avg_balance: 0, buy_type: team2BuyType },
+        },
+      };
+    });
 
     // BUG 5 & 6 FIX: ADR = damage / total_rounds. KAST and rating → null when not calculated.
     const players: Record<string, unknown> = {};
@@ -250,7 +333,26 @@ Deno.serve(async (req) => {
       };
     }
 
-    const emptyBuyStats = { full_eco: { wins: 0, losses: 0 }, eco: { wins: 0, losses: 0 }, half_buy: { wins: 0, losses: 0 }, full_buy: { wins: 0, losses: 0 }, pistol: { wins: 0, losses: 0 } };
+    // FIX 5: Compute buy_type_summary from actual round buy types.
+    const buyStats = {
+      team1: { full_eco: { wins: 0, losses: 0 }, eco: { wins: 0, losses: 0 }, half_buy: { wins: 0, losses: 0 }, full_buy: { wins: 0, losses: 0 }, pistol: { wins: 0, losses: 0 } },
+      team2: { full_eco: { wins: 0, losses: 0 }, eco: { wins: 0, losses: 0 }, half_buy: { wins: 0, losses: 0 }, full_buy: { wins: 0, losses: 0 }, pistol: { wins: 0, losses: 0 } },
+    };
+    for (const r of rounds) {
+      const firstHalf = r.round_number <= 12;
+      const team1SideThisRound: Side = firstHalf ? team1FirstHalfSide : (team1FirstHalfSide === "CT" ? "TERRORIST" : "CT");
+      const team1Won = r.winner_side === team1SideThisRound;
+      const bt1 = r.buy_types.team1 as keyof typeof buyStats.team1;
+      const bt2 = r.buy_types.team2 as keyof typeof buyStats.team2;
+      if (buyStats.team1[bt1]) {
+        if (team1Won) buyStats.team1[bt1].wins += 1;
+        else buyStats.team1[bt1].losses += 1;
+      }
+      if (buyStats.team2[bt2]) {
+        if (!team1Won) buyStats.team2[bt2].wins += 1;
+        else buyStats.team2[bt2].losses += 1;
+      }
+    }
     const demoData = {
       schema_version: 2,
       match: {
@@ -261,13 +363,13 @@ Deno.serve(async (req) => {
         total_rounds: totalRounds,
         score: { team1: scoreTeam1, team2: scoreTeam2 },
         teams: {
-          team1: { name: "Hambrientos", first_half_side: team1FirstHalfSide, player_steamids: team1Players.map((p) => String(p.steamid)) },
+          team1: { name: ourTeamName, first_half_side: team1FirstHalfSide, player_steamids: team1Players.map((p) => String(p.steamid)) },
           team2: { name: rival, first_half_side: team2FirstHalfSide, player_steamids: team2Players.map((p) => String(p.steamid)) },
         },
       },
       rounds,
       players,
-      buy_type_summary: { team1: emptyBuyStats, team2: emptyBuyStats },
+      buy_type_summary: buyStats,
     };
 
     // ── Insert match row ─────────────────────────────────────────────────

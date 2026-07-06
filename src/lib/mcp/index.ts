@@ -13,10 +13,10 @@ const projectRef =
 
 export default defineMcp({
   name: "tacticaltracker-mcp",
-  title: "TacticalTracker (Hambrientos)",
+  title: "TacticalTracker (Tactical Chaos)",
   version: "0.1.0",
   instructions:
-    "Tools for the Hambrientos CS2 team tracker. Use `list_matches` to browse recent matches, `get_match_stats` for per-player breakdowns, `list_team_members` for the roster, `list_upcoming_events` for the agenda, and `create_agenda_event` to schedule a new training/tactical.",
+    "Tools for the Tactical Chaos CS2 team tracker. Use `list_matches` to browse recent matches, `get_match_stats` for per-player breakdowns, `list_team_members` for the roster, `list_upcoming_events` for the agenda, and `create_agenda_event` to schedule a new training/tactical.",
   auth: auth.oauth.issuer({
     issuer: `https://${projectRef}.supabase.co/auth/v1`,
     acceptedAudiences: "authenticated",
