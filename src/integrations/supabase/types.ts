@@ -355,6 +355,27 @@ export type Database = {
         }
         Relationships: []
       }
+      team_settings: {
+        Row: {
+          created_at: string
+          id: boolean
+          team_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          team_name?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          team_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       team_members: {
         Row: {
           avatar_url: string | null

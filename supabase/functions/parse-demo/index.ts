@@ -17,6 +17,11 @@ type Side = "CT" | "TERRORIST";
 type EndReason =
   | "target_bombed" | "bomb_defused" | "ct_elimination" | "t_elimination"
   | "round_time_expired" | "target_saved";
+type BuyType = "full_eco" | "eco" | "half_buy" | "full_buy" | "pistol";
+interface RawEconomySide {
+  avg_equip: number;
+  buy_type: BuyType;
+}
 
 interface RawKill {
   attacker: string; victim: string; assister: string | null;
@@ -27,6 +32,7 @@ interface RawRound {
   winner_side: Side;
   end_reason: string;
   is_pistol: boolean;
+  economy?: { CT: RawEconomySide; TERRORIST: RawEconomySide };
   kills: RawKill[];
 }
 interface RawPlayer {
@@ -35,6 +41,7 @@ interface RawPlayer {
   kills: number; deaths: number; assists: number;
   hs_kills: number; damage: number;
   first_kills: number; first_deaths: number;
+  kast?: number | null; rating?: number | null;
 }
 interface RawParsed {
   map: string;
@@ -67,9 +74,29 @@ function steamId64ToId3(sid64: string): string {
     return String(BigInt(sid64) - STEAM_ID_OFFSET);
   } catch { return sid64; }
 }
+function steamId3To64(sid3: string): string {
+  try {
+    return String(BigInt(sid3) + STEAM_ID_OFFSET);
+  } catch { return sid3; }
+}
+function steamIdVariants(raw: string | null | undefined): Set<string> {
+  const sid = String(raw ?? "").trim();
+  if (!sid) return new Set();
+  const out = new Set([sid]);
+  if (/^7656119\d{10}$/.test(sid)) out.add(steamId64ToId3(sid));
+  else if (/^\d+$/.test(sid)) out.add(steamId3To64(sid));
+  return out;
+}
+function opposite(side: Side): Side {
+  return side === "CT" ? "TERRORIST" : "CT";
+}
 
 // Coach filter — matches names like "COACH nahu3jt", "COACH Quero10"
 const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
+const KNOWN_COACH_STEAM_IDS = new Set([
+  "76561199108435769",
+  "76561198098107455",
+]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -139,18 +166,40 @@ Deno.serve(async (req) => {
     const map = (typeof mapOverride === "string" && mapOverride.trim())
       ? mapOverride.trim() : normalizeMap(parsed.map);
 
+    const { data: settingsRow } = await admin
+      .from("team_settings")
+      .select("team_name")
+      .limit(1)
+      .maybeSingle();
+    const teamName = (typeof settingsRow?.team_name === "string" && settingsRow.team_name.trim())
+      ? settingsRow.team_name.trim()
+      : "Tactical Chaos";
+
     // ── Fetch our roster and bucket players by SteamID ───────────────────
     const { data: teamRaw } = await admin
       .from("team_members")
       .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url")
-      .eq("is_coach", false);
-    const roster = (teamRaw ?? []).filter((m: any) => m.steam_id);
+    const allTeamMembers = teamRaw ?? [];
+    const roster = allTeamMembers.filter((m: any) => m.steam_id && !m.is_coach);
+    const coachSteamIds = new Set<string>(KNOWN_COACH_STEAM_IDS);
+    for (const member of allTeamMembers.filter((m: any) => m.is_coach)) {
+      for (const variant of steamIdVariants(member.steam_id)) coachSteamIds.add(variant);
+    }
     // BUG 1 FIX: team_members stores SteamID3 (account_id), parser emits SteamID64.
     // Build a lookup from SteamID3 → roster entry.
-    const rosterBySteamId3 = new Map(roster.map((r: any) => [String(r.steam_id), r]));
+    const rosterBySteamId = new Map<string, any>();
+    for (const r of roster) {
+      for (const variant of steamIdVariants(r.steam_id)) rosterBySteamId.set(variant, r);
+    }
 
     // Filter out coaches from parsed players before bucketing.
-    const nonCoachPlayers = parsed.players.filter((p) => !COACH_RE.test(p.name ?? ""));
+    const isCoach = (p: RawPlayer) => {
+      if (COACH_RE.test(p.name ?? "")) return true;
+      const variants = steamIdVariants(String(p.steamid ?? ""));
+      for (const variant of variants) if (coachSteamIds.has(variant)) return true;
+      return false;
+    };
+    const nonCoachPlayers = parsed.players.filter((p) => !isCoach(p));
 
     // BUG 7 FIX: ALL non-coach players must appear. Those matching our roster
     // go to team1, everyone else goes to team2. Never discard a player.
@@ -160,8 +209,7 @@ Deno.serve(async (req) => {
     const rosterMatchBySid64 = new Map<string, any>();
     for (const p of nonCoachPlayers) {
       const sid64 = String(p.steamid ?? "");
-      const sid3 = steamId64ToId3(sid64);
-      const rosterEntry = rosterBySteamId3.get(sid3);
+      const rosterEntry = [...steamIdVariants(sid64)].map((variant) => rosterBySteamId.get(variant)).find(Boolean);
       if (rosterEntry) {
         team1Players.push(p);
         rosterMatchBySid64.set(sid64, rosterEntry);
@@ -183,46 +231,66 @@ Deno.serve(async (req) => {
     if (t1WithSide?.team_first_half) team1FirstHalfSide = t1WithSide.team_first_half;
     const team2FirstHalfSide: Side = team1FirstHalfSide === "CT" ? "TERRORIST" : "CT";
 
-    // Compute our score vs theirs from round winners + starting side.
-    let scoreTeam1 = 0, scoreTeam2 = 0;
-    for (const r of parsed.rounds) {
-      const firstHalf = r.round_number <= 12;
-      const teamThisRound: Side = firstHalf ? team1FirstHalfSide : (team1FirstHalfSide === "CT" ? "TERRORIST" : "CT");
-      if (r.winner_side === teamThisRound) scoreTeam1 += 1;
-      else scoreTeam2 += 1;
-    }
-    if (parsed.rounds.length === 0) {
-      scoreTeam1 = team1FirstHalfSide === "CT" ? parsed.score.ct : parsed.score.t;
-      scoreTeam2 = team1FirstHalfSide === "CT" ? parsed.score.t : parsed.score.ct;
+    // The worker reads final CT/T score from CCSTeam.m_iScore. Assign it to
+    // our roster by the side we occupy at the match end, not by summed rounds.
+    const finalRoundTotal = parsed.score.ct + parsed.score.t;
+    const team1FinalSide = finalRoundTotal > 12 ? opposite(team1FirstHalfSide) : team1FirstHalfSide;
+    const scoreTeam1 = team1FinalSide === "CT" ? parsed.score.ct : parsed.score.t;
+    const scoreTeam2 = team1FinalSide === "CT" ? parsed.score.t : parsed.score.ct;
+    if (finalRoundTotal > 30) throw new Error("Invalid round count");
+    if (finalRoundTotal < 13) throw new Error("Match too short");
+    if (parsed.rounds.length > finalRoundTotal) {
+      parsed.rounds = parsed.rounds.filter((r) => r.round_number <= finalRoundTotal);
     }
 
-    const totalRounds = parsed.rounds.length || (parsed.score.ct + parsed.score.t);
+    const totalRounds = finalRoundTotal;
 
     // ── Build DemoData v2 ────────────────────────────────────────────────
     const teamByPid = new Map<string, "team1" | "team2">();
     for (const p of team1Players) teamByPid.set(String(p.steamid), "team1");
     for (const p of team2Players) teamByPid.set(String(p.steamid), "team2");
 
-    const rounds = parsed.rounds.map((r) => ({
+    const sideForTeamRound = (team: "team1" | "team2", roundNumber: number): Side => {
+      const firstHalfSide = team === "team1" ? team1FirstHalfSide : team2FirstHalfSide;
+      return roundNumber <= 12 ? firstHalfSide : opposite(firstHalfSide);
+    };
+    const emptyEconomy = (roundNumber: number): { avg_equip: number; avg_balance: number; buy_type: BuyType } => ({
+      avg_equip: roundNumber === 1 || roundNumber === 13 ? 800 : 0,
+      avg_balance: 0,
+      buy_type: roundNumber === 1 || roundNumber === 13 ? "pistol" : "full_eco",
+    });
+
+    const rounds = parsed.rounds.map((r) => {
+      const team1Side = sideForTeamRound("team1", r.round_number);
+      const team2Side = sideForTeamRound("team2", r.round_number);
+      const team1Economy = r.economy?.[team1Side];
+      const team2Economy = r.economy?.[team2Side];
+      const economy = {
+        team1: team1Economy
+          ? { avg_equip: team1Economy.avg_equip, avg_balance: 0, buy_type: team1Economy.buy_type }
+          : emptyEconomy(r.round_number),
+        team2: team2Economy
+          ? { avg_equip: team2Economy.avg_equip, avg_balance: 0, buy_type: team2Economy.buy_type }
+          : emptyEconomy(r.round_number),
+      };
+      return ({
       round_number: r.round_number,
       is_pistol: r.is_pistol,
       winner_side: r.winner_side,
       end_reason: (r.end_reason ?? "ct_elimination") as EndReason,
       clutch: null,
       bomb: null,
-      buy_types: { team1: "full_buy", team2: "full_buy" },
+      buy_types: { team1: economy.team1.buy_type, team2: economy.team2.buy_type },
       kills: r.kills.map((k) => ({
         attacker: k.attacker, victim: k.victim, assister: k.assister,
         weapon: k.weapon, headshot: k.headshot, wallbang: false,
         distance: 0, is_opening: k.is_opening, tick: k.tick,
       })),
-      economy: {
-        team1: { avg_equip: 0, avg_balance: 0, buy_type: "full_buy" },
-        team2: { avg_equip: 0, avg_balance: 0, buy_type: "full_buy" },
-      },
-    }));
+      economy,
+    });
+    });
 
-    // BUG 5 & 6 FIX: ADR = damage / total_rounds. KAST and rating → null when not calculated.
+    // ADR = damage / total_rounds. KAST and rating come from the worker.
     const players: Record<string, unknown> = {};
     for (const p of nonCoachPlayers) {
       const sid = String(p.steamid);
@@ -240,8 +308,8 @@ Deno.serve(async (req) => {
           kills: p.kills, deaths: p.deaths, assists: p.assists,
           hs_kills: p.hs_kills, damage: p.damage,
           adr,
-          kast: null,
-          rating: null,
+          kast: p.kast ?? null,
+          rating: p.rating ?? null,
           first_kills: p.first_kills, first_deaths: p.first_deaths,
           clutches_won: 0, clutches_total: 0,
           utility_damage: 0, enemies_flashed: 0, mvps: 0,
@@ -250,7 +318,16 @@ Deno.serve(async (req) => {
       };
     }
 
-    const emptyBuyStats = { full_eco: { wins: 0, losses: 0 }, eco: { wins: 0, losses: 0 }, half_buy: { wins: 0, losses: 0 }, full_buy: { wins: 0, losses: 0 }, pistol: { wins: 0, losses: 0 } };
+    const makeEmptyBuyStats = () => ({ full_eco: { wins: 0, losses: 0 }, eco: { wins: 0, losses: 0 }, half_buy: { wins: 0, losses: 0 }, full_buy: { wins: 0, losses: 0 }, pistol: { wins: 0, losses: 0 } });
+    const buyTypeSummary = { team1: makeEmptyBuyStats(), team2: makeEmptyBuyStats() };
+    for (const r of rounds) {
+      const winnerTeam = r.winner_side === sideForTeamRound("team1", r.round_number) ? "team1" : "team2";
+      for (const team of ["team1", "team2"] as const) {
+        const buyType = r.buy_types[team];
+        if (winnerTeam === team) buyTypeSummary[team][buyType].wins += 1;
+        else buyTypeSummary[team][buyType].losses += 1;
+      }
+    }
     const demoData = {
       schema_version: 2,
       match: {
@@ -261,13 +338,13 @@ Deno.serve(async (req) => {
         total_rounds: totalRounds,
         score: { team1: scoreTeam1, team2: scoreTeam2 },
         teams: {
-          team1: { name: "Hambrientos", first_half_side: team1FirstHalfSide, player_steamids: team1Players.map((p) => String(p.steamid)) },
+          team1: { name: teamName, first_half_side: team1FirstHalfSide, player_steamids: team1Players.map((p) => String(p.steamid)) },
           team2: { name: rival, first_half_side: team2FirstHalfSide, player_steamids: team2Players.map((p) => String(p.steamid)) },
         },
       },
       rounds,
       players,
-      buy_type_summary: { team1: emptyBuyStats, team2: emptyBuyStats },
+      buy_type_summary: buyTypeSummary,
     };
 
     // ── Insert match row ─────────────────────────────────────────────────
@@ -305,13 +382,13 @@ Deno.serve(async (req) => {
         kills: p.kills, deaths: p.deaths, assists: p.assists,
         adr,
         hs_pct: hsPct,
-        kast_pct: null,
+        kast_pct: p.kast ?? null,
         kr: +(p.kills / totalRoundsForRates).toFixed(2),
         dr: +(p.deaths / totalRoundsForRates).toFixed(2),
         fk: p.first_kills, fd: p.first_deaths,
         flash_assists: 0,
         util_dmg: 0,
-        rating: null,
+        rating: p.rating ?? null,
       });
       report.push({
         steam_id: sid64, steam_tag: p.name,
@@ -320,7 +397,7 @@ Deno.serve(async (req) => {
         match_type: rosterEntry ? "steam_id" : "unmatched",
         avatar_url: rosterEntry?.steam_avatar_url ?? null,
         kills: p.kills, deaths: p.deaths, assists: p.assists,
-        adr, hs_pct: hsPct, kast_pct: null, rating: null,
+        adr, hs_pct: hsPct, kast_pct: p.kast ?? null, rating: p.rating ?? null,
       });
     }
     // Also include team2 players in the report so the UI shows all players.
@@ -336,7 +413,7 @@ Deno.serve(async (req) => {
         match_type: "unmatched",
         avatar_url: null,
         kills: p.kills, deaths: p.deaths, assists: p.assists,
-        adr, hs_pct: hsPct, kast_pct: null, rating: null,
+        adr, hs_pct: hsPct, kast_pct: p.kast ?? null, rating: p.rating ?? null,
       });
     }
 
