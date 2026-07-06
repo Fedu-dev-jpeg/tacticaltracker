@@ -57,7 +57,8 @@ type ViewMode = "day" | "week" | "month";
 type RepeatMode = "none" | "weekdays" | "days";
 
 export default function Agenda() {
-  const [events, setEvents] = useState<AgendaEvent[]>([]);
+  const { data: events = [], isLoading: loading, refetch } = useAgendaEvents();
+  const invalidateAgenda = useInvalidateAgenda();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -65,7 +66,6 @@ export default function Agenda() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [editingEvent, setEditingEvent] = useState<AgendaEvent | null>(null);
   const [form, setForm] = useState({ title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training" });
-  const [loading, setLoading] = useState(true);
   const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -84,8 +84,6 @@ export default function Agenda() {
     numDays: 7,
   });
 
-  useEffect(() => { fetchEvents(); }, []);
-
   useEffect(() => {
     if (pendingBulkConfirm && !bulkDialogOpen) {
       const timer = setTimeout(() => { setPendingBulkConfirm(false); setBulkConfirmOpen(true); }, 300);
@@ -93,13 +91,8 @@ export default function Agenda() {
     }
   }, [pendingBulkConfirm, bulkDialogOpen]);
 
-  const fetchEvents = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from("agenda_events").select("*").order("date").order("time_start");
-    if (error) { toast.error("Error al cargar agenda"); console.error(error); }
-    else setEvents(data || []);
-    setLoading(false);
-  };
+  const fetchEvents = () => { invalidateAgenda(); };
+
 
   // ── Teamup helpers ──
   const pushToTeamup = async (row: AgendaEvent, mode: "create" | "update") => {
