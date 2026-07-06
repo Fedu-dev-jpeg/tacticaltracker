@@ -104,6 +104,35 @@ export interface RawParsedDemo {
   players: RawParsedPlayer[];
   duration_ticks: number;
   round_economies: Array<{ team_ct_avg_equip: number; team_t_avg_equip: number }>;
+  debug?: {
+    score: {
+      source: "CCSTeam.m_iScore" | "team_score_event" | "round_winners_fallback";
+      from_team_entities: { ct: number; t: number };
+      from_team_score_events: { ct: number; t: number };
+      from_round_winners: { ct: number; t: number };
+      authoritative: { ct: number; t: number };
+    };
+    rounds: {
+      captured: number;
+      official_total: number;
+      deduped_round_numbers: number;
+      missed_round_end_events: number;
+    };
+    players: {
+      total_seen: number;
+      active_kept: number;
+      dropped_coaches: string[];
+      slot_mappings: number;
+      kills_with_missing_identity: number;
+    };
+    parser: {
+      total_event_types: number;
+      top_events: Record<string, number>;
+      game_rules_fields_seen: string[];
+      team_fields_seen: string[];
+      equipment_fields_seen: string[];
+    };
+  };
 }
 
 // CS:GO/CS2 round_end reasons (subset we care about).
@@ -125,12 +154,12 @@ function wlog(scope: string, event: string, data?: unknown, level: "info" | "war
 }
 
 self.onmessage = async (ev: MessageEvent) => {
-  const { file } = ev.data as { file: File };
+  const { file, debug } = ev.data as { file: File; debug?: boolean };
   try {
     wlog("worker", "start", { name: file.name, size: file.size, type: file.type });
     const raw = await parseFile(file, (pct, label, stage) => {
       post({ type: "progress", pct, label, stage });
-    });
+    }, Boolean(debug));
     wlog("worker", "done", {
       map: raw.map,
       total_rounds: raw.total_rounds,
@@ -149,6 +178,7 @@ self.onmessage = async (ev: MessageEvent) => {
 async function parseFile(
   file: File,
   onProgress: (pct: number, label: string, stage: ParserStage) => void,
+  debugMode: boolean,
 ): Promise<RawParsedDemo> {
   const isBz2 = /\.bz2$/i.test(file.name);
   let bytes: Uint8Array;
@@ -241,6 +271,7 @@ async function parseFile(
   const slotToUserid = new Map<number, number>();
   const scoreFromEvents = { ct: 0, t: 0 };
   const damageEvents: Array<{ attacker: string; victim: string; damage: number }> = [];
+  let killsMissingIdentity = 0;
   // Lookup victim/attacker current team from user_info string table.
   const getTeam = (userid: number): number | null => {
     const knownTeam = teamByUserid.get(userid);
@@ -617,6 +648,7 @@ async function parseFile(
           is_opening: isOpening,
           tick: lastTick,
         });
+        if (!attacker?.steamid || !victim?.steamid) killsMissingIdentity += 1;
         break;
       }
       case "player_hurt": {
@@ -769,6 +801,8 @@ async function parseFile(
 
   rounds.sort((a, b) => a.round_number - b.round_number);
   const score = finalScoreAuthoritative;
+  const scoreSource: "CCSTeam.m_iScore" | "team_score_event" | "round_winners_fallback" =
+    teamScoreTotalRounds > 0 ? "CCSTeam.m_iScore" : (eventScoreTotalRounds > 0 ? "team_score_event" : "round_winners_fallback");
   const officialTotalRounds = score.ct + score.t || rounds.length;
   if (rounds.length > officialTotalRounds) rounds.splice(officialTotalRounds);
 
@@ -865,7 +899,7 @@ async function parseFile(
     demo_version: demoVersion,
     rounds_captured: rounds.length,
     score_ct_t: score,
-    score_source: teamScoreTotalRounds > 0 ? "CCSTeam.m_iScore" : (eventScoreTotalRounds > 0 ? "team_score_event" : "round_winners_fallback"),
+    score_source: scoreSource,
     score_from_events: finalScoreFromEvents,
     match_end_tick: matchEndTick,
     players_kept: activePlayers.length,
@@ -904,6 +938,37 @@ async function parseFile(
       team_ct_avg_equip: round.economy?.CT.avg_equip ?? 0,
       team_t_avg_equip: round.economy?.TERRORIST.avg_equip ?? 0,
     })),
+    debug: debugMode
+      ? {
+        score: {
+          source: scoreSource,
+          from_team_entities: finalScoreFromTeams,
+          from_team_score_events: finalScoreFromEvents,
+          from_round_winners: countedScore,
+          authoritative: score,
+        },
+        rounds: {
+          captured: rounds.length,
+          official_total: officialTotalRounds,
+          deduped_round_numbers: roundNumbersSeen.size,
+          missed_round_end_events: debugMissedRoundEnd,
+        },
+        players: {
+          total_seen: players.size,
+          active_kept: activePlayers.length,
+          dropped_coaches: droppedCoaches,
+          slot_mappings: slotToUserid.size,
+          kills_with_missing_identity: killsMissingIdentity,
+        },
+        parser: {
+          total_event_types: eventCounts.size,
+          top_events: Object.fromEntries(topEvents),
+          game_rules_fields_seen: [...gameRulesFieldsSeen].sort(),
+          team_fields_seen: [...teamFieldsSeen].sort(),
+          equipment_fields_seen: [...equipmentFieldsSeen].sort(),
+        },
+      }
+      : undefined,
   };
 }
 

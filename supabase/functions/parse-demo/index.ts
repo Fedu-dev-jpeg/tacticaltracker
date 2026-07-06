@@ -51,6 +51,35 @@ interface RawParsed {
   total_rounds: number;
   score: { ct: number; t: number };
   final_score?: { ct: number; t: number } | null;
+  debug?: {
+    score?: {
+      source?: "CCSTeam.m_iScore" | "team_score_event" | "round_winners_fallback";
+      from_team_entities?: { ct: number; t: number };
+      from_team_score_events?: { ct: number; t: number };
+      from_round_winners?: { ct: number; t: number };
+      authoritative?: { ct: number; t: number };
+    };
+    rounds?: {
+      captured?: number;
+      official_total?: number;
+      deduped_round_numbers?: number;
+      missed_round_end_events?: number;
+    };
+    players?: {
+      total_seen?: number;
+      active_kept?: number;
+      dropped_coaches?: string[];
+      slot_mappings?: number;
+      kills_with_missing_identity?: number;
+    };
+    parser?: {
+      total_event_types?: number;
+      top_events?: Record<string, number>;
+      game_rules_fields_seen?: string[];
+      team_fields_seen?: string[];
+      equipment_fields_seen?: string[];
+    };
+  };
   rounds: RawRound[];
   players: RawPlayer[];
   duration_ticks: number;
@@ -136,9 +165,11 @@ Deno.serve(async (req) => {
       rival: rivalOverride,
       match_type: matchTypeOverride,
       map: mapOverride,
+      debug_mode: debugModeOverride,
       parsed,
     } = body as {
       path?: string; rival?: string; match_type?: string; map?: string;
+      debug_mode?: boolean;
       parsed?: RawParsed;
     };
 
@@ -360,6 +391,29 @@ Deno.serve(async (req) => {
       rounds,
       players,
       buy_type_summary: buyTypeSummary,
+      debug: (debugModeOverride || parsed.debug)
+        ? {
+          enabled: true,
+          imported_at: new Date().toISOString(),
+          worker: parsed.debug ?? null,
+          edge: {
+            team_bucket: {
+              total_parsed_players: parsed.players.length,
+              coaches_filtered: parsed.players.length - nonCoachPlayers.length,
+              team1_count: team1Players.length,
+              team2_count: team2Players.length,
+            },
+            scoring: {
+              official_score: officialScore,
+              team1_final_side: team1FinalSide,
+              score_team1: scoreTeam1,
+              score_team2: scoreTeam2,
+              final_round_total: finalRoundTotal,
+              rounds_received: parsed.rounds.length,
+            },
+          },
+        }
+        : undefined,
     };
 
     // ── Insert match row ─────────────────────────────────────────────────

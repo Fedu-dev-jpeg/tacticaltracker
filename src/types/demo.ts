@@ -99,6 +99,12 @@ export interface DemoData {
   rounds: DemoRound[];
   players: Record<string, DemoPlayer>;
   buy_type_summary: DemoBuyTypeSummary;
+  debug?: {
+    enabled?: boolean;
+    imported_at?: string;
+    worker?: unknown;
+    edge?: unknown;
+  };
 }
 
 export type { DemoData as DemoAnalysis };
