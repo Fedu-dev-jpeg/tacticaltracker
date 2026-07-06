@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAgendaEvents, useInvalidateAgenda } from "@/hooks/useAgendaEvents";
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval,
   isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, subMonths,
