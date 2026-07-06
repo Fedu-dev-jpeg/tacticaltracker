@@ -251,17 +251,17 @@ export default function Agenda() {
     const ev = events.find((x) => x.id === eventId);
     if (!ev || ev.date === newDateStr) return;
 
-    // Optimistic update
-    setEvents((prev) => prev.map((x) => x.id === eventId ? { ...x, date: newDateStr } : x));
-
+    // Optimistic update via refetch after mutation; fire-and-forget
     const { error } = await supabase.from("agenda_events").update({ date: newDateStr }).eq("id", eventId);
     if (error) {
       toast.error("Error al mover evento");
       fetchEvents();
       return;
     }
+    fetchEvents();
     toast.success(`Movido a ${format(targetDate, "EEE d MMM", { locale: es })}`);
   };
+
 
   // ── Dialog helpers ──
   const openNewEvent = (date: Date) => {
