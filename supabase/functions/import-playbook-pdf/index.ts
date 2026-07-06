@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 const VALID_MAPS = ["Nuke", "Ancient", "Anubis", "Inferno", "Mirage", "Dust2", "Vertigo", "Overpass", "Train"];
-const VALID_SIDES = ["CT", "TR"];
 const VALID_TYPES = [
   "Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Setup",
   "Dominio", "Retake", "Postplant", "Finalización", "Calls de base", "Sorpresa",
@@ -49,24 +48,33 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!roleRow) return json({ error: "forbidden" }, 403);
 
-    const { pdf_base64, map, book = "estrategias", default_side = "CT" } = await req.json();
-    if (!pdf_base64 || typeof pdf_base64 !== "string") return json({ error: "pdf_base64 requerido" }, 400);
-    // Approx byte size from base64 length
-    const approxBytes = Math.floor((pdf_base64.length * 3) / 4);
-    if (approxBytes > MAX_PDF_BYTES) return json({ error: "pdf demasiado grande (máx 5 MB)" }, 413);
+    const { pdf_base64, raw_text, map, book = "estrategias" } = await req.json();
+    const hasPdf = typeof pdf_base64 === "string" && pdf_base64.length > 0;
+    const hasRawText = typeof raw_text === "string" && raw_text.trim().length > 0;
+    if (!hasPdf && !hasRawText) {
+      return json({ error: "enviá pdf_base64 o raw_text" }, 400);
+    }
+    if (hasPdf) {
+      // Approx byte size from base64 length
+      const approxBytes = Math.floor((pdf_base64.length * 3) / 4);
+      if (approxBytes > MAX_PDF_BYTES) return json({ error: "pdf demasiado grande (máx 5 MB)" }, 413);
+    }
     if (!map || !VALID_MAPS.includes(map)) return json({ error: "mapa inválido" }, 400);
 
-
-    // Decode base64
-    const bin = Uint8Array.from(atob(pdf_base64), (c) => c.charCodeAt(0));
-
-    // Extract text with unpdf
-    const doc = await getDocumentProxy(bin);
-    const { text } = await extractText(doc, { mergePages: true });
-    const fullText = Array.isArray(text) ? text.join("\n") : text;
+    let fullText = "";
+    if (hasRawText) {
+      fullText = String(raw_text).trim();
+    } else {
+      // Decode base64
+      const bin = Uint8Array.from(atob(pdf_base64), (c) => c.charCodeAt(0));
+      // Extract text with unpdf
+      const doc = await getDocumentProxy(bin);
+      const { text } = await extractText(doc, { mergePages: true });
+      fullText = Array.isArray(text) ? text.join("\n") : text;
+    }
 
     // Parse strategies
-    const parsed = parseStrategies(fullText, default_side as "CT" | "TR");
+    const parsed = parseStrategies(fullText);
     if (parsed.length === 0) {
       return json({
         error: "No se encontró ninguna estrategia con el formato esperado. Revisá el formato en la ayuda del importador.",
@@ -116,8 +124,9 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function parseStrategies(text: string, defaultSide: "CT" | "TR"): ParsedStrat[] {
+function parseStrategies(text: string): ParsedStrat[] {
   const cleaned = cleanImportedText(text);
+  const inferredDefaultSide = inferDefaultSide(cleaned);
   // Split into blocks by `---` line
   const blocks = cleaned
     .split(/\n\s*-{3,}\s*\n/)
@@ -126,11 +135,11 @@ function parseStrategies(text: string, defaultSide: "CT" | "TR"): ParsedStrat[] 
 
   const result: ParsedStrat[] = [];
   for (const block of blocks) {
-    const strat = parseBlock(block, defaultSide);
+    const strat = parseBlock(block, inferredDefaultSide);
     if (strat) result.push(strat);
   }
   if (result.length > 0) return result;
-  return parseTacticalStyle(cleaned, defaultSide);
+  return parseTacticalStyle(cleaned, inferredDefaultSide);
 }
 
 function parseBlock(block: string, defaultSide: "CT" | "TR"): ParsedStrat | null {
@@ -174,7 +183,7 @@ function parseBlock(block: string, defaultSide: "CT" | "TR"): ParsedStrat | null
 
     if (/^lado:/i.test(line)) {
       const v = line.split(":")[1].trim().toUpperCase();
-      if (VALID_SIDES.includes(v)) side = v as "CT" | "TR";
+      if (v === "CT" || v === "TR") side = v;
       mode = null;
     } else if (/^descripci[oó]n:/i.test(line)) {
       description = line.split(":").slice(1).join(":").trim();
@@ -319,6 +328,13 @@ function parseTacticalStyle(text: string, defaultSide: "CT" | "TR"): ParsedStrat
 
   flush();
   return out;
+}
+
+function inferDefaultSide(text: string): "CT" | "TR" {
+  const ctHits = (text.match(/\b(ct|counter.?terrorist)\b/gi) ?? []).length;
+  const trHits = (text.match(/\b(tt|tr|terrorist)\b/gi) ?? []).length;
+  if (trHits > ctHits) return "TR";
+  return "CT";
 }
 
 function normalizeTypeHeading(line: string): string | null {
