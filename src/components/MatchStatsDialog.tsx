@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { BarChart3, User, Users, Bomb, Skull, Clock, Shield, Download, FileJson, FileSpreadsheet, Filter, X, Archive } from "lucide-react";
+import { BarChart3, Users, Bomb, Skull, Clock, Shield, Download, FileJson, FileSpreadsheet, Filter, X, Archive } from "lucide-react";
+import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { cn } from "@/lib/utils";
 import { exportEconomyCSV, exportFullJSON, exportRoundsCSV, exportRoundsJSON, exportKillsCSV } from "@/lib/exportStats";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import type { DemoData, DemoRound, DemoPlayer, EndReason, BuyType, Side, DeducedRole } from "@/types/demo";
+import type { DemoData, DemoRound, DemoPlayer, EndReason, BuyType, Side } from "@/types/demo";
 import { migrateLegacyDemoData, team1WonRound, teamSide } from "@/lib/demoData";
 import { BUY_SHORT, BUY_LABEL, END_REASON_LABEL } from "@/lib/demoLabels";
 import { buildChartData, type ChartsData } from "@/lib/demoCharts";
@@ -16,12 +17,6 @@ import { buildChartData, type ChartsData } from "@/lib/demoCharts";
 // Re-exported for existing imports (`import MatchStatsDialog, { DemoData } from ...`).
 export type { DemoData } from "@/types/demo";
 
-const ROLE_COLORS: Record<string, string> = {
-  AWPer: "bg-orange-500/20 text-orange-400 border-orange-500/40",
-  Entry: "bg-red-500/20 text-red-400 border-red-500/40",
-  Lurker: "bg-purple-500/20 text-purple-400 border-purple-500/40",
-  Support: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-};
 
 export interface MatchStatsMeta {
   date?: string;
@@ -250,14 +245,6 @@ function MiniTeamTable({ label, players, totalRounds, className }: { label: stri
   );
 }
 
-function RolePill({ role }: { role: DeducedRole }) {
-  if (!role) return <span className="text-[10px] text-muted-foreground">—</span>;
-  return (
-    <span className={cn("text-[9px] px-1.5 py-0.5 rounded border", ROLE_COLORS[role] ?? "bg-muted text-muted-foreground border-border")}>
-      {role}
-    </span>
-  );
-}
 
 function FullView({ demo, meta, mode, storageKey, onBack }: { demo: DemoData; meta?: MatchStatsMeta; mode: "live" | "stored"; storageKey: string; onBack: () => void }) {
   const team1All = Object.values(demo.players).filter((p) => p.team === "team1");
@@ -699,81 +686,68 @@ function PerformanceCharts({ charts }: { charts: ChartsData }) {
         <p className="text-xs text-muted-foreground">Derivado en tiempo real desde rounds + players</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <BarChartCard title="Player Rating" subtitle="Performance rating" data={charts.player_rating} color="purple" />
-        <BarChartCard title="Damage Per Round" subtitle="ADR" data={charts.damage_per_round} color="emerald" />
-        <BarChartCard title="Total Damage" subtitle="Daño total" data={charts.total_damage} color="yellow" />
-        <EntryCard data={charts.entry} />
+        <RechartsBarCard title="Player Rating" subtitle="Performance rating" data={charts.player_rating} color="#8b5cf6" />
+        <RechartsAreaCard title="Damage Per Round" subtitle="ADR" data={charts.damage_per_round} color="#22c55e" />
+        <RechartsBarCard title="Total Damage" subtitle="Daño total" data={charts.total_damage} color="#f59e0b" />
+        <RechartsEntryCard data={charts.entry} />
       </div>
     </div>
   );
 }
 
-function BarChartCard({ title, subtitle, data, color }: { title: string; subtitle: string; data: { tag: string; value: number }[]; color: "purple" | "emerald" | "yellow" }) {
-  const max = Math.max(...data.map((d) => d.value), 1);
-  const colorMap = { purple: "bg-purple-500", emerald: "bg-emerald-500/60", yellow: "bg-yellow-500" };
+function RechartsBarCard({ title, subtitle, data, color }: { title: string; subtitle: string; data: { tag: string; value: number }[]; color: string }) {
   return (
-    <div className="border border-border/50 rounded-md p-3">
+    <div className="border border-border/50 rounded-lg p-3 bg-[#1a1a2e]">
       <div className="text-xs font-heading font-bold text-accent">{title}</div>
-      <div className="text-[10px] text-muted-foreground mb-3">{subtitle}</div>
-      <div className="flex items-end gap-1 h-28">
-        {data.map((d) => (
-          <div key={d.tag} className="flex-1 flex flex-col items-center gap-1">
-            <div className={cn("w-full rounded-t", colorMap[color])} style={{ height: `${(d.value / max) * 100}%` }} />
-            <div className="text-[8px] text-muted-foreground rotate-45 origin-left translate-y-2 whitespace-nowrap">{d.tag}</div>
-          </div>
-        ))}
-      </div>
+      <div className="text-[10px] text-muted-foreground mb-2">{subtitle}</div>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={data} margin={{ top: 5, right: 5, bottom: 40, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <XAxis dataKey="tag" tick={{ fontSize: 9, fill: "#999" }} angle={-35} textAnchor="end" interval={0} />
+          <YAxis tick={{ fontSize: 9, fill: "#999" }} width={35} />
+          <Tooltip contentStyle={{ backgroundColor: "#1a1a2e", border: "1px solid #333", fontSize: 11 }} />
+          <Bar dataKey="value" fill={color} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
 
-function ClutchCard({ data }: { data: { tag: string; attempts: number; wins: number }[] }) {
-  if (data.length === 0) {
-    return (
-      <div className="border border-border/50 rounded-md p-3">
-        <div className="text-xs font-heading font-bold text-accent flex items-center gap-1"><User className="h-3 w-3" /> Clutch Performance</div>
-        <div className="text-[10px] text-muted-foreground py-6 text-center">Sin clutches registrados</div>
-      </div>
-    );
-  }
-  const maxAttempts = Math.max(...data.map((d) => d.attempts), 1);
+function RechartsAreaCard({ title, subtitle, data, color }: { title: string; subtitle: string; data: { tag: string; value: number }[]; color: string }) {
   return (
-    <div className="border border-border/50 rounded-md p-3">
-      <div className="text-xs font-heading font-bold text-accent flex items-center gap-1"><User className="h-3 w-3" /> Clutch Performance</div>
-      <div className="text-[10px] text-muted-foreground mb-3">Intentos vs ganados</div>
-      <div className="flex items-end gap-3 h-28">
-        {data.map((d) => (
-          <div key={d.tag} className="flex-1 flex flex-col items-center gap-1">
-            <div className="w-full bg-orange-500 rounded-t" style={{ height: `${(d.attempts / maxAttempts) * 100}%` }} />
-            <div className="text-[9px]">{d.tag}</div>
-            <div className="text-[8px] text-muted-foreground">{d.wins}/{d.attempts}</div>
-          </div>
-        ))}
-      </div>
+    <div className="border border-border/50 rounded-lg p-3 bg-[#1a1a2e]">
+      <div className="text-xs font-heading font-bold text-accent">{title}</div>
+      <div className="text-[10px] text-muted-foreground mb-2">{subtitle}</div>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 40, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <XAxis dataKey="tag" tick={{ fontSize: 9, fill: "#999" }} angle={-35} textAnchor="end" interval={0} />
+          <YAxis tick={{ fontSize: 9, fill: "#999" }} width={35} />
+          <Tooltip contentStyle={{ backgroundColor: "#1a1a2e", border: "1px solid #333", fontSize: 11 }} />
+          <Area type="monotone" dataKey="value" stroke={color} fill={color} fillOpacity={0.3} />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 }
 
-function EntryCard({ data }: { data: { tag: string; fk: number; fd: number; trades: number }[] }) {
-  const max = Math.max(...data.flatMap((d) => [d.fk, d.fd, d.trades]), 1);
+function RechartsEntryCard({ data }: { data: { tag: string; fk: number; fd: number; trades: number }[] }) {
   return (
-    <div className="border border-border/50 rounded-md p-3">
+    <div className="border border-border/50 rounded-lg p-3 bg-[#1a1a2e]">
       <div className="text-xs font-heading font-bold text-accent">Entry Fragging & Trading</div>
-      <div className="text-[10px] text-muted-foreground mb-3">Entry Kills, Entry Deaths & Trades</div>
-      <div className="flex items-end gap-1 h-28">
-        {data.map((d) => (
-          <div key={d.tag} className="flex-1 flex items-end gap-0.5">
-            <div className="w-1/3 bg-emerald-500 rounded-t" style={{ height: `${(d.fk / max) * 100}%` }} title="FK" />
-            <div className="w-1/3 bg-orange-500 rounded-t" style={{ height: `${(d.fd / max) * 100}%` }} title="FD" />
-            <div className="w-1/3 bg-purple-500 rounded-t" style={{ height: `${(d.trades / max) * 100}%` }} title="Trades" />
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-center gap-3 text-[9px] text-muted-foreground mt-2">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-emerald-500" /> Entry Kills</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-orange-500" /> Entry Deaths</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-purple-500" /> Trades</span>
-      </div>
+      <div className="text-[10px] text-muted-foreground mb-2">Entry Kills, Entry Deaths & Trades</div>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={data} margin={{ top: 5, right: 5, bottom: 40, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <XAxis dataKey="tag" tick={{ fontSize: 9, fill: "#999" }} angle={-35} textAnchor="end" interval={0} />
+          <YAxis tick={{ fontSize: 9, fill: "#999" }} width={25} />
+          <Tooltip contentStyle={{ backgroundColor: "#1a1a2e", border: "1px solid #333", fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <Bar dataKey="fk" name="Entry Kills" fill="#22c55e" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="fd" name="Entry Deaths" fill="#f97316" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="trades" name="Trades" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
