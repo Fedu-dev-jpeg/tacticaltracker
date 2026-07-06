@@ -15,6 +15,7 @@ import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 import TournamentCountdown from "@/components/TournamentCountdown";
 import TournamentsManager from "@/components/TournamentsManager";
 import { useTournaments, getUpcomingTournament } from "@/hooks/useTournaments";
+import { useNavigate } from "react-router-dom";
 
 interface DashboardProps {
   matches: Match[];
@@ -58,6 +59,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: IconComponen
 }
 
 export default function Dashboard({ matches }: DashboardProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Jugador";
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -153,7 +155,12 @@ export default function Dashboard({ matches }: DashboardProps) {
 
       {/* Countdown — solo si hay un torneo agendado */}
       {upcoming && upcomingDate && (
-        <TournamentCountdown target={upcomingDate} name={upcoming.name} format={upcoming.format} />
+        <TournamentCountdown
+          target={upcomingDate}
+          name={upcoming.name}
+          format={upcoming.format}
+          onOpenTournaments={() => navigate("/torneos")}
+        />
       )}
       </div>
 

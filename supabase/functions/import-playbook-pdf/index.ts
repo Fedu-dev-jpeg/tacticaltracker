@@ -117,8 +117,9 @@ function json(body: unknown, status = 200) {
 }
 
 function parseStrategies(text: string, defaultSide: "CT" | "TR"): ParsedStrat[] {
+  const cleaned = cleanImportedText(text);
   // Split into blocks by `---` line
-  const blocks = text
+  const blocks = cleaned
     .split(/\n\s*-{3,}\s*\n/)
     .map((b) => b.trim())
     .filter(Boolean);
@@ -128,7 +129,8 @@ function parseStrategies(text: string, defaultSide: "CT" | "TR"): ParsedStrat[] 
     const strat = parseBlock(block, defaultSide);
     if (strat) result.push(strat);
   }
-  return result;
+  if (result.length > 0) return result;
+  return parseTacticalStyle(cleaned, defaultSide);
 }
 
 function parseBlock(block: string, defaultSide: "CT" | "TR"): ParsedStrat | null {
@@ -197,4 +199,154 @@ function parseBlock(block: string, defaultSide: "CT" | "TR"): ParsedStrat | null
 
   if (!name) return null;
   return { name, type, side, description, playerRoles, notes, link, warnings };
+}
+
+function cleanImportedText(text: string): string {
+  return text
+    .replace(/\r/g, "")
+    .replace(/--\s*\d+\s+of\s+\d+\s*--/gi, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function parseTacticalStyle(text: string, defaultSide: "CT" | "TR"): ParsedStrat[] {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => Boolean(l) && !/^rondas a preparar/i.test(l));
+
+  const out: ParsedStrat[] = [];
+  let currentSide: "CT" | "TR" = defaultSide;
+  let currentType = "Default";
+  let current: ParsedStrat | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    current.description = current.description.trim();
+    current.notes = current.notes.trim();
+    if (!current.description && current.notes) current.description = current.notes;
+    if (!current.name || current.name.length < 2) return;
+    out.push(current);
+  };
+
+  for (const line of lines) {
+    // Side section markers commonly used in tactical docs.
+    if (/^(tt|tr|terrorist)$/i.test(line)) {
+      flush();
+      current = null;
+      currentSide = "TR";
+      continue;
+    }
+    if (/^(ct|counter.?terrorist)$/i.test(line)) {
+      flush();
+      current = null;
+      currentSide = "CT";
+      continue;
+    }
+
+    // Type headings.
+    const normalizedType = normalizeTypeHeading(line);
+    if (normalizedType) {
+      flush();
+      current = null;
+      currentType = normalizedType;
+      continue;
+    }
+
+    // New strategy start markers.
+    const inlineEq = line.match(/^=+\s*(.+?)\s*=+\s*(?:si|no)?$/i);
+    const linkHeading = line.match(/^(.+?)\s*\(link\)\s*$/i);
+    if (inlineEq || linkHeading) {
+      flush();
+      const name = (inlineEq?.[1] ?? linkHeading?.[1] ?? "").trim();
+      current = {
+        name,
+        type: currentType,
+        side: currentSide,
+        description: "",
+        playerRoles: {},
+        notes: "",
+        link: "",
+        warnings: [],
+      };
+      continue;
+    }
+
+    // If we still don't have a strategy, bootstrap one with the first strong heading.
+    if (!current && line.length >= 6 && !/^(idea:|protocolo|defas|anti snowball)/i.test(line)) {
+      current = {
+        name: line,
+        type: currentType,
+        side: currentSide,
+        description: "",
+        playerRoles: {},
+        notes: "",
+        link: "",
+        warnings: [],
+      };
+      continue;
+    }
+
+    if (!current) continue;
+
+    // Player role lines from tactical notes: "fedu > ...", "kud: ..."
+    const roleMatch = line.match(/^([a-záéíóú0-9_.-]{3,12})\s*(?:>|:)\s*(.+)$/i);
+    if (roleMatch) {
+      const player = normalizePlayerName(roleMatch[1]);
+      const role = roleMatch[2].trim();
+      if (player) {
+        current.playerRoles[player] = role;
+      } else {
+        current.notes += `${current.notes ? " " : ""}${line}`;
+      }
+      continue;
+    }
+
+    if (/^https?:\/\//i.test(line)) {
+      current.link = line;
+      continue;
+    }
+
+    if (/^(idea:|protocolo|anti snowball|defas|forzado|pistols?)/i.test(line)) {
+      current.notes += `${current.notes ? " " : ""}${line}`;
+      continue;
+    }
+
+    current.description += `${current.description ? " " : ""}${line}`;
+  }
+
+  flush();
+  return out;
+}
+
+function normalizeTypeHeading(line: string): string | null {
+  const l = line.trim().toLowerCase();
+  if (/^pistols?$/.test(l)) return "Pistol";
+  if (/^forzado/.test(l)) return "Forzado";
+  if (/^anti/.test(l)) return "Anti-Eco";
+  if (/^defas?$/.test(l) || /^default/.test(l)) return "Default";
+  if (/^retake/.test(l)) return "Retake";
+  if (/^postplant/.test(l)) return "Postplant";
+  if (/^exec/.test(l)) return "Exec";
+  if (/^setup/.test(l)) return "Setup";
+  if (/^dominio|^control/.test(l)) return "Dominio";
+  if (/^sorpresa/.test(l)) return "Sorpresa";
+  return null;
+}
+
+function normalizePlayerName(raw: string): string | null {
+  const n = raw
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+  const aliases: Record<string, string> = {
+    fedu: "Fedu",
+    fede: "Fedu",
+    boke: "Boke",
+    koda: "Koda",
+    ray: "Ray",
+    kud: "Kud",
+  };
+  return aliases[n] ?? null;
 }

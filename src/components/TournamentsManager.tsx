@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Trophy, Plus, Pencil, Trash2, CalendarClock, Info, ClipboardList } from "lucide-react";
+import { Trophy, Plus, Pencil, Trash2, CalendarClock, Info, ClipboardList, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const FORMATS = ["BO1", "BO3", "BO5"] as const;
@@ -72,6 +72,7 @@ export default function TournamentsManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   const openNew = () => {
     setEditingId(null);
@@ -91,7 +92,111 @@ export default function TournamentsManager() {
     setOpen(true);
   };
 
-  const submit = async () => {
+  const toAgendaDateParts = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const timeStart = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const end = new Date(d.getTime() + 2 * 60 * 60 * 1000);
+    const timeEnd = `${pad(end.getHours())}:${pad(end.getMinutes())}`;
+    return { date, timeStart, timeEnd };
+  };
+
+  const tournamentMarker = (id: string) => `[TOURNAMENT_ID:${id}]`;
+
+  const upsertTournamentAgendaEvent = async (tournament: Tournament) => {
+    const marker = tournamentMarker(tournament.id);
+    const { date, timeStart, timeEnd } = toAgendaDateParts(tournament.start_date);
+    const descriptionLines = [
+      marker,
+      `Formato: ${tournament.format}`,
+      `Estado: ${statusLabel(tournament.status)}`,
+      tournament.notes?.trim() || "",
+    ].filter(Boolean);
+    const payload = {
+      title: `🏆 Torneo · ${tournament.name}`,
+      description: descriptionLines.join("\n"),
+      date,
+      time_start: timeStart,
+      time_end: timeEnd,
+      event_type: "tournament",
+      created_by: "tournament-sync",
+    };
+
+    const { data: existing } = await supabase
+      .from("agenda_events")
+      .select("*")
+      .like("description", `%${marker}%`)
+      .maybeSingle();
+
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from("agenda_events")
+        .update(payload)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (error) throw new Error("No se pudo actualizar agenda: " + error.message);
+      return data;
+    }
+
+    const { data, error } = await supabase
+      .from("agenda_events")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (error) throw new Error("No se pudo crear evento de agenda: " + error.message);
+    return data;
+  };
+
+  const pushAgendaEventToTeamup = async (agendaEvent: {
+    id: string;
+    title: string;
+    description: string;
+    date: string;
+    time_start: string;
+    time_end: string;
+    teamup_event_id?: string | null;
+  }) => {
+    const { data, error } = await supabase.functions.invoke("teamup-sync", {
+      body: {
+        action: "push",
+        event: {
+          id: agendaEvent.id,
+          title: agendaEvent.title,
+          description: agendaEvent.description,
+          date: agendaEvent.date,
+          time_start: agendaEvent.time_start,
+          time_end: agendaEvent.time_end,
+          teamup_event_id: agendaEvent.teamup_event_id ?? null,
+        },
+      },
+    });
+    if (error) throw new Error(error.message);
+    if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+    const teamupId = (data as { teamup_event_id?: string })?.teamup_event_id;
+    if (teamupId && teamupId !== agendaEvent.teamup_event_id) {
+      await supabase.from("agenda_events").update({ teamup_event_id: teamupId }).eq("id", agendaEvent.id);
+    }
+    return teamupId ?? null;
+  };
+
+  const syncTournamentToTeamup = async (tournament: Tournament) => {
+    setSyncingId(tournament.id);
+    try {
+      const agendaEvent = await upsertTournamentAgendaEvent(tournament);
+      const teamupId = await pushAgendaEventToTeamup(agendaEvent);
+      toast.success("Torneo sincronizado con Teamup", {
+        description: teamupId ? `ID Teamup: ${teamupId}` : "Evento enviado",
+      });
+    } catch (e) {
+      toast.error("No se pudo sincronizar torneo", { description: String((e as Error).message) });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const submit = async (syncAfterSave = false) => {
     if (!form.name.trim()) return toast.error("El nombre es obligatorio");
     if (!form.start_date) return toast.error("La fecha es obligatoria");
     setSaving(true);
@@ -102,12 +207,16 @@ export default function TournamentsManager() {
       status: form.status,
       notes: form.notes.trim() || null,
     };
-    const { error } = editingId
-      ? await supabase.from("tournaments").update(payload).eq("id", editingId)
-      : await supabase.from("tournaments").insert(payload);
+    const { data, error } = editingId
+      ? await supabase.from("tournaments").update(payload).eq("id", editingId).select("*").single()
+      : await supabase.from("tournaments").insert(payload).select("*").single();
     setSaving(false);
     if (error) return toast.error("No se pudo guardar: " + error.message);
+    const savedTournament = data as Tournament;
     toast.success(editingId ? "Torneo actualizado" : "Torneo creado");
+    if (syncAfterSave) {
+      await syncTournamentToTeamup(savedTournament);
+    }
     setOpen(false);
     refetch();
   };
@@ -201,7 +310,15 @@ export default function TournamentsManager() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                <Button onClick={submit} disabled={saving} className="gradient-accent">
+                <Button
+                  variant="outline"
+                  onClick={() => submit(true)}
+                  disabled={saving}
+                  className="border-accent/40 text-accent hover:bg-accent/10"
+                >
+                  {saving ? "Guardando…" : "Guardar + Sync Teamup"}
+                </Button>
+                <Button onClick={() => submit(false)} disabled={saving} className="gradient-accent">
                   {saving ? "Guardando…" : editingId ? "Guardar cambios" : "Crear torneo"}
                 </Button>
               </DialogFooter>
@@ -247,6 +364,16 @@ export default function TournamentsManager() {
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 border-accent/40 text-accent hover:bg-accent/10"
+                        onClick={() => syncTournamentToTeamup(t)}
+                        disabled={syncingId === t.id}
+                        title="Sincronizar torneo en Teamup"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${syncingId === t.id ? "animate-spin" : ""}`} />
+                      </Button>
                       <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(t)}>
                         <Pencil className="h-3 w-3" />
                       </Button>
