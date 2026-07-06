@@ -238,6 +238,8 @@ async function parseFile(
   const economyByRound = new Map<number, { CT: RawParsedEconomySide; TERRORIST: RawParsedEconomySide }>();
   const playersBySteamid = new Map<string, RawParsedPlayer>();
   const teamByUserid = new Map<number, number>();
+  const slotToUserid = new Map<number, number>();
+  const scoreFromEvents = { ct: 0, t: 0 };
   const damageEvents: Array<{ attacker: string; victim: string; damage: number }> = [];
   // Lookup victim/attacker current team from user_info string table.
   const getTeam = (userid: number): number | null => {
@@ -340,6 +342,8 @@ async function parseFile(
     for (const entry of userInfo.getEntries()) {
       const v = entry.value;
       if (!v || !Number.isInteger(v.userid)) continue;
+      const slot = Number(v.playerslot ?? v.player_slot ?? v.slot ?? NaN);
+      if (Number.isFinite(slot)) slotToUserid.set(slot, v.userid);
       // Reject fake players (bots) and any HLTV/SourceTV relay slot.
       if (v.fakeplayer === true || v.ishltv === true || v.is_hltv === true) continue;
       const name: string = v.name ?? "";
@@ -391,6 +395,11 @@ async function parseFile(
       if (Number.isFinite(asNumber)) {
         const byUserid = players.get(asNumber);
         if (byUserid) return byUserid;
+        const mappedUserid = slotToUserid.get(asNumber);
+        if (mappedUserid != null) {
+          const bySlot = players.get(mappedUserid);
+          if (bySlot) return bySlot;
+        }
       }
     }
     return undefined;
@@ -509,6 +518,15 @@ async function parseFile(
         const userid = Number(event.userid ?? event.user_id ?? event.player ?? NaN);
         const team = Number(event.team ?? event.team_number ?? event.teamnumber ?? NaN);
         if (Number.isFinite(userid) && (team === 2 || team === 3)) teamByUserid.set(userid, team);
+        break;
+      }
+      case "team_score": {
+        const team = Number(event.teamid ?? event.team ?? event.team_number ?? event.teamnumber ?? NaN);
+        const scoreValue = Number(event.score ?? event.team_score ?? event.teamscore ?? NaN);
+        if (Number.isFinite(scoreValue)) {
+          if (team === 3) scoreFromEvents.ct = Math.max(scoreFromEvents.ct, scoreValue);
+          if (team === 2) scoreFromEvents.t = Math.max(scoreFromEvents.t, scoreValue);
+        }
         break;
       }
       case "bomb_exploded": bombExploded = true; break;
@@ -713,6 +731,7 @@ async function parseFile(
     }
     return out;
   })();
+  const finalScoreFromEvents = { ct: scoreFromEvents.ct, t: scoreFromEvents.t };
 
   const countedScore = rounds.reduce((acc, r) => {
     if (r.winner_side === "CT") acc.ct += 1;
@@ -722,10 +741,15 @@ async function parseFile(
 
   // The match-winning round can jump straight to cs_win_panel_match without a
   // later round_officially_ended. Add exactly that missing round from CCSTeam.
-  const finalTotalRounds = finalScoreFromTeams.ct + finalScoreFromTeams.t;
+  const teamScoreTotalRounds = finalScoreFromTeams.ct + finalScoreFromTeams.t;
+  const eventScoreTotalRounds = finalScoreFromEvents.ct + finalScoreFromEvents.t;
+  const finalScoreAuthoritative = teamScoreTotalRounds > 0
+    ? finalScoreFromTeams
+    : (eventScoreTotalRounds > 0 ? finalScoreFromEvents : countedScore);
+  const finalTotalRounds = finalScoreAuthoritative.ct + finalScoreAuthoritative.t;
   if (matchEndTick != null && finalTotalRounds > rounds.length) {
-    const missingCt = finalScoreFromTeams.ct - countedScore.ct;
-    const missingT = finalScoreFromTeams.t - countedScore.t;
+    const missingCt = finalScoreAuthoritative.ct - countedScore.ct;
+    const missingT = finalScoreAuthoritative.t - countedScore.t;
     if (missingCt + missingT === finalTotalRounds - rounds.length && missingCt + missingT > 0) {
       const winnerSide: "CT" | "TERRORIST" = missingCt > missingT ? "CT" : "TERRORIST";
       const inferredRoundNumber = Math.max(...rounds.map((r) => r.round_number), 0) + 1;
@@ -744,13 +768,7 @@ async function parseFile(
   }
 
   rounds.sort((a, b) => a.round_number - b.round_number);
-  const score = finalTotalRounds > 0
-    ? finalScoreFromTeams
-    : rounds.reduce((acc, r) => {
-      if (r.winner_side === "CT") acc.ct += 1;
-      else acc.t += 1;
-      return acc;
-    }, { ct: 0, t: 0 });
+  const score = finalScoreAuthoritative;
   const officialTotalRounds = score.ct + score.t || rounds.length;
   if (rounds.length > officialTotalRounds) rounds.splice(officialTotalRounds);
 
@@ -847,7 +865,8 @@ async function parseFile(
     demo_version: demoVersion,
     rounds_captured: rounds.length,
     score_ct_t: score,
-    score_source: finalTotalRounds > 0 ? "CCSTeam.m_iScore" : "round_winners_fallback",
+    score_source: teamScoreTotalRounds > 0 ? "CCSTeam.m_iScore" : (eventScoreTotalRounds > 0 ? "team_score_event" : "round_winners_fallback"),
+    score_from_events: finalScoreFromEvents,
     match_end_tick: matchEndTick,
     players_kept: activePlayers.length,
     players_dropped: players.size - activePlayers.length,
@@ -877,7 +896,7 @@ async function parseFile(
     demo_version: demoVersion,
     total_rounds: officialTotalRounds,
     score,
-    final_score: finalTotalRounds > 0 ? score : null,
+    final_score: officialTotalRounds > 0 ? score : null,
     rounds,
     players: activePlayers,
     duration_ticks: lastTick,
