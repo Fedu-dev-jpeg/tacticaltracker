@@ -513,7 +513,7 @@ function isLikelyJson(text: string): boolean {
 }
 
 function isSearching(text: string): boolean {
-  return /\b(lfs|looking for scrim|scrim search|request|buscando|searching|offer)\b/i.test(text);
+  return /\b(lfs|lfs\+|lf\s+scrim|looking\s+for|looking for scrim|scrim search|request|buscando|busco|searching|offer|open\s+scrim|pracc)\b/i.test(text);
 }
 
 function sameDay(a: Date, b: Date): boolean {
@@ -531,10 +531,14 @@ function normalizeTime(value: string): string {
 }
 
 function isAgendaScrimEvent(ev: AgendaComparable): boolean {
-  const type = (ev.event_type ?? "").toLowerCase();
-  if (type === "scrim" || type === "training") return true;
   const text = `${ev.title} ${ev.description}`.toLowerCase();
-  return /\b(scrim|pracc|treino|entreno|vs\.?)\b/.test(text);
+  const negativeSignals = /\b(tactico|táctico|analisis|análisis|review|demo|reunion|reunión|meeting|organizacion|organización|guide|get started|getting started)\b/;
+  if (negativeSignals.test(text)) return false;
+
+  const positiveSignals = /\b(scrim|pracc|treino|entreno|vs\.?|practice match|full treino)\b/;
+  if (positiveSignals.test(text)) return true;
+
+  return (ev.event_type ?? "").toLowerCase() === "scrim";
 }
 
 function toCompareEvent(ev: ExternalComparable): CompareEvent {
