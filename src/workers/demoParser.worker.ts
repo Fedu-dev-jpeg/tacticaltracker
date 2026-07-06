@@ -191,18 +191,21 @@ async function parseFile(
   let bytesProcessed = 0;
   const eventCounts = new Map<string, number>();
   let debugMissedRoundEnd = 0;
-  // Filled in by ENTITY_PACKET interceptor from CCSGameRulesProxy mutations.
-  // In CS2 the round outcome comes from these entity props, not the game event.
   let pendingWinner: number | null = null;
   let pendingReason = 0;
   const gameRulesFieldsSeen = new Set<string>();
-  // Fallback tally: deaths per side in current round + bomb events.
-  // Team numbers in CS2: 2 = TERRORIST, 3 = CT.
   let deathsCT = 0;
   let deathsT = 0;
   let bombExploded = false;
   let bombDefused = false;
   let fallbackUsed = 0;
+  // BUG 2 FIX: Track round_freeze_end to identify warmup vs real rounds.
+  let firstFreezeEndTick = -1;
+  let matchStarted = false;
+  // BUG 2 FIX: Deduplicate round end events by tick.
+  let lastRoundEndTick = -1;
+  // BUG 3 FIX: Snapshot player teams at round 1 for starting side.
+  let startingSideSnapshotDone = false;
   // Lookup victim/attacker current team from user_info string table.
   const getTeam = (userid: number): number | null => {
     const demo = parser.getDemo();
@@ -310,6 +313,36 @@ async function parseFile(
     eventCounts.set(desc.name, (eventCounts.get(desc.name) ?? 0) + 1);
 
     switch (desc.name) {
+      case "round_freeze_end": {
+        // BUG 2 FIX: Track the first freeze_end to distinguish warmup from real rounds.
+        if (firstFreezeEndTick < 0) {
+          firstFreezeEndTick = lastTick;
+          matchStarted = true;
+          wlog("worker:parse", "match-started", { first_freeze_end_tick: firstFreezeEndTick });
+        }
+        // BUG 3 FIX: On the first real round, snapshot player team assignments.
+        if (!startingSideSnapshotDone && matchStarted) {
+          snapshotPlayersFromStringTable();
+          startingSideSnapshotDone = true;
+          const demo = parser.getDemo();
+          const ui = demo?.stringTableContainer?.getByName?.(StringTableType.USER_INFO.name);
+          if (ui) {
+            for (const entry of ui.getEntries()) {
+              const v = entry.value;
+              if (!v || !Number.isInteger(v.userid)) continue;
+              const p = players.get(v.userid);
+              if (!p) continue;
+              const tn = Number(v.team_number ?? v.teamnumber ?? v.team);
+              if (tn === 2) p.team_first_half = "TERRORIST";
+              else if (tn === 3) p.team_first_half = "CT";
+            }
+          }
+          wlog("worker:parse", "starting-side-snapshot", {
+            players: [...players.values()].map((p) => ({ name: p.name, side: p.team_first_half })),
+          });
+        }
+        break;
+      }
       case "round_start": {
         roundNumber += 1;
         currentRoundKills = [];
@@ -327,18 +360,22 @@ async function parseFile(
       case "round_officially_ended":
       case "cs_win_panel_round":
       case "cs_win_panel_match": {
-        if (rounds.length >= roundNumber && roundNumber > 0) break; // dedupe
+        if (rounds.length >= roundNumber && roundNumber > 0) break; // dedupe by round number
+        // BUG 2 FIX: Deduplicate by tick — if two end events share the same tick, skip.
+        if (lastTick === lastRoundEndTick && lastRoundEndTick > 0) break;
+        // BUG 2 FIX: Discard rounds that happened before the first freeze_end (warmup/knife).
+        if (!matchStarted) break;
+
+        lastRoundEndTick = lastTick;
         let winnerNum = Number(event.winner ?? event.winner_team ?? event.final_event ?? NaN);
         if (winnerNum !== 2 && winnerNum !== 3 && pendingWinner != null) winnerNum = pendingWinner;
-        // Fallback: deduce winner from bomb events + eliminations.
-        // 2 = TERRORIST, 3 = CT.
         let fallback = false;
         if (winnerNum !== 2 && winnerNum !== 3) {
           if (bombExploded) { winnerNum = 2; fallback = true; }
           else if (bombDefused) { winnerNum = 3; fallback = true; }
           else if (deathsT >= 5 && deathsCT < 5) { winnerNum = 3; fallback = true; }
           else if (deathsCT >= 5 && deathsT < 5) { winnerNum = 2; fallback = true; }
-          else { winnerNum = 3; fallback = true; } // time expired, no plant → CT
+          else { winnerNum = 3; fallback = true; }
           fallbackUsed += 1;
         }
         const side: "CT" | "TERRORIST" = winnerNum === 3 ? "CT" : "TERRORIST";

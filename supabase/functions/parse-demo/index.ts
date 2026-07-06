@@ -59,6 +59,18 @@ function normalizeMap(raw: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
 
+// SteamID conversion: team_members stores SteamID3 (account_id),
+// parser emits SteamID64. Offset = 76561197960265728.
+const STEAM_ID_OFFSET = 76561197960265728n;
+function steamId64ToId3(sid64: string): string {
+  try {
+    return String(BigInt(sid64) - STEAM_ID_OFFSET);
+  } catch { return sid64; }
+}
+
+// Coach filter — matches names like "COACH nahu3jt", "COACH Quero10"
+const COACH_RE = /(^|\s|[\[\(\-_.])coach\b/i;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -116,12 +128,9 @@ Deno.serve(async (req) => {
       console.error("[parse-demo] validation failed:", errs);
       return json({ error: "payload inválido", details: errs }, 400);
     }
-    // Empty players is allowed (parser may not have captured user_info yet) —
-    // we'll just skip player_stats inserts below and log a warning.
     if (parsed.players.length === 0) {
       console.warn("[parse-demo] payload has 0 players — inserting match without player_stats");
     }
-
 
     const matchType = (matchTypeOverride === "TRAINING" || matchTypeOverride === "OFFICIAL")
       ? matchTypeOverride : "OFFICIAL";
@@ -135,31 +144,46 @@ Deno.serve(async (req) => {
       .from("team_members")
       .select("user_id, steam_id, steam_tag, player_name, is_coach, steam_avatar_url")
       .eq("is_coach", false);
-    const roster = (teamRaw ?? []).filter((m) => m.steam_id);
-    const rosterBySteam = new Map(roster.map((r) => [String(r.steam_id), r]));
+    const roster = (teamRaw ?? []).filter((m: any) => m.steam_id);
+    // BUG 1 FIX: team_members stores SteamID3 (account_id), parser emits SteamID64.
+    // Build a lookup from SteamID3 → roster entry.
+    const rosterBySteamId3 = new Map(roster.map((r: any) => [String(r.steam_id), r]));
 
-    // Assign each parsed player to team1 (ours) or team2 (rival) by SteamID.
+    // Filter out coaches from parsed players before bucketing.
+    const nonCoachPlayers = parsed.players.filter((p) => !COACH_RE.test(p.name ?? ""));
+
+    // BUG 7 FIX: ALL non-coach players must appear. Those matching our roster
+    // go to team1, everyone else goes to team2. Never discard a player.
     const team1Players: RawPlayer[] = [];
     const team2Players: RawPlayer[] = [];
-    for (const p of parsed.players) {
-      const sid = String(p.steamid ?? "");
-      if (sid && rosterBySteam.has(sid)) team1Players.push(p);
-      else team2Players.push(p);
+    // Map SteamID64 → roster entry for matched players (for avatar/user_id lookup).
+    const rosterMatchBySid64 = new Map<string, any>();
+    for (const p of nonCoachPlayers) {
+      const sid64 = String(p.steamid ?? "");
+      const sid3 = steamId64ToId3(sid64);
+      const rosterEntry = rosterBySteamId3.get(sid3);
+      if (rosterEntry) {
+        team1Players.push(p);
+        rosterMatchBySid64.set(sid64, rosterEntry);
+      } else {
+        team2Players.push(p);
+      }
     }
 
-    // Determine each team's first-half side. Prefer the parser's own signal
-    // (team_first_half), fall back to the majority side of team1 in round 1.
+    console.log("[parse-demo] team bucketing:", JSON.stringify({
+      total_parsed: parsed.players.length,
+      coaches_filtered: parsed.players.length - nonCoachPlayers.length,
+      team1: team1Players.map((p) => p.name),
+      team2: team2Players.map((p) => p.name),
+    }));
+
+    // Determine each team's first-half side from the parser's signal.
     let team1FirstHalfSide: Side = "CT";
     const t1WithSide = team1Players.find((p) => p.team_first_half);
     if (t1WithSide?.team_first_half) team1FirstHalfSide = t1WithSide.team_first_half;
-    // team2 always plays the opposite side.
     const team2FirstHalfSide: Side = team1FirstHalfSide === "CT" ? "TERRORIST" : "CT";
 
-    // Compute our score vs theirs from CT/T totals + which side we started on.
-    // First half = rounds 1..12 → team on first-half side wins those rounds
-    // when the CT/T column matches. To avoid needing round-by-round side
-    // tracking, we approximate: score by summing rounds where winner_side ==
-    // our current side (accounting for the mid-half swap).
+    // Compute our score vs theirs from round winners + starting side.
     let scoreTeam1 = 0, scoreTeam2 = 0;
     for (const r of parsed.rounds) {
       const firstHalf = r.round_number <= 12;
@@ -167,7 +191,6 @@ Deno.serve(async (req) => {
       if (r.winner_side === teamThisRound) scoreTeam1 += 1;
       else scoreTeam2 += 1;
     }
-    // If parsed.rounds was empty for some reason, fall back to CT/T tallies.
     if (parsed.rounds.length === 0) {
       scoreTeam1 = team1FirstHalfSide === "CT" ? parsed.score.ct : parsed.score.t;
       scoreTeam2 = team1FirstHalfSide === "CT" ? parsed.score.t : parsed.score.ct;
@@ -175,8 +198,7 @@ Deno.serve(async (req) => {
 
     const totalRounds = parsed.rounds.length || (parsed.score.ct + parsed.score.t);
 
-    // ── Build DemoData v2 (leave unknown fields as empty defaults) ───────
-    const nameByPid = new Map(parsed.players.map((p) => [String(p.steamid), p.name]));
+    // ── Build DemoData v2 ────────────────────────────────────────────────
     const teamByPid = new Map<string, "team1" | "team2">();
     for (const p of team1Players) teamByPid.set(String(p.steamid), "team1");
     for (const p of team2Players) teamByPid.set(String(p.steamid), "team2");
@@ -200,12 +222,14 @@ Deno.serve(async (req) => {
       },
     }));
 
+    // BUG 5 & 6 FIX: ADR = damage / total_rounds. KAST and rating → null when not calculated.
     const players: Record<string, unknown> = {};
-    for (const p of parsed.players) {
+    for (const p of nonCoachPlayers) {
       const sid = String(p.steamid);
       const team = teamByPid.get(sid) ?? "team2";
-      const rosterEntry = rosterBySteam.get(sid);
+      const rosterEntry = rosterMatchBySid64.get(sid);
       const totalRoundsForRates = totalRounds || 1;
+      const adr = +(p.damage / totalRoundsForRates).toFixed(1);
       players[sid] = {
         steamid: sid,
         name: p.name,
@@ -215,8 +239,9 @@ Deno.serve(async (req) => {
         stats: {
           kills: p.kills, deaths: p.deaths, assists: p.assists,
           hs_kills: p.hs_kills, damage: p.damage,
-          adr: +(p.damage / totalRoundsForRates).toFixed(1),
-          kast: 0, rating: 0,
+          adr,
+          kast: null,
+          rating: null,
           first_kills: p.first_kills, first_deaths: p.first_deaths,
           clutches_won: 0, clutches_total: 0,
           utility_damage: 0, enemies_flashed: 0, mvps: 0,
@@ -264,38 +289,54 @@ Deno.serve(async (req) => {
       .select("id").single();
     if (matchErr) return json({ error: "matches insert: " + matchErr.message }, 500);
 
-    // ── player_stats inserts (only for our team, matched by SteamID) ─────
+    // ── player_stats inserts (our team, matched by SteamID) ─────────────
     const report: Array<Record<string, unknown>> = [];
     for (const p of team1Players) {
-      const sid = String(p.steamid);
-      const rosterEntry = rosterBySteam.get(sid);
+      const sid64 = String(p.steamid);
+      const rosterEntry = rosterMatchBySid64.get(sid64);
       const hsPct = p.kills > 0 ? +(p.hs_kills / p.kills * 100).toFixed(1) : 0;
       const totalRoundsForRates = totalRounds || 1;
+      const adr = +(p.damage / totalRoundsForRates).toFixed(1);
       await admin.from("player_stats").insert({
         match_id: matchRow.id,
         user_id: rosterEntry?.user_id ?? null,
-        steam_id: sid,
+        steam_id: sid64,
         steam_tag: p.name,
         kills: p.kills, deaths: p.deaths, assists: p.assists,
-        adr: +(p.damage / totalRoundsForRates).toFixed(1),
+        adr,
         hs_pct: hsPct,
-        kast_pct: 0,
+        kast_pct: null,
         kr: +(p.kills / totalRoundsForRates).toFixed(2),
         dr: +(p.deaths / totalRoundsForRates).toFixed(2),
         fk: p.first_kills, fd: p.first_deaths,
         flash_assists: 0,
         util_dmg: 0,
-        rating: 0,
+        rating: null,
       });
       report.push({
-        steam_id: sid, steam_tag: p.name,
+        steam_id: sid64, steam_tag: p.name,
         matched_user_id: rosterEntry?.user_id ?? null,
         matched_player_name: rosterEntry?.player_name ?? null,
         match_type: rosterEntry ? "steam_id" : "unmatched",
         avatar_url: rosterEntry?.steam_avatar_url ?? null,
         kills: p.kills, deaths: p.deaths, assists: p.assists,
-        adr: +(p.damage / totalRoundsForRates).toFixed(1),
-        hs_pct: hsPct, kast_pct: 0, rating: 0,
+        adr, hs_pct: hsPct, kast_pct: null, rating: null,
+      });
+    }
+    // Also include team2 players in the report so the UI shows all players.
+    for (const p of team2Players) {
+      const sid64 = String(p.steamid);
+      const totalRoundsForRates = totalRounds || 1;
+      const hsPct = p.kills > 0 ? +(p.hs_kills / p.kills * 100).toFixed(1) : 0;
+      const adr = +(p.damage / totalRoundsForRates).toFixed(1);
+      report.push({
+        steam_id: sid64, steam_tag: p.name,
+        matched_user_id: null,
+        matched_player_name: null,
+        match_type: "unmatched",
+        avatar_url: null,
+        kills: p.kills, deaths: p.deaths, assists: p.assists,
+        adr, hs_pct: hsPct, kast_pct: null, rating: null,
       });
     }
 

@@ -195,10 +195,12 @@ function fmtAdr(p: DemoPlayer, totalRounds: number): string {
   return val.toFixed(1);
 }
 function fmtKast(p: DemoPlayer): { text: string; known: boolean } {
-  return p.stats.kast > 0 ? { text: `${p.stats.kast.toFixed(0)}%`, known: true } : { text: "—", known: false };
+  if (p.stats.kast == null || p.stats.kast === 0) return { text: "—", known: false };
+  return { text: `${p.stats.kast.toFixed(0)}%`, known: true };
 }
 function fmtRating(p: DemoPlayer): { text: string; known: boolean } {
-  return p.stats.rating > 0 ? { text: p.stats.rating.toFixed(2), known: true } : { text: "—", known: false };
+  if (p.stats.rating == null || p.stats.rating === 0) return { text: "—", known: false };
+  return { text: p.stats.rating.toFixed(2), known: true };
 }
 
 function MiniTeamTable({ label, players, totalRounds, className }: { label: string; players: DemoPlayer[]; totalRounds: number; className?: string }) {
@@ -212,7 +214,6 @@ function MiniTeamTable({ label, players, totalRounds, className }: { label: stri
         <thead className="text-[10px] uppercase text-muted-foreground bg-muted/20">
           <tr>
             <th className="px-3 py-2 text-left">Player</th>
-            <th className="px-3 py-2 text-left">Rol</th>
             <th className="px-2 py-2 text-right">K/D/A</th>
             <th className="px-2 py-2 text-right">+/-</th>
             <th className="px-2 py-2 text-right">ADR</th>
@@ -229,17 +230,16 @@ function MiniTeamTable({ label, players, totalRounds, className }: { label: stri
                   <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{(p.name ?? "?")[0]}</AvatarFallback></Avatar>
                   <span>{p.name}</span>
                 </td>
-                <td className="px-3 py-2"><RolePill role={p.role_deduced} /></td>
                 <td className="px-2 py-2 text-right font-mono">{kda(p)}</td>
                 <td className={cn("px-2 py-2 text-right font-mono", pm >= 0 ? "text-emerald-400" : "text-red-400")}>
                   {pm >= 0 ? "+" : ""}{pm}
                 </td>
                 <td className="px-2 py-2 text-right font-mono">{fmtAdr(p, totalRounds)}</td>
                 {(() => { const k = fmtKast(p); return (
-                  <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && p.stats.kast < 60 && "text-red-400")}>{k.text}</td>
+                  <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && (p.stats.kast ?? 0) < 60 && "text-red-400")}>{k.text}</td>
                 ); })()}
                 {(() => { const r = fmtRating(p); return (
-                  <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && p.stats.rating >= 1.0 && "text-emerald-400", r.known && p.stats.rating < 0.9 && "text-red-400")}>{r.text}</td>
+                  <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && (p.stats.rating ?? 0) >= 1.0 && "text-emerald-400", r.known && (p.stats.rating ?? 0) < 0.9 && "text-red-400")}>{r.text}</td>
                 ); })()}
               </tr>
             );
@@ -340,7 +340,21 @@ function SideBadgeNote({ demo, side }: { demo: DemoData; side: Side }) {
   );
 }
 
+function fmtImpact(p: DemoPlayer, totalRounds: number): string {
+  if (!totalRounds || totalRounds <= 0) return "—";
+  const kpr = p.stats.kills / totalRounds;
+  const apr = p.stats.assists / totalRounds;
+  const impact = 2.13 * kpr + 0.42 * apr - 0.41;
+  return impact.toFixed(1);
+}
+
 function FullTeamTable({ label, players, totalRounds = 0 }: { label: string; players: DemoPlayer[]; totalRounds?: number }) {
+  const sorted = [...players].sort((a, b) => {
+    const ra = a.stats.rating ?? 0;
+    const rb = b.stats.rating ?? 0;
+    if (ra !== rb) return rb - ra;
+    return (b.stats.kills - b.stats.deaths) - (a.stats.kills - a.stats.deaths);
+  });
   return (
     <div>
       <div className="text-sm font-heading font-bold mb-2 flex items-center gap-2">
@@ -352,22 +366,19 @@ function FullTeamTable({ label, players, totalRounds = 0 }: { label: string; pla
           <thead className="text-[10px] uppercase text-muted-foreground bg-muted/20">
             <tr>
               <th className="px-3 py-2 text-left">Player</th>
-              <th className="px-3 py-2 text-left">Rol</th>
               <th className="px-2 py-2 text-right">K/D/A</th>
               <th className="px-2 py-2 text-right">+/-</th>
               <th className="px-2 py-2 text-right">ADR</th>
               <th className="px-2 py-2 text-right">KAST%</th>
               <th className="px-2 py-2 text-right">Rating</th>
-              <th className="px-2 py-2 text-right">HS</th>
+              <th className="px-2 py-2 text-right">Impact</th>
               <th className="px-2 py-2 text-right">Damage</th>
-              <th className="px-2 py-2 text-right">FK/FD</th>
-              <th className="px-2 py-2 text-right">Clutch</th>
-              <th className="px-2 py-2 text-right">Util Dmg</th>
-              <th className="px-2 py-2 text-right">Flashes</th>
+              <th className="px-2 py-2 text-right">Entry K/D</th>
+              <th className="px-2 py-2 text-right">Trades</th>
             </tr>
           </thead>
           <tbody>
-            {players.map((p) => {
+            {sorted.map((p) => {
               const pm = plusMinus(p);
               return (
                 <tr key={p.steamid} className="border-t border-border/40">
@@ -375,22 +386,19 @@ function FullTeamTable({ label, players, totalRounds = 0 }: { label: string; pla
                     <Avatar className="h-5 w-5"><AvatarImage src={p.avatar_url ?? undefined} /><AvatarFallback className="text-[8px]">{(p.name ?? "?")[0]}</AvatarFallback></Avatar>
                     <span>{p.name}</span>
                   </td>
-                  <td className="px-3 py-2"><RolePill role={p.role_deduced} /></td>
                   <td className="px-2 py-2 text-right font-mono">{kda(p)}</td>
                   <td className={cn("px-2 py-2 text-right font-mono", pm >= 0 ? "text-emerald-400" : "text-red-400")}>{pm >= 0 ? "+" : ""}{pm}</td>
                   <td className="px-2 py-2 text-right font-mono">{fmtAdr(p, totalRounds)}</td>
                   {(() => { const k = fmtKast(p); return (
-                    <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && p.stats.kast < 60 && "text-red-400")}>{k.text}</td>
+                    <td className={cn("px-2 py-2 text-right font-mono", !k.known && "text-muted-foreground", k.known && (p.stats.kast ?? 0) < 60 && "text-red-400")}>{k.text}</td>
                   ); })()}
                   {(() => { const r = fmtRating(p); return (
-                    <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && p.stats.rating >= 1.0 && "text-emerald-400", r.known && p.stats.rating < 0.9 && "text-red-400")}>{r.text}</td>
+                    <td className={cn("px-2 py-2 text-right font-mono", !r.known && "text-muted-foreground", r.known && (p.stats.rating ?? 0) >= 1.0 && "text-emerald-400", r.known && (p.stats.rating ?? 0) < 0.9 && "text-red-400")}>{r.text}</td>
                   ); })()}
-                  <td className="px-2 py-2 text-right font-mono">{p.stats.hs_kills}</td>
+                  <td className="px-2 py-2 text-right font-mono">{fmtImpact(p, totalRounds)}</td>
                   <td className="px-2 py-2 text-right font-mono">{p.stats.damage}</td>
                   <td className="px-2 py-2 text-right font-mono">{p.stats.first_kills}/{p.stats.first_deaths}</td>
-                  <td className="px-2 py-2 text-right font-mono">{p.stats.clutches_won}/{p.stats.clutches_total}</td>
-                  <td className="px-2 py-2 text-right font-mono">{p.stats.utility_damage}</td>
-                  <td className="px-2 py-2 text-right font-mono">{p.stats.enemies_flashed}</td>
+                  <td className="px-2 py-2 text-right font-mono">—</td>
                 </tr>
               );
             })}
@@ -513,11 +521,11 @@ function RoundsTimeline({ demo, storageKey, compact }: { demo: DemoData; storage
         <div className="text-xs font-heading font-bold flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-accent" /> Rounds Timeline
         </div>
-        <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-1.5 overflow-x-auto">
           {half1.map((r) => <RoundCell key={r.round_number} demo={demo} round={r} highlighted={matches.has(r.round_number)} dimmed={filtersActive && !matches.has(r.round_number)} />)}
         </div>
         <div className="text-center text-[10px] uppercase tracking-widest text-muted-foreground border-t border-border py-1">Half Time</div>
-        <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-1.5 overflow-x-auto">
           {half2.map((r) => <RoundCell key={r.round_number} demo={demo} round={r} highlighted={matches.has(r.round_number)} dimmed={filtersActive && !matches.has(r.round_number)} />)}
         </div>
         <TimelineLegend />
@@ -543,9 +551,23 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
+function computeSurvivors(demo: DemoData, r: DemoRound): { ct: number; t: number } {
+  let deathsCT = 0, deathsT = 0;
+  const team1Side = teamSide(demo, "team1", r.round_number);
+  for (const k of r.kills) {
+    const victimPlayer = demo.players[k.victim];
+    if (!victimPlayer) continue;
+    const victimSide = victimPlayer.team === "team1" ? team1Side : (team1Side === "CT" ? "TERRORIST" : "CT");
+    if (victimSide === "CT") deathsCT++;
+    else deathsT++;
+  }
+  return { ct: Math.max(0, 5 - deathsCT), t: Math.max(0, 5 - deathsT) };
+}
+
 function RoundCell({ demo, round: r, highlighted, dimmed }: { demo: DemoData; round: DemoRound; highlighted?: boolean; dimmed?: boolean }) {
   const t1Won = team1WonRound(demo, r);
   const winnerLabel = t1Won ? demo.match.teams.team1.name : demo.match.teams.team2.name;
+  const surv = computeSurvivors(demo, r);
   return (
     <div
       className={cn(
@@ -571,6 +593,7 @@ function RoundCell({ demo, round: r, highlighted, dimmed }: { demo: DemoData; ro
         {(r.end_reason === "ct_elimination" || r.end_reason === "t_elimination") && <Skull className="h-2.5 w-2.5" />}
         {r.end_reason === "round_time_expired" && <Clock className="h-2.5 w-2.5" />}
       </div>
+      <div className="text-[8px] text-muted-foreground">{surv.ct}🅐 - {surv.t}🅐</div>
       <div className="flex justify-center gap-0.5">
         <BuyPill t={r.buy_types.team1} /> <BuyPill t={r.buy_types.team2} />
       </div>
@@ -675,13 +698,10 @@ function PerformanceCharts({ charts }: { charts: ChartsData }) {
         <h3 className="font-heading font-bold">Performance Charts</h3>
         <p className="text-xs text-muted-foreground">Derivado en tiempo real desde rounds + players</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <BarChartCard title="Player Rating" subtitle="Performance rating" data={charts.player_rating} color="purple" />
         <BarChartCard title="Damage Per Round" subtitle="ADR" data={charts.damage_per_round} color="emerald" />
         <BarChartCard title="Total Damage" subtitle="Daño total" data={charts.total_damage} color="yellow" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <ClutchCard data={charts.clutch} />
         <EntryCard data={charts.entry} />
       </div>
     </div>
@@ -734,23 +754,25 @@ function ClutchCard({ data }: { data: { tag: string; attempts: number; wins: num
   );
 }
 
-function EntryCard({ data }: { data: { tag: string; fk: number; fd: number }[] }) {
-  const max = Math.max(...data.flatMap((d) => [d.fk, d.fd]), 1);
+function EntryCard({ data }: { data: { tag: string; fk: number; fd: number; trades: number }[] }) {
+  const max = Math.max(...data.flatMap((d) => [d.fk, d.fd, d.trades]), 1);
   return (
     <div className="border border-border/50 rounded-md p-3">
-      <div className="text-xs font-heading font-bold text-accent">Entry Fragging</div>
-      <div className="text-[10px] text-muted-foreground mb-3">Opening duels (FK vs FD)</div>
+      <div className="text-xs font-heading font-bold text-accent">Entry Fragging & Trading</div>
+      <div className="text-[10px] text-muted-foreground mb-3">Entry Kills, Entry Deaths & Trades</div>
       <div className="flex items-end gap-1 h-28">
         {data.map((d) => (
           <div key={d.tag} className="flex-1 flex items-end gap-0.5">
-            <div className="w-1/2 bg-emerald-500 rounded-t" style={{ height: `${(d.fk / max) * 100}%` }} title="FK" />
-            <div className="w-1/2 bg-red-500 rounded-t" style={{ height: `${(d.fd / max) * 100}%` }} title="FD" />
+            <div className="w-1/3 bg-emerald-500 rounded-t" style={{ height: `${(d.fk / max) * 100}%` }} title="FK" />
+            <div className="w-1/3 bg-orange-500 rounded-t" style={{ height: `${(d.fd / max) * 100}%` }} title="FD" />
+            <div className="w-1/3 bg-purple-500 rounded-t" style={{ height: `${(d.trades / max) * 100}%` }} title="Trades" />
           </div>
         ))}
       </div>
       <div className="flex justify-center gap-3 text-[9px] text-muted-foreground mt-2">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-emerald-500" /> FK</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-red-500" /> FD</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-emerald-500" /> Entry Kills</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-orange-500" /> Entry Deaths</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-purple-500" /> Trades</span>
       </div>
     </div>
   );

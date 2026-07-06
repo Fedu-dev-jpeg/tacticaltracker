@@ -58,7 +58,7 @@ export interface DemoRound {
 export interface DemoPlayerStats {
   kills: number; deaths: number; assists: number;
   hs_kills: number; damage: number; adr: number;
-  kast: number; rating: number;
+  kast: number | null; rating: number | null;
   first_kills: number; first_deaths: number;
   clutches_won: number; clutches_total: number;
   utility_damage: number; enemies_flashed: number;
