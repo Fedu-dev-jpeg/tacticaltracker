@@ -122,15 +122,53 @@ export async function parseCs2CamMatch(
   onProgress?.(15, "Descargando rondas detalladas del mapa");
   onLog?.("cs2cam", "round-fetch-start", { matchId, mapNumber, rounds: map.round_count });
 
-  const roundPayloads: Cs2CamRoundPayload[] = [];
+  const roundPayloads = new Map<number, Cs2CamRoundPayload>();
+  const missingRoundNumbers: number[] = [];
+  const fetchRoundPayload = async (round: number): Promise<Cs2CamRoundPayload | null> => {
+    const url = `${API_BASE}/round-data-msgpack?match_id=${matchId}&map_number=${mapNumber}&round=${round}`;
+    let lastStatus: number | null = null;
+    let lastError: string | null = null;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        const roundRes = await fetch(url);
+        if (!roundRes.ok) {
+          lastStatus = roundRes.status;
+          if (roundRes.status === 404) return null;
+          continue;
+        }
+        const bytes = new Uint8Array(await roundRes.arrayBuffer());
+        return decode(bytes) as Cs2CamRoundPayload;
+      } catch (e) {
+        lastError = (e as Error).message;
+      }
+    }
+    onLog?.("cs2cam", "round-fetch-failed", {
+      round,
+      status: lastStatus,
+      error: lastError,
+    }, "warn");
+    return null;
+  };
   for (let round = 1; round <= map.round_count; round += 1) {
-    const roundRes = await fetch(`${API_BASE}/round-data-msgpack?match_id=${matchId}&map_number=${mapNumber}&round=${round}`);
-    if (!roundRes.ok) throw new Error(`No se pudo bajar round ${round} (${roundRes.status})`);
-    const bytes = new Uint8Array(await roundRes.arrayBuffer());
-    const roundPayload = decode(bytes) as Cs2CamRoundPayload;
-    roundPayloads.push(roundPayload);
+    const roundPayload = await fetchRoundPayload(round);
+    if (roundPayload) {
+      roundPayloads.set(round, roundPayload);
+    } else {
+      missingRoundNumbers.push(round);
+      onLog?.("cs2cam", "round-missing", { round }, "warn");
+    }
     const pct = 15 + Math.round((round / Math.max(1, map.round_count)) * 65);
     onProgress?.(pct, `Ronda ${round}/${map.round_count}`);
+  }
+  if (roundPayloads.size === 0) {
+    throw new Error("No se pudieron descargar rondas detalladas desde cs2.cam");
+  }
+  if (missingRoundNumbers.length > 0) {
+    onLog?.("cs2cam", "rounds-missing-summary", {
+      missing: missingRoundNumbers,
+      kept: roundPayloads.size,
+      total: map.round_count,
+    }, "warn");
   }
 
   const playersBySteamid = new Map<string, {
@@ -189,7 +227,7 @@ export async function parseCs2CamMatch(
   for (let i = 0; i < map.round_count; i += 1) {
     const roundNumber = i + 1;
     const summary = map.rounds.find((r) => Number(r.round_num) === roundNumber);
-    const payload = roundPayloads[i] ?? {};
+    const payload = roundPayloads.get(roundNumber) ?? {};
 
     for (const p of payload.players ?? []) {
       const sid = String(p.steamid ?? "");
@@ -384,7 +422,9 @@ export async function parseCs2CamMatch(
         total_event_types: 0,
         top_events: {},
         game_rules_fields_seen: [],
-        team_fields_seen: [],
+        team_fields_seen: missingRoundNumbers.length > 0
+          ? [`cs2cam_missing_rounds:${missingRoundNumbers.join(",")}`]
+          : [],
         equipment_fields_seen: [],
       },
     },
