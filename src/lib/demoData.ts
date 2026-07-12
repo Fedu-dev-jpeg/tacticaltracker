@@ -49,7 +49,7 @@ export function migrateLegacyDemoData(input: unknown): DemoData | null {
   const team1Players: LegacyPlayer[] = rawTeamUs?.players ?? [];
   const team2Players: LegacyPlayer[] = rawTeamThem?.players ?? [];
 
-  const totalRounds: number = raw.total_rounds ?? (raw.score_us + raw.score_them);
+  const totalRounds: number = (raw.total_rounds as number | undefined) ?? ((raw.score_us as number) + (raw.score_them as number));
 
   const rounds: DemoRound[] = ((raw.rounds as LegacyRound[] | undefined) ?? []).map((r): DemoRound => {
     const winnerFromUs = r.winner === "us";
