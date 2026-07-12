@@ -128,12 +128,12 @@ export function migrateLegacyDemoData(input: unknown): DemoData | null {
   return {
     schema_version: 2,
     match: {
-      map: raw.map,
-      server: raw.server ?? "",
-      date: raw.generated_at ?? new Date().toISOString(),
-      match_type: raw.match_type ?? "OFFICIAL",
+      map: raw.map as string,
+      server: (raw.server as string | undefined) ?? "",
+      date: (raw.generated_at as string | undefined) ?? new Date().toISOString(),
+      match_type: (raw.match_type as "OFFICIAL" | "TRAINING" | undefined) ?? "OFFICIAL",
       total_rounds: totalRounds,
-      score: { team1: raw.score_us, team2: raw.score_them },
+      score: { team1: raw.score_us as number, team2: raw.score_them as number },
       teams: {
         team1: { name: rawTeamUs?.name ?? "Nosotros", first_half_side: startingSide, player_steamids: team1Players.map((p) => p.steam_id) },
         team2: { name: rawTeamThem?.name ?? String(raw.rival ?? "Rival"), first_half_side: startingSide === "CT" ? "TERRORIST" : "CT", player_steamids: team2Players.map((p) => p.steam_id) },
