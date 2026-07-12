@@ -15,6 +15,8 @@ interface Seed {
 }
 
 const DOMAIN = "hambrientos.com";
+const DEFAULT_PASSWORD = "tactical1";
+const FEDU_PASSWORD = "Fedeesel1*";
 
 interface RosterEntry {
   handle: string;
@@ -71,22 +73,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Passwords are provided via secrets — never hardcoded.
-  const adminPassword = Deno.env.get("SEED_ADMIN_PASSWORD");
-  const playerPassword = Deno.env.get("SEED_PLAYER_PASSWORD");
-  if (!adminPassword || !playerPassword) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "faltan secretos SEED_ADMIN_PASSWORD y/o SEED_PLAYER_PASSWORD",
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-
   const ROSTER: Seed[] = ROSTER_META.map((r) => ({
     ...r,
-    password: r.role === "admin" ? adminPassword : playerPassword,
+    password: r.handle === "fedu" ? FEDU_PASSWORD : DEFAULT_PASSWORD,
   }));
 
   const log: Record<string, string> = {};
