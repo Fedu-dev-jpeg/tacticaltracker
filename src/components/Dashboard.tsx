@@ -500,7 +500,7 @@ function PistolConversionCard({ matches, colors }: { matches: Match[]; colors: C
         <>
           <div className="h-64 cursor-pointer" onClick={() => setShowBreakdown(true)} title="Click para ver detalle por mapa">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pistolData} layout="vertical" barCategoryGap="30%">
+              <BarChart data={[...pistolData]} layout="vertical" barCategoryGap="30%">
                 <CartesianGrid stroke="hsl(220 16% 18%)" horizontal={false} />
                 <XAxis type="number" domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
                 <YAxis type="category" dataKey="name" stroke="hsl(215 15% 55%)" fontSize={11} width={80} />
