@@ -159,13 +159,6 @@ function parseExternalEvents(rawText: string, contentType: string): ExternalEven
   return parseEventsFromIcs(rawText);
 }
 
-function isAgendaScrimEvent(ev: AgendaComparable): boolean {
-  const type = (ev.event_type ?? "").toLowerCase();
-  if (type === "scrim" || type === "training") return true;
-  const text = `${ev.title} ${ev.description}`.toLowerCase();
-  return /\b(scrim|pracc|treino|entreno|vs\.?)\b/.test(text);
-}
-
 function parseEventsFromJson(input: unknown): ExternalEvent[] {
   const candidates: unknown[] = [];
   if (Array.isArray(input)) {
@@ -306,7 +299,7 @@ function isLikelyJson(text: string): boolean {
 
 function isSearchingText(text: string): boolean {
   const s = text.toLowerCase();
-  return /\b(lfs|looking for scrim|scrim search|request|buscando|searching|offer)\b/.test(s);
+  return /\b(lfs|lfs\+|lf\s+scrim|looking\s+for|looking for scrim|scrim search|request|buscando|busco|searching|offer|open\s+scrim|pracc)\b/.test(s);
 }
 
 function startOfDay(d: Date): Date {
@@ -354,4 +347,16 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function isAgendaScrimEvent(ev: AgendaComparable): boolean {
+  const text = `${ev.title} ${ev.description}`.toLowerCase();
+  const negativeSignals = /\b(tactico|táctico|analisis|análisis|review|demo|reunion|reunión|meeting|organizacion|organización|guide|get started|getting started)\b/;
+  if (negativeSignals.test(text)) return false;
+
+  const positiveSignals = /\b(scrim|pracc|treino|entreno|vs\.?|practice match|full treino)\b/;
+  if (positiveSignals.test(text)) return true;
+
+  // Keep explicit scrim event_type as valid, but do not auto-include generic trainings.
+  return (ev.event_type ?? "").toLowerCase() === "scrim";
 }
