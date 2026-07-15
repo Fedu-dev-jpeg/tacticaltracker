@@ -431,6 +431,7 @@ Deno.serve(async (req) => {
         tr_pistol: "WIN", tr_second_round: "WIN", tr_setup: "WIN", tr_finalizacion: "WIN",
         notes: `Importado desde demo: ${path ?? "(sin path)"}`,
         recorded_by: "demo-import",
+        confirmed: true,
       })
       .select("id").single();
     if (matchErr) return json({ error: "matches insert: " + matchErr.message }, 500);

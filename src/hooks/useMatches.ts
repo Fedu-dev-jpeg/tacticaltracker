@@ -15,7 +15,6 @@ export function useMatches() {
     const { data, error } = await supabase
       .from("matches")
       .select("*, tournaments(name)")
-      .eq("confirmed", true)
       .order("date", { ascending: false });
     if (!error && data) {
       setMatches(data.map(dbToMatch));
