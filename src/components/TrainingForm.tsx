@@ -15,7 +15,7 @@ import DemoUploader from "@/components/DemoUploader";
 import { useTournaments } from "@/hooks/useTournaments";
 
 interface TrainingFormProps {
-  onSubmit: (match: Omit<Match, "id">) => void;
+  onSubmit: (match: Omit<Match, "id">) => void | Promise<void>;
   initialData?: Match;
   initialDate?: string;
   initialType?: MatchType;
@@ -72,6 +72,7 @@ export default function TrainingForm({ onSubmit, initialData, initialDate, initi
   const [trFinalizacion, setTrFinalizacion] = useState<WinLoss>(initialData?.trFinalizacion ?? "WIN");
   const [startingSide, setStartingSide] = useState<Side>(initialData?.startingSide ?? "CT");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!initialData && initialDate) {
@@ -93,32 +94,42 @@ export default function TrainingForm({ onSubmit, initialData, initialDate, initi
     if (sameDayTournament) setTournamentId(sameDayTournament.id);
   }, [date, tournamentId, tournaments, type]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scoreUs || !scoreThem) {
       toast.error("Completa el score final");
       return;
     }
-    onSubmit({
-      date: date.toISOString(),
-      type,
-      map,
-      rival,
-      scoreUs: parseInt(scoreUs),
-      scoreThem: parseInt(scoreThem),
-      ctPistol,
-      ctSecondRound,
-      ctSetup,
-      ctFinalizacion,
-      trPistol,
-      trSecondRound,
-      trSetup,
-      trFinalizacion,
-      startingSide,
-      notes,
-      tournamentId: type === "Oficial" ? tournamentId || null : null,
-    });
-    toast.success("¡Treino registrado exitosamente!");
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        date: date.toISOString(),
+        type,
+        map,
+        rival,
+        scoreUs: parseInt(scoreUs),
+        scoreThem: parseInt(scoreThem),
+        ctPistol,
+        ctSecondRound,
+        ctSetup,
+        ctFinalizacion,
+        trPistol,
+        trSecondRound,
+        trSetup,
+        trFinalizacion,
+        startingSide,
+        notes,
+        tournamentId: type === "Oficial" ? tournamentId || null : null,
+      });
+    } catch (error) {
+      toast.error("No se pudo guardar el registro", {
+        description: String((error as Error).message ?? error),
+      });
+      setSubmitting(false);
+      return;
+    }
+    setSubmitting(false);
+    toast.success("¡Registro guardado exitosamente!");
     // Reset
     setRival("");
     setScoreUs("");
@@ -268,8 +279,8 @@ export default function TrainingForm({ onSubmit, initialData, initialDate, initi
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Errores, cosas a mejorar, estrategias probadas..." rows={3} />
         </div>
 
-        <Button type="submit" className="w-full gradient-accent text-accent-foreground font-heading text-lg h-12">
-          Guardar Registro
+        <Button type="submit" disabled={submitting} className="w-full gradient-accent text-accent-foreground font-heading text-lg h-12">
+          {submitting ? "Guardando..." : "Guardar Registro"}
         </Button>
       </div>
     </form>

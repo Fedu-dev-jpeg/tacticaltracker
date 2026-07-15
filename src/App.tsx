@@ -47,8 +47,8 @@ function Routed({ matchState }: { matchState: MatchState }) {
         path="/registrar"
         element={
           <Registrar
-            onSubmit={(m) => {
-              addMatch(m);
+            onSubmit={async (m) => {
+              await addMatch(m);
               navigate("/");
             }}
           />
