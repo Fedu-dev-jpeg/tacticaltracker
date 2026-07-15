@@ -15,6 +15,7 @@ type FaceitLeagueResponse = {
   };
   competition?: {
     id: string;
+    season_id?: string | null;
     name: string;
     status: string | null;
     region: string | null;
@@ -36,6 +37,7 @@ type FaceitLeagueResponse = {
     teamSettings: string[];
     api: string;
   };
+  linksConfigured?: boolean;
   error?: string;
 };
 
@@ -73,9 +75,11 @@ export default function FaceitLeagueCard() {
               {data?.reason ?? "Falta configuración para consultar resultados reales."}
             </p>
             <div className="mt-3 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+              <span>Links: <strong className={data?.linksConfigured ? "text-success" : "text-foreground"}>{data?.linksConfigured ? "configurados" : "pendientes"}</strong></span>
               <span>Secret requerido: <strong className="text-foreground">FACEIT_API_KEY</strong></span>
-              <span>Settings: <strong className="text-foreground">faceit_team_url / faceit_team_id</strong></span>
-              <span className="sm:col-span-2">Opcional recomendado: <strong className="text-foreground">faceit_championship_id</strong></span>
+              <span>Team ID: <strong className="text-foreground">{data?.team?.id ?? "pendiente"}</strong></span>
+              <span>League: <strong className="text-foreground">{data?.competition?.name ?? "ESEA League"}</strong></span>
+              <span className="sm:col-span-2">Para resultados exactos puede hacer falta <strong className="text-foreground">faceit_championship_id</strong>.</span>
             </div>
           </div>
           <Star className="h-10 w-10 shrink-0 text-accent/70" />

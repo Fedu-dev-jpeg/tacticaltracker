@@ -17,15 +17,6 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
     if (!jwt) return json({ error: "unauthenticated" }, 401);
 
-    const apiKey = Deno.env.get("FACEIT_API_KEY");
-    if (!apiKey) {
-      return json({
-        configured: false,
-        reason: "FACEIT_API_KEY no configurada en Supabase Functions.",
-        setup: requiredSetup(),
-      });
-    }
-
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -37,12 +28,34 @@ Deno.serve(async (req) => {
     const { data: rows, error: settingsErr } = await admin
       .from("team_settings")
       .select("key,value")
-      .in("key", ["faceit_team_url", "faceit_team_id", "faceit_championship_id"]);
+      .in("key", [
+        "faceit_team_url",
+        "faceit_team_id",
+        "faceit_league_url",
+        "faceit_league_id",
+        "faceit_season_id",
+        "faceit_championship_id",
+      ]);
     if (settingsErr) return json({ error: settingsErr.message }, 500);
 
     const settings = Object.fromEntries((rows ?? []).map((row) => [row.key, row.value?.trim() ?? ""])) as Settings;
     let teamId = settings.faceit_team_id || extractTeamId(settings.faceit_team_url);
     const teamSlug = extractTeamSlug(settings.faceit_team_url);
+    const leagueParts = extractLeagueParts(settings.faceit_league_url);
+    const leagueId = settings.faceit_league_id || leagueParts.leagueId;
+    const seasonId = settings.faceit_season_id || leagueParts.seasonId;
+    const apiKey = Deno.env.get("FACEIT_API_KEY");
+
+    if (!apiKey) {
+      return json({
+        configured: false,
+        linksConfigured: Boolean(teamId || teamSlug || leagueId || seasonId),
+        reason: "Los links de FACEIT ya están configurados, pero FACEIT Data API requiere FACEIT_API_KEY para leer resultados live.",
+        team: teamId ? { id: teamId, name: "Tactical Chaos", avatar: null, members: null } : null,
+        competition: leagueId ? { id: leagueId, season_id: seasonId || null, name: "ESEA League - Temporada 58", status: "api_key_required", region: null } : null,
+        setup: requiredSetup(),
+      });
+    }
 
     if (!teamId && teamSlug) {
       const search = await faceitFetch(`/search/teams?nickname=${encodeURIComponent(teamSlug)}&game=cs2&offset=0&limit=10`, apiKey);
@@ -59,6 +72,28 @@ Deno.serve(async (req) => {
 
     const team = await faceitFetch(`/teams/${encodeURIComponent(teamId)}`, apiKey);
     const championshipId = settings.faceit_championship_id || await findEseaChampionshipId(teamId, apiKey);
+
+    if (!championshipId && leagueId && seasonId) {
+      const leagueSeason = await faceitFetch(
+        `/leagues/${encodeURIComponent(leagueId)}/seasons/${encodeURIComponent(seasonId)}`,
+        apiKey,
+      );
+      return json({
+        configured: true,
+        team: normalizeTeam(team, teamId),
+        competition: {
+          id: leagueId,
+          season_id: seasonId,
+          name: leagueSeason?.name ?? leagueSeason?.season_name ?? "ESEA League",
+          status: leagueSeason?.status ?? null,
+          region: leagueSeason?.region ?? null,
+        },
+        matches: [],
+        record: { wins: 0, losses: 0 },
+        reason: "Liga/temporada encontrada. Para resultados por equipo exactos, configurá faceit_championship_id si FACEIT no expone matches en este endpoint.",
+        setup: requiredSetup(),
+      });
+    }
 
     if (!championshipId) {
       return json({
@@ -142,6 +177,20 @@ function extractTeamSlug(value = "") {
   }
 }
 
+function extractLeagueParts(value = "") {
+  try {
+    const url = new URL(value);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const leagueIndex = parts.findIndex((part) => part === "league");
+    return {
+      leagueId: parts[leagueIndex + 2] ?? "",
+      seasonId: parts[leagueIndex + 3] ?? "",
+    };
+  } catch {
+    return { leagueId: "", seasonId: "" };
+  }
+}
+
 function normalizeTeam(team: Record<string, unknown> | null, fallbackId: string) {
   return {
     id: String(team?.team_id ?? fallbackId),
@@ -180,8 +229,12 @@ function normalizeMatch(match: Record<string, unknown>, teamId: string, teamName
 function requiredSetup() {
   return {
     env: "FACEIT_API_KEY",
-    teamSettings: ["faceit_team_url o faceit_team_id", "faceit_championship_id recomendado para ESEA exacto"],
-    api: "FACEIT Data API v4: /teams, /teams/{id}/tournaments, /championships/{id}/matches",
+    teamSettings: [
+      "faceit_team_url o faceit_team_id",
+      "faceit_league_url o faceit_league_id + faceit_season_id",
+      "faceit_championship_id recomendado para resultados exactos",
+    ],
+    api: "FACEIT Data API v4: /teams, /teams/{id}/tournaments, /leagues/{id}/seasons/{season_id}, /championships/{id}/matches",
   };
 }
 
