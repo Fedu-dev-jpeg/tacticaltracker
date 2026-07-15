@@ -9,7 +9,7 @@ import { usePendingMatches } from "@/hooks/usePendingMatches";
 import { MATCH_TYPES, type Match, type MatchType } from "@/types/match";
 
 interface RegistrarProps {
-  onSubmit: (match: Omit<Match, "id">) => void;
+  onSubmit: (match: Omit<Match, "id">) => void | Promise<void>;
 }
 
 export default function Registrar({ onSubmit }: RegistrarProps) {

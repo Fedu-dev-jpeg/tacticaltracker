@@ -17,13 +17,10 @@ export function useUserRole() {
     }
     let cancelled = false;
     supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle()
+      .rpc("current_user_role")
       .then(({ data }) => {
         if (cancelled) return;
-        setRole((data?.role as AppRole) ?? "player");
+        setRole((data as AppRole | null) ?? "player");
         setLoading(false);
       });
     return () => {

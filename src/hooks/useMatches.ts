@@ -47,7 +47,8 @@ export function useMatches() {
   const addMatch = useCallback(async (match: Omit<Match, "id">) => {
     const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Desconocido";
     const row = matchToDb({ ...match, recorded_by: playerName });
-    await supabase.from("matches").insert(row);
+    const { error } = await supabase.from("matches").insert(row);
+    if (error) throw error;
     fetchMatches();
   }, [user, fetchMatches]);
 
@@ -144,6 +145,7 @@ function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
     notes: match.notes || "",
     recorded_by: match.recorded_by || "",
     tournament_id: match.tournamentId || null,
+    confirmed: true,
   };
 }
 
