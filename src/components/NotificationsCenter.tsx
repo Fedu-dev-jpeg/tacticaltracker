@@ -12,6 +12,7 @@ import { useAgendaEvents } from "@/hooks/useAgendaEvents";
 import { useTournaments } from "@/hooks/useTournaments";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Match } from "@/types/match";
 import { useEffect, useState } from "react";
 
@@ -56,12 +57,14 @@ function isTrainingEvent(eventType: string, title: string, description: string) 
 
 export default function NotificationsCenter({ matches }: { matches: Match[] }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { isAdmin, isCoach } = useUserRole();
   const { data: agendaEvents = [] } = useAgendaEvents();
   const { tournaments } = useTournaments();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecordLite[]>([]);
   const canManageStaffTools = isAdmin || isCoach;
-  const [dismissed, setDismissed] = useLocalStorage<string[]>("notif:dismissed", []);
+  const dismissKey = user ? `notif:dismissed:${user.id}` : "notif:dismissed:anon";
+  const [dismissed, setDismissed] = useLocalStorage<string[]>(dismissKey, []);
   const [filter, setFilter] = useState<NotifKind | "all">("all");
 
   useEffect(() => {
@@ -236,16 +239,6 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
             {visibleNotifications.length} visibles
           </span>
           <div className="flex gap-2">
-            {dismissed.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-[10px]"
-                onClick={() => setDismissed([])}
-              >
-                Restablecer
-              </Button>
-            )}
             <Button
               variant="ghost"
               size="sm"
