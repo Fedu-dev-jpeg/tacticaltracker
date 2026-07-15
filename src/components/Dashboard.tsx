@@ -183,7 +183,7 @@ export default function Dashboard({ matches }: DashboardProps) {
         )}
       </div>
 
-      <FaceitLeagueCard />
+      <FaceitLeagueCard matches={matches} />
 
       {/* Team Objectives */}
       <div className="bg-card rounded-lg border border-accent/30 p-6 card-glow">

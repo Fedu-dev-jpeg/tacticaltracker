@@ -102,15 +102,22 @@ export default function Analysis({ matches }: AnalysisProps) {
   if (trPistol < 50) recommendations.push("Practicar pistol setups TR");
   if (ctConv < 60) recommendations.push("Trabajar anti-eco CT (conversión 2nd round)");
   if (trConv < 60) recommendations.push("Trabajar anti-eco TR (conversión 2nd round)");
-  mapStats.forEach((m) => {
-    if (m.count < 3 && m.count > 0) recommendations.push(`Necesitan más práctica en ${m.name} (solo ${m.count} partidos)`);
-    if (m.count === 0) recommendations.push(`Sin partidos en ${m.name} — priorizar`);
-    if (m.winRate < 40 && m.count > 0) recommendations.push(`Foco urgente en ${m.name} (${m.winRate}% WR)`);
-  });
-  mapStats.filter((d) => d.count > 0).forEach((d) => {
+  const playedMapStats = mapStats.filter((m) => m.count > 0);
+  const lowVolumeMaps = playedMapStats.filter((m) => m.count < 3).sort((a, b) => a.count - b.count);
+  const urgentMaps = playedMapStats.filter((m) => m.winRate < 45).sort((a, b) => a.winRate - b.winRate);
+  urgentMaps.forEach((m) => recommendations.push(`Foco mapa: ${m.name} (${m.winRate}% WR en ${m.count} partidos)`));
+  lowVolumeMaps.slice(0, 2).forEach((m) => recommendations.push(`Sumar volumen controlado en ${m.name} (${m.count}/3 partidos mínimos)`));
+  playedMapStats.forEach((d) => {
     if (d.ctPistol < 40) recommendations.push(`CT Pistol muy bajo en ${d.name} (${d.ctPistol}%)`);
     if (d.trPistol < 40) recommendations.push(`TR Pistol muy bajo en ${d.name} (${d.trPistol}%)`);
   });
+  const nextTrainingMaps = [...playedMapStats]
+    .sort((a, b) => {
+      const aScore = (a.winRate < 45 ? 0 : 20) + a.count * 4 + Math.min(a.ctPistol, a.trPistol);
+      const bScore = (b.winRate < 45 ? 0 : 20) + b.count * 4 + Math.min(b.ctPistol, b.trPistol);
+      return aScore - bScore;
+    })
+    .slice(0, 3);
 
   const COLORS = { ct: "#1F4E79", tr: "#0088FF", success: "#70AD47", danger: "#e74c3c", accent: "#00B7FF" };
   const chartTheme = {
@@ -247,6 +254,22 @@ export default function Analysis({ matches }: AnalysisProps) {
                   <MiniRead label="CT conversion" value={`${ctConv}%`} good={ctConv >= 60} />
                   <MiniRead label="TR conversion" value={`${trConv}%`} good={trConv >= 60} />
                 </div>
+                {nextTrainingMaps.length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">Mapa foco sugerido</div>
+                    {nextTrainingMaps.map((m) => (
+                      <div key={m.name} className="rounded-md border border-border bg-card/60 px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <strong className="text-foreground">{m.name}</strong>
+                          <span className={m.winRate >= 50 ? "text-success" : "text-destructive"}>{m.winRate}% WR</span>
+                        </div>
+                        <div className="mt-1 text-muted-foreground">
+                          {m.count} partidos · CT pistol {m.ctPistol}% · TR pistol {m.trPistol}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {recommendations.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Todo se ve estable. Mantener el ritmo y sumar volumen por mapa.</p>
                 ) : (

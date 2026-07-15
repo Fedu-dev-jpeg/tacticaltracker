@@ -47,12 +47,16 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get("FACEIT_API_KEY");
 
     if (!apiKey) {
+      const publicTeam = teamId ? await publicFaceitFetch(`/api/teams/v1/teams/${encodeURIComponent(teamId)}`).catch(() => null) : null;
       return json({
-        configured: false,
+        configured: true,
+        publicOnly: true,
         linksConfigured: Boolean(teamId || teamSlug || leagueId || seasonId),
-        reason: "Los links de FACEIT ya están configurados, pero FACEIT Data API requiere FACEIT_API_KEY para leer resultados live.",
-        team: teamId ? { id: teamId, name: "Tactical Chaos", avatar: null, members: null } : null,
+        reason: "FACEIT permite leer perfil/equipo público, pero el resultado live de ESEA League requiere FACEIT_API_KEY.",
+        team: publicTeam?.payload ? normalizePublicTeam(publicTeam.payload, teamId) : teamId ? { id: teamId, name: "Tactical Chaos", avatar: null, members: null } : null,
         competition: leagueId ? { id: leagueId, season_id: seasonId || null, name: "ESEA League - Temporada 58", status: "api_key_required", region: null } : null,
+        record: null,
+        matches: [],
         setup: requiredSetup(),
       });
     }
@@ -150,6 +154,14 @@ async function faceitFetch(path: string, apiKey: string) {
   return res.json();
 }
 
+async function publicFaceitFetch(path: string) {
+  const res = await fetch(`https://www.faceit.com${path}`, {
+    headers: { "User-Agent": "Mozilla/5.0 TacticalTracker/1.0", Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`FACEIT public ${path} devolvió ${res.status}`);
+  return res.json();
+}
+
 async function findEseaChampionshipId(teamId: string, apiKey: string) {
   try {
     const payload = await faceitFetch(`/teams/${encodeURIComponent(teamId)}/tournaments?offset=0&limit=20`, apiKey);
@@ -197,6 +209,15 @@ function normalizeTeam(team: Record<string, unknown> | null, fallbackId: string)
     name: String(team?.nickname ?? team?.name ?? "Equipo FACEIT"),
     avatar: typeof team?.avatar === "string" ? team.avatar : null,
     members: Array.isArray(team?.members) ? team.members.length : null,
+  };
+}
+
+function normalizePublicTeam(team: Record<string, unknown>, fallbackId: string) {
+  return {
+    id: String(team.guid ?? fallbackId),
+    name: String(team.name ?? team.nickname ?? "Equipo FACEIT"),
+    avatar: typeof team.avatar === "string" ? team.avatar : null,
+    members: Array.isArray(team.members_ids) ? team.members_ids.length : null,
   };
 }
 

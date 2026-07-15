@@ -25,6 +25,19 @@ export interface PlayerProfileData {
   refetch: () => void;
 }
 
+function normalizeMapName(value: string | null | undefined) {
+  const raw = String(value ?? "").trim().toLowerCase().replace(/^de_/, "");
+  const aliases: Record<string, string> = {
+    mirage: "Mirage",
+    inferno: "Inferno",
+    nuke: "Nuke",
+    ancient: "Ancient",
+    anubis: "Anubis",
+    cache: "Cache",
+  };
+  return aliases[raw] ?? (value || "Sin mapa");
+}
+
 export function useMyPlayerProfile(): PlayerProfileData {
   const { user } = useAuth();
   const [member, setMember] = useState<PlayerProfileData["member"]>(null);
@@ -75,10 +88,11 @@ export function useMyPlayerProfile(): PlayerProfileData {
         for (const r of rows) {
           const match = matches?.find((mm) => mm.id === r.match_id);
           if (!match?.map) continue;
-          const cur = mapToAdr.get(match.map) ?? { sum: 0, n: 0 };
+          const normalizedMap = normalizeMapName(match.map);
+          const cur = mapToAdr.get(normalizedMap) ?? { sum: 0, n: 0 };
           cur.sum += Number(r.adr ?? 0);
           cur.n += 1;
-          mapToAdr.set(match.map, cur);
+          mapToAdr.set(normalizedMap, cur);
         }
         for (const match of matches ?? []) {
           const ours = match.score_us ?? 0;
