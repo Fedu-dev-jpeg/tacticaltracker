@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Timer, Trophy } from "lucide-react";
 
+function sameLocalDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
 function diff(target: Date) {
   const ms = Math.max(0, target.getTime() - Date.now());
   const days = Math.floor(ms / 86_400_000);
@@ -26,8 +32,9 @@ export default function TournamentCountdown({ target, name, format, onOpenTourna
   }, [target]);
 
   const over = t.ms === 0;
-  const cells: { label: string; value: number }[] = [
-    { label: "Días", value: t.days },
+  const isToday = sameLocalDay(target, new Date());
+  const cells: { label: string; value: number | string }[] = [
+    { label: isToday ? "Día" : "Días", value: isToday ? (over ? "VAMOS" : "HOY!") : t.days },
     { label: "Horas", value: t.hours },
     { label: "Min", value: t.minutes },
     { label: "Seg", value: t.seconds },
@@ -51,7 +58,7 @@ export default function TournamentCountdown({ target, name, format, onOpenTourna
           </div>
           <div>
             <p className="stat-label">
-              {over ? "El torneo ya empezó" : "Cuenta regresiva al Torneo"}
+              {isToday ? "HOY SE JUEGA — VAMOS EQUIPO" : over ? "El torneo ya empezó" : "Cuenta regresiva al Torneo"}
             </p>
             <p className="text-sm font-heading font-bold text-accent">
               {name ? `${name} · ` : ""}{dateLabel}{format ? ` · ${format}` : ""}
@@ -65,7 +72,7 @@ export default function TournamentCountdown({ target, name, format, onOpenTourna
               className="min-w-[62px] px-3 py-2 rounded-md bg-card/70 border border-border text-center"
             >
               <div className="font-heading font-bold text-2xl leading-none tabular-nums text-foreground">
-                {String(c.value).padStart(2, "0")}
+                {typeof c.value === "number" ? String(c.value).padStart(2, "0") : c.value}
               </div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground mt-1">{c.label}</div>
             </div>

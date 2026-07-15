@@ -23,11 +23,21 @@ import NotFound from "./pages/NotFound";
 import OAuthConsent from "./pages/OAuthConsent";
 import { useMatches } from "@/hooks/useMatches";
 import { useNavigate } from "react-router-dom";
+import type { Match } from "@/types/match";
 
 const queryClient = new QueryClient();
 
-function Routed() {
-  const { matches, addMatch, updateMatch, deleteMatch, importData, exportData } = useMatches();
+type MatchState = {
+  matches: Match[];
+  addMatch: (match: Omit<Match, "id">) => Promise<void>;
+  updateMatch: (id: string, data: Partial<Match>) => Promise<void>;
+  deleteMatch: (id: string) => Promise<void>;
+  importData: (data: Match[]) => Promise<void>;
+  exportData: () => string;
+};
+
+function Routed({ matchState }: { matchState: MatchState }) {
+  const { matches, addMatch, updateMatch, deleteMatch, importData, exportData } = matchState;
   const navigate = useNavigate();
 
   return (
@@ -71,6 +81,7 @@ function Routed() {
 
 function AppContent() {
   const { user, loading } = useAuth();
+  const matchState = useMatches();
 
   // Prefetch agenda events as soon as the user is authenticated so opening
   // /agenda later renders instantly from cache instead of triggering a fetch.
@@ -93,8 +104,8 @@ function AppContent() {
   if (!user) return <Login />;
 
   return (
-    <AppShell>
-      <Routed />
+    <AppShell matches={matchState.matches}>
+      <Routed matchState={matchState} />
     </AppShell>
   );
 }

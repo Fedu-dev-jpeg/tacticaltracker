@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, type ComponentType } from "react";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType, TOURNAMENT_DATE } from "@/types/match";
 import { isWin, getWinRate, getStreak, getPistolRate, getConversionRate } from "@/hooks/useMatches";
-import { differenceInDays, startOfWeek, format } from "date-fns";
+import { differenceInCalendarDays, startOfWeek, format } from "date-fns";
 import { Trophy, Target, TrendingUp, Timer, Flame, User, Plus, Check, Trash2, BarChart3, Filter } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend, ReferenceLine, LabelList } from "recharts";
@@ -16,6 +16,7 @@ import TournamentCountdown from "@/components/TournamentCountdown";
 import TournamentsManager from "@/components/TournamentsManager";
 import { useTournaments, getUpcomingTournament } from "@/hooks/useTournaments";
 import { useNavigate } from "react-router-dom";
+import FaceitLeagueCard from "@/components/FaceitLeagueCard";
 
 interface DashboardProps {
   matches: Match[];
@@ -77,7 +78,7 @@ export default function Dashboard({ matches }: DashboardProps) {
   const { tournaments } = useTournaments();
   const upcoming = getUpcomingTournament(tournaments);
   const upcomingDate = upcoming ? new Date(upcoming.start_date) : null;
-  const daysLeft = upcomingDate ? Math.max(0, differenceInDays(upcomingDate, new Date())) : null;
+  const daysLeft = upcomingDate ? Math.max(0, differenceInCalendarDays(upcomingDate, new Date())) : null;
 
   // Objectives state
   const [objectives, setObjectives] = useState<TeamObjective[]>([]);
@@ -176,11 +177,13 @@ export default function Dashboard({ matches }: DashboardProps) {
           <StatCard
             icon={Timer}
             label="Días al Torneo"
-            value={daysLeft ?? 0}
-            sub={upcomingDate.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            value={daysLeft === 0 ? "HOY!" : daysLeft ?? "-"}
+            sub={daysLeft === 0 ? "VAMOS EQUIPO — A ROMPERLA" : upcomingDate.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
           />
         )}
       </div>
+
+      <FaceitLeagueCard />
 
       {/* Team Objectives */}
       <div className="bg-card rounded-lg border border-accent/30 p-6 card-glow">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Tournament {
@@ -12,25 +12,27 @@ export interface Tournament {
   updated_at: string;
 }
 
+export const TOURNAMENTS_QUERY_KEY = ["tournaments"] as const;
+
+export async function fetchTournaments(): Promise<Tournament[]> {
+  const { data, error } = await supabase
+    .from("tournaments")
+    .select("*")
+    .order("start_date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Tournament[];
+}
+
 export function useTournaments() {
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [loading, setLoading] = useState(true);
+  const query = useQuery({
+    queryKey: TOURNAMENTS_QUERY_KEY,
+    queryFn: fetchTournaments,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("tournaments")
-      .select("*")
-      .order("start_date", { ascending: true });
-    if (!error && data) setTournaments(data as Tournament[]);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  return { tournaments, loading, refetch: fetchAll };
+  return { tournaments: query.data ?? [], loading: query.isLoading, refetch: query.refetch };
 }
 
 /** Returns the next tournament that hasn't finished yet, or null. */

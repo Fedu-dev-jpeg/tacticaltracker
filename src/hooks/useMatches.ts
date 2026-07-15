@@ -14,7 +14,7 @@ export function useMatches() {
   const fetchMatches = useCallback(async () => {
     const { data, error } = await supabase
       .from("matches")
-      .select("*")
+      .select("*, tournaments(name)")
       .eq("confirmed", true)
       .order("date", { ascending: false });
     if (!error && data) {
@@ -24,11 +24,17 @@ export function useMatches() {
   }, []);
 
   useEffect(() => {
-    if (user) fetchMatches();
+    if (user) {
+      fetchMatches();
+    } else {
+      setMatches([]);
+      setLoading(false);
+    }
   }, [user, fetchMatches]);
 
   // Realtime subscription
   useEffect(() => {
+    if (!user) return;
     const channel = supabase
       .channel(`matches-changes-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => {
@@ -36,7 +42,7 @@ export function useMatches() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [fetchMatches]);
+  }, [fetchMatches, user]);
 
   const addMatch = useCallback(async (match: Omit<Match, "id">) => {
     const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Desconocido";
@@ -63,6 +69,7 @@ export function useMatches() {
     if (data.trFinalizacion !== undefined) updates.tr_finalizacion = data.trFinalizacion;
     if (data.startingSide !== undefined) updates.starting_side = data.startingSide;
     if (data.notes !== undefined) updates.notes = data.notes;
+    if (data.tournamentId !== undefined) updates.tournament_id = data.tournamentId;
     await supabase.from("matches").update(updates).eq("id", id);
     fetchMatches();
   }, [fetchMatches]);
@@ -112,6 +119,8 @@ function dbToMatch(row: Record<string, unknown>): Match {
     notes: row.notes as string,
     recorded_by: (row.recorded_by as string) || "",
     demo_data: (row.demo_data as unknown) ?? null,
+    tournamentId: (row.tournament_id as string | null) ?? null,
+    tournamentName: ((row.tournaments as { name?: string } | null)?.name as string | undefined) ?? null,
   };
 }
 
@@ -134,6 +143,7 @@ function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
     starting_side: match.startingSide,
     notes: match.notes || "",
     recorded_by: match.recorded_by || "",
+    tournament_id: match.tournamentId || null,
   };
 }
 
