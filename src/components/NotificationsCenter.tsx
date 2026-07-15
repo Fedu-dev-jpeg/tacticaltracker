@@ -239,16 +239,6 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
             {visibleNotifications.length} visibles
           </span>
           <div className="flex gap-2">
-            {dismissed.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-[10px]"
-                onClick={() => setDismissed([])}
-              >
-                Restablecer
-              </Button>
-            )}
             <Button
               variant="ghost"
               size="sm"
