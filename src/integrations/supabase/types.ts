@@ -56,6 +56,50 @@ export type Database = {
         }
         Relationships: []
       }
+      attendance_records: {
+        Row: {
+          arrival_time: string | null
+          attendance_date: string
+          created_at: string
+          created_by: string | null
+          id: string
+          late_level: number
+          notes: string | null
+          team_member_id: string
+          updated_at: string
+        }
+        Insert: {
+          arrival_time?: string | null
+          attendance_date: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          late_level?: number
+          notes?: string | null
+          team_member_id: string
+          updated_at?: string
+        }
+        Update: {
+          arrival_time?: string | null
+          attendance_date?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          late_level?: number
+          notes?: string | null
+          team_member_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
