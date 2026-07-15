@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Plus, ClipboardCheck } from "lucide-react";
@@ -13,7 +14,9 @@ interface RegistrarProps {
 
 export default function Registrar({ onSubmit }: RegistrarProps) {
   const { count } = usePendingMatches();
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<string>("new");
+  const reminderDate = searchParams.get("date") ?? undefined;
 
   // If a demo lands in pending while the user is in "new", auto-hint by
   // switching to the pending tab the first time count goes from 0 → >0.
@@ -44,7 +47,7 @@ export default function Registrar({ onSubmit }: RegistrarProps) {
         </TabsList>
 
         <TabsContent value="new" className="mt-4">
-          <TrainingForm onSubmit={onSubmit} />
+          <TrainingForm onSubmit={onSubmit} initialDate={reminderDate} />
         </TabsContent>
 
         <TabsContent value="pending" className="mt-4">

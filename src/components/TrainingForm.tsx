@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { CalendarIcon, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ import DemoUploader from "@/components/DemoUploader";
 interface TrainingFormProps {
   onSubmit: (match: Omit<Match, "id">) => void;
   initialData?: Match;
+  initialDate?: string;
 }
 
 function WinLossToggle({ value, onChange, label }: { value: WinLoss; onChange: (v: WinLoss) => void; label: string }) {
@@ -48,8 +49,10 @@ function WinLossToggle({ value, onChange, label }: { value: WinLoss; onChange: (
   );
 }
 
-export default function TrainingForm({ onSubmit, initialData }: TrainingFormProps) {
-  const [date, setDate] = useState<Date>(initialData ? new Date(initialData.date) : new Date());
+export default function TrainingForm({ onSubmit, initialData, initialDate }: TrainingFormProps) {
+  const [date, setDate] = useState<Date>(
+    initialData ? new Date(initialData.date) : initialDate ? new Date(`${initialDate}T12:00:00`) : new Date(),
+  );
   const [type, setType] = useState<MatchType>(initialData?.type ?? "Treino");
   const [map, setMap] = useState<MapName>(initialData?.map ?? "Nuke");
   const [rival, setRival] = useState(initialData?.rival ?? "");
@@ -65,6 +68,12 @@ export default function TrainingForm({ onSubmit, initialData }: TrainingFormProp
   const [trFinalizacion, setTrFinalizacion] = useState<WinLoss>(initialData?.trFinalizacion ?? "WIN");
   const [startingSide, setStartingSide] = useState<Side>(initialData?.startingSide ?? "CT");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
+
+  useEffect(() => {
+    if (!initialData && initialDate) {
+      setDate(new Date(`${initialDate}T12:00:00`));
+    }
+  }, [initialData, initialDate]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

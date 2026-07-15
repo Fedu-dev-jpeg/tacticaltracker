@@ -92,7 +92,7 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
           title: "Resultado de torneo pendiente",
           description: `${tournament.name} ya pasó y no hay partida registrada ese día.`,
           date: tournamentDate,
-          route: "/registrar",
+          route: `/registrar?date=${tournamentDate}`,
           icon: Trophy,
           severity: "danger",
         });
@@ -110,7 +110,7 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
           title: "Treino sin registro en historial",
           description: `${event.title} estaba agendado y falta cargar el treino.`,
           date: event.date,
-          route: "/registrar",
+          route: `/registrar?date=${event.date}`,
           icon: ClipboardList,
           severity: "warning",
         });
@@ -122,7 +122,7 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
           title: "Presencialidad pendiente",
           description: `Falta tomar presencialidad para el treino ${event.title}.`,
           date: event.date,
-          route: "/awards",
+          route: `/awards?date=${event.date}`,
           icon: UserCheck,
           severity: "info",
         });

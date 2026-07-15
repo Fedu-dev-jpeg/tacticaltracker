@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, DragEvent } from "react";
+import { useState, useEffect, useRef, DragEvent, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAgendaEvents, useInvalidateAgenda } from "@/hooks/useAgendaEvents";
 import {
@@ -52,6 +52,7 @@ const EVENT_TYPE_KEYWORDS: Array<{ type: keyof typeof EVENT_TYPES; pattern: RegE
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 // date-fns getDay: 0=Sun,1=Mon... we want Mon=0
 const toWeekdayIndex = (d: Date) => (getDay(d) + 6) % 7;
+const todayKey = () => format(startOfToday(), "yyyy-MM-dd");
 
 type ViewMode = "day" | "week" | "month";
 type RepeatMode = "none" | "weekdays" | "days";
@@ -96,6 +97,10 @@ export default function Agenda() {
   }, [pendingBulkConfirm, bulkDialogOpen]);
 
   const fetchEvents = () => { invalidateAgenda(); };
+  const visibleEvents = useMemo(
+    () => events.filter((event) => !(event.event_type === "tournament" && event.date < todayKey())),
+    [events],
+  );
 
 
   // ── Teamup helpers ──
@@ -161,7 +166,7 @@ export default function Agenda() {
 
   const handleDelete = async (id: string) => {
     setDeleteConfirm(null);
-    const target = events.find((e) => e.id === id);
+    const target = visibleEvents.find((e) => e.id === id);
     const { error } = await supabase.from("agenda_events").delete().eq("id", id);
     if (error) { toast.error("Error al eliminar"); return; }
     toast.success("Evento eliminado");
@@ -252,7 +257,7 @@ export default function Agenda() {
     setDraggedEventId(null);
 
     const newDateStr = format(targetDate, "yyyy-MM-dd");
-    const ev = events.find((x) => x.id === eventId);
+    const ev = visibleEvents.find((x) => x.id === eventId);
     if (!ev || ev.date === newDateStr) return;
 
     // Optimistic update via refetch after mutation; fire-and-forget
@@ -293,7 +298,7 @@ export default function Agenda() {
     setBulkDialogOpen(true);
   };
 
-  const getEventsForDay = (date: Date) => events.filter((e) => isSameDay(parseISO(e.date), date));
+  const getEventsForDay = (date: Date) => visibleEvents.filter((e) => isSameDay(parseISO(e.date), date));
 
   const navigate = (dir: -1 | 1) => {
     if (viewMode === "day") setCurrentDate(dir === 1 ? addDays(currentDate, 1) : subDays(currentDate, 1));

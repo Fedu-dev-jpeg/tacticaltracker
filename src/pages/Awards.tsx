@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
@@ -143,9 +143,11 @@ const formatMinutes = (minutes: number) => {
 const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
 
 export default function Awards() {
+  const [searchParams] = useSearchParams();
+  const requestedDate = searchParams.get("date");
   const { isAdmin, isCoach, loading: roleLoading } = useUserRole();
   const { members, loading: membersLoading } = useTeamMembers();
-  const [selectedDate, setSelectedDate] = useState(todayLocal());
+  const [selectedDate, setSelectedDate] = useState(requestedDate ?? todayLocal());
   const [fromDate, setFromDate] = useState(monthStartLocal());
   const [toDate, setToDate] = useState(todayLocal());
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -178,6 +180,14 @@ export default function Awards() {
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (requestedDate) {
+      setSelectedDate(requestedDate);
+      if (requestedDate < fromDate) setFromDate(requestedDate);
+      if (requestedDate > toDate) setToDate(requestedDate);
+    }
+  }, [fromDate, requestedDate, toDate]);
 
   useEffect(() => {
     fetchRecords();

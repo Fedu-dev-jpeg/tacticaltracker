@@ -1,8 +1,8 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useMatches } from "@/hooks/useMatches";
 import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import NotificationsCenter from "@/components/NotificationsCenter";
+import type { Match } from "@/types/match";
 
 const CRUMB: Record<string, string> = {
   "/": "Dashboard",
@@ -17,8 +17,7 @@ const CRUMB: Record<string, string> = {
   "/equipo": "Equipo",
 };
 
-export function AppHeader() {
-  const { matches } = useMatches();
+export function AppHeader({ matches }: { matches: Match[] }) {
   const { pathname } = useLocation();
   const [now, setNow] = useState(new Date());
 
