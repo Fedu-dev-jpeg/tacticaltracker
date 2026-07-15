@@ -57,12 +57,14 @@ function isTrainingEvent(eventType: string, title: string, description: string) 
 
 export default function NotificationsCenter({ matches }: { matches: Match[] }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { isAdmin, isCoach } = useUserRole();
   const { data: agendaEvents = [] } = useAgendaEvents();
   const { tournaments } = useTournaments();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecordLite[]>([]);
   const canManageStaffTools = isAdmin || isCoach;
-  const [dismissed, setDismissed] = useLocalStorage<string[]>("notif:dismissed", []);
+  const dismissKey = user ? `notif:dismissed:${user.id}` : "notif:dismissed:anon";
+  const [dismissed, setDismissed] = useLocalStorage<string[]>(dismissKey, []);
   const [filter, setFilter] = useState<NotifKind | "all">("all");
 
   useEffect(() => {
