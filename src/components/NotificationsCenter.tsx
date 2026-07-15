@@ -134,7 +134,7 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
         });
       }
 
-      if (canManageStaffTools && isBeforeToday(event.date) && !attendanceDates.has(event.date)) {
+      if (canManageStaffTools && isBeforeToday(event.date) && !attendanceDates.has(event.date) && parseISO(event.date).getDay() !== 6) {
         items.push({
           id: `attendance-${event.id}`,
           kind: "attendance",
