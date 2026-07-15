@@ -216,9 +216,14 @@ export default function Awards() {
   const selectedDateObj = parseDateKey(selectedDate);
   const selectedWeekDays = Array.from({ length: 7 }, (_, index) =>
     addDays(startOfWeek(selectedDateObj, { weekStartsOn: 1 }), index),
-  );
+  ).filter((day) => day.getDay() !== 6);
+  const isSaturdaySelected = selectedDateObj.getDay() === 6;
 
   const savePlayer = async (player: TeamMember) => {
+    if (isSaturdaySelected) {
+      toast.error("No se toma presencialidad los sábados");
+      return;
+    }
     const draft = drafts[player.id] ?? { arrival_time: "", late_level: 0, notes: "" };
     if (draft.late_level !== 3 && !draft.arrival_time) {
       toast.error(`Cargá el horario de llegada de ${player.player_name}`);
@@ -384,11 +389,16 @@ export default function Awards() {
                           selected={selectedDateObj}
                           onSelect={(date) => {
                             if (!date) return;
+                            if (date.getDay() === 6) {
+                              toast.error("No se toma presencialidad los sábados");
+                              return;
+                            }
                             const next = dateToKey(date);
                             setSelectedDate(next);
                             if (next < fromDate) setFromDate(next);
                             if (next > toDate) setToDate(next);
                           }}
+                          disabled={(date) => date.getDay() === 6}
                           weekStartsOn={1}
                           locale={es}
                           initialFocus
