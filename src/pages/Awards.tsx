@@ -385,11 +385,16 @@ export default function Awards() {
                           selected={selectedDateObj}
                           onSelect={(date) => {
                             if (!date) return;
+                            if (date.getDay() === 6) {
+                              toast.error("No se toma presencialidad los sábados");
+                              return;
+                            }
                             const next = dateToKey(date);
                             setSelectedDate(next);
                             if (next < fromDate) setFromDate(next);
                             if (next > toDate) setToDate(next);
                           }}
+                          disabled={(date) => date.getDay() === 6}
                           weekStartsOn={1}
                           locale={es}
                           initialFocus
