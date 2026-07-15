@@ -21,7 +21,7 @@ import {
   CalendarDays,
   BookOpen,
   Trophy,
-  Award,
+  UserCheck,
   Users,
   ShieldCheck,
 } from "lucide-react";
@@ -42,7 +42,7 @@ const NAV = [
   { to: "/torneos", label: "Torneos", icon: Trophy },
   { to: "/agenda", label: "Agenda", icon: CalendarDays },
   { to: "/playbook", label: "Playbook", icon: BookOpen },
-  { to: "/awards", label: "Awards", icon: Award },
+  { to: "/awards", label: "Presencialidad", icon: UserCheck, staffOnly: true },
   { to: "/mapas", label: "Mapas", icon: Map },
 ];
 
@@ -51,7 +51,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
   const { user } = useAuth();
-  const { isAdmin, role } = useUserRole();
+  const { isAdmin, isCoach, role } = useUserRole();
   const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "user";
   const [profileOpen, setProfileOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export function AppSidebar() {
           )}
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV.map((item) => (
+              {NAV.filter((item) => !item.staffOnly || isAdmin || isCoach).map((item) => (
                 <SidebarMenuItem key={item.to}>
                   <SidebarMenuButton asChild isActive={isActive(item.to)}>
                     <NavLink to={item.to} className="flex items-center gap-2">

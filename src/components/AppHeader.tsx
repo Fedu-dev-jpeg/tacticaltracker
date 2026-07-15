@@ -11,7 +11,7 @@ const CRUMB: Record<string, string> = {
   "/torneos": "Torneos",
   "/agenda": "Agenda",
   "/playbook": "Playbook",
-  "/awards": "Awards",
+  "/awards": "Presencialidad",
   "/mapas": "Mapas",
   "/equipo": "Equipo",
 };
