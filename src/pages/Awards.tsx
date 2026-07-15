@@ -220,6 +220,10 @@ export default function Awards() {
   const isSaturdaySelected = selectedDateObj.getDay() === 6;
 
   const savePlayer = async (player: TeamMember) => {
+    if (isSaturdaySelected) {
+      toast.error("No se toma presencialidad los sábados");
+      return;
+    }
     const draft = drafts[player.id] ?? { arrival_time: "", late_level: 0, notes: "" };
     if (draft.late_level !== 3 && !draft.arrival_time) {
       toast.error(`Cargá el horario de llegada de ${player.player_name}`);
