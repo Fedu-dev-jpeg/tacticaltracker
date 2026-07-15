@@ -16,7 +16,7 @@ import TournamentCountdown from "@/components/TournamentCountdown";
 import TournamentsManager from "@/components/TournamentsManager";
 import { useTournaments, getUpcomingTournament } from "@/hooks/useTournaments";
 import { useNavigate } from "react-router-dom";
-import FaceitLeagueCard from "@/components/FaceitLeagueCard";
+
 
 interface DashboardProps {
   matches: Match[];
@@ -183,7 +183,7 @@ export default function Dashboard({ matches }: DashboardProps) {
         )}
       </div>
 
-      <FaceitLeagueCard matches={matches} />
+      
 
       {/* Team Objectives */}
       <div className="bg-card rounded-lg border border-accent/30 p-6 card-glow">
