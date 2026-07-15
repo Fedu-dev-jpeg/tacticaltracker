@@ -23,7 +23,7 @@ type FaceitLeagueResponse = {
   record?: {
     wins: number;
     losses: number;
-  };
+  } | null;
   matches?: Array<{
     id: string;
     status: string;
@@ -38,6 +38,7 @@ type FaceitLeagueResponse = {
     api: string;
   };
   linksConfigured?: boolean;
+  publicOnly?: boolean;
   error?: string;
 };
 
@@ -88,7 +89,7 @@ export default function FaceitLeagueCard() {
     );
   }
 
-  const record = data.record ?? { wins: 0, losses: 0 };
+  const record = data.record ?? null;
   const latest = data.matches?.[0];
 
   return (
@@ -101,11 +102,17 @@ export default function FaceitLeagueCard() {
           <div className="mt-1 text-xs font-semibold text-foreground">
             {data.competition?.status ?? "League"}{data.competition?.region ? ` / ${data.competition.region}` : ""}
           </div>
-          <div className="mt-3 text-3xl font-heading font-bold">
-            <span className="text-success">{record.wins}</span>
-            <span className="mx-2 text-muted-foreground">-</span>
-            <span className="text-destructive">{record.losses}</span>
-          </div>
+          {record ? (
+            <div className="mt-3 text-3xl font-heading font-bold">
+              <span className="text-success">{record.wins}</span>
+              <span className="mx-2 text-muted-foreground">-</span>
+              <span className="text-destructive">{record.losses}</span>
+            </div>
+          ) : (
+            <div className="mt-3 inline-flex rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-mono uppercase tracking-[0.12em] text-accent">
+              {data.publicOnly ? "API key requerida para resultado" : "Sin resultados"}
+            </div>
+          )}
         </div>
         <Star className="h-10 w-10 shrink-0 text-accent" />
       </div>
@@ -138,7 +145,7 @@ export default function FaceitLeagueCard() {
 
       <div className="mt-3 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
         <ExternalLink className="h-3 w-3" />
-        Datos via FACEIT Data API
+        {data.publicOnly ? "Equipo via FACEIT público · Resultados requieren API" : "Datos via FACEIT Data API"}
       </div>
     </LeagueShell>
   );

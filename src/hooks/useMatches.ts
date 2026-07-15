@@ -12,12 +12,20 @@ export function useMatches() {
   const { user } = useAuth();
 
   const fetchMatches = useCallback(async () => {
-    const { data, error } = await supabase
+    const joined = await supabase
       .from("matches")
       .select("*, tournaments(name)")
       .order("date", { ascending: false });
+    const { data, error } = joined.error
+      ? await supabase
+        .from("matches")
+        .select("*")
+        .order("date", { ascending: false })
+      : joined;
     if (!error && data) {
       setMatches(data.map(dbToMatch));
+    } else if (error) {
+      console.error("No se pudieron cargar los treinos", error);
     }
     setLoading(false);
   }, []);
@@ -102,8 +110,8 @@ function dbToMatch(row: Record<string, unknown>): Match {
   return {
     id: row.id as string,
     date: row.date as string,
-    type: row.type as Match["type"],
-    map: row.map as Match["map"],
+    type: normalizeMatchType(row.type),
+    map: normalizeMapName(row.map),
     rival: row.rival as string,
     scoreUs: row.score_us as number,
     scoreThem: row.score_them as number,
@@ -122,6 +130,27 @@ function dbToMatch(row: Record<string, unknown>): Match {
     tournamentId: (row.tournament_id as string | null) ?? null,
     tournamentName: ((row.tournaments as { name?: string } | null)?.name as string | undefined) ?? null,
   };
+}
+
+function normalizeMatchType(value: unknown): Match["type"] {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "official" || raw === "oficial" || raw === "torneo") return "Oficial";
+  if (raw === "training" || raw === "treino" || raw === "entrenamiento") return "Treino";
+  if (raw === "scrim" || raw === "pracc") return "Scrim";
+  return "Treino";
+}
+
+function normalizeMapName(value: unknown): Match["map"] {
+  const raw = String(value ?? "").trim().toLowerCase().replace(/^de_/, "");
+  const aliases: Record<string, Match["map"]> = {
+    mirage: "Mirage",
+    inferno: "Inferno",
+    nuke: "Nuke",
+    ancient: "Ancient",
+    anubis: "Anubis",
+    cache: "Cache",
+  };
+  return aliases[raw] ?? "Nuke";
 }
 
 function matchToDb(match: Partial<Match> & { recorded_by?: string }) {
