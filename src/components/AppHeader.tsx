@@ -2,6 +2,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useMatches } from "@/hooks/useMatches";
 import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
+import NotificationsCenter from "@/components/NotificationsCenter";
 
 const CRUMB: Record<string, string> = {
   "/": "Dashboard",
@@ -43,6 +44,7 @@ export function AppHeader() {
         <span className="text-muted-foreground">{section.toUpperCase()}</span>
       </div>
       <div className="ml-auto flex items-center gap-6 text-xs">
+        <NotificationsCenter matches={matches} />
         <Stat label="WIN" value={wins} color="text-success" />
         <Stat label="DRW" value={draws} color="text-muted-foreground" />
         <Stat label="LOSS" value={losses} color="text-destructive" />

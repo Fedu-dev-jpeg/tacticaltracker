@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
+import { addDays, format, parseISO, startOfWeek } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   CalendarCheck,
   Clock,
@@ -17,8 +19,10 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tabs,
   TabsContent,
@@ -41,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import SteamAvatar from "@/components/SteamAvatar";
+import { cn } from "@/lib/utils";
 
 type AttendanceRecord = {
   id: string;
@@ -96,6 +101,13 @@ const todayLocal = () => {
 const monthStartLocal = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+};
+
+const parseDateKey = (dateKey: string) => parseISO(`${dateKey}T00:00:00`);
+
+const dateToKey = (date: Date) => {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 };
 
 const timeToMinutes = (time: string | null | undefined) => {
@@ -191,6 +203,10 @@ export default function Awards() {
 
   const selectedDayRecords = records.filter((record) => record.attendance_date === selectedDate);
   const selectedDayRecordByMember = new Map(selectedDayRecords.map((record) => [record.team_member_id, record]));
+  const selectedDateObj = parseDateKey(selectedDate);
+  const selectedWeekDays = Array.from({ length: 7 }, (_, index) =>
+    addDays(startOfWeek(selectedDateObj, { weekStartsOn: 1 }), index),
+  );
 
   const savePlayer = async (player: TeamMember) => {
     const draft = drafts[player.id] ?? { arrival_time: "", late_level: 0, notes: "" };
@@ -345,17 +361,62 @@ export default function Awards() {
                 <div className="flex items-end gap-2">
                   <div>
                     <Label className="text-xs">Día de treino</Label>
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setSelectedDate(next);
-                        if (next < fromDate) setFromDate(next);
-                        if (next > toDate) setToDate(next);
-                      }}
-                      className="w-[170px]"
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-[230px] justify-start text-left font-normal">
+                          <CalendarCheck className="mr-2 h-4 w-4 text-accent" />
+                          {format(selectedDateObj, "EEEE d MMM", { locale: es })}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDateObj}
+                          onSelect={(date) => {
+                            if (!date) return;
+                            const next = dateToKey(date);
+                            setSelectedDate(next);
+                            if (next < fromDate) setFromDate(next);
+                            if (next > toDate) setToDate(next);
+                          }}
+                          weekStartsOn={1}
+                          locale={es}
+                          initialFocus
+                        />
+                        <div className="border-t border-border p-3">
+                          <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+                            Semana seleccionada
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {selectedWeekDays.map((day) => {
+                              const dayKey = dateToKey(day);
+                              const active = dayKey === selectedDate;
+                              return (
+                                <button
+                                  key={dayKey}
+                                  onClick={() => {
+                                    setSelectedDate(dayKey);
+                                    if (dayKey < fromDate) setFromDate(dayKey);
+                                    if (dayKey > toDate) setToDate(dayKey);
+                                  }}
+                                  className={cn(
+                                    "rounded-md border px-1.5 py-2 text-center transition",
+                                    active
+                                      ? "border-accent bg-accent text-accent-foreground"
+                                      : "border-border bg-card hover:border-accent/40",
+                                  )}
+                                >
+                                  <div className="text-[9px] uppercase text-current/70">
+                                    {format(day, "EEE", { locale: es })}
+                                  </div>
+                                  <div className="text-sm font-bold">{format(day, "d")}</div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>

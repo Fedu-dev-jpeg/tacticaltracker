@@ -4,7 +4,7 @@ import { useAgendaEvents, useInvalidateAgenda } from "@/hooks/useAgendaEvents";
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval,
   isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, subMonths,
-  addDays, subDays, getDay, isSameMonth
+  addDays, subDays, getDay, isSameMonth, startOfToday
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarDays, Plus, Trash2, ChevronLeft, ChevronRight, Clock, Edit2, Copy, GripVertical } from "lucide-react";
@@ -59,7 +59,7 @@ type RepeatMode = "none" | "weekdays" | "days";
 export default function Agenda() {
   const { data: events = [], isLoading: loading, refetch } = useAgendaEvents();
   const invalidateAgenda = useInvalidateAgenda();
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(startOfToday());
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
@@ -79,10 +79,14 @@ export default function Agenda() {
     title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training",
     repeatMode: "weekdays" as RepeatMode,
     selectedWeekdays: [0, 1, 2, 3, 4] as number[], // Mon-Fri default
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(startOfToday(), "yyyy-MM-dd"),
     numWeeks: 1,
     numDays: 7,
   });
+
+  useEffect(() => {
+    setCurrentDate(startOfToday());
+  }, []);
 
   useEffect(() => {
     if (pendingBulkConfirm && !bulkDialogOpen) {
@@ -284,7 +288,7 @@ export default function Agenda() {
     setBulkForm({
       title: "", description: "", time_start: "15:00", time_end: "19:00", event_type: "training",
       repeatMode: "weekdays", selectedWeekdays: [0, 1, 2, 3, 4],
-      startDate: format(new Date(), "yyyy-MM-dd"), numWeeks: 1, numDays: 7,
+      startDate: format(startOfToday(), "yyyy-MM-dd"), numWeeks: 1, numDays: 7,
     });
     setBulkDialogOpen(true);
   };
@@ -297,7 +301,7 @@ export default function Agenda() {
     else setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
   };
 
-  const goToday = () => setCurrentDate(new Date());
+  const goToday = () => setCurrentDate(startOfToday());
 
   const getTitle = () => {
     if (viewMode === "day") return format(currentDate, "EEEE d 'de' MMMM yyyy", { locale: es });
@@ -420,7 +424,7 @@ export default function Agenda() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
         {days.map((day) => {
           const dayEvents = getEventsForDay(day);
-          const today = isSameDay(day, new Date());
+          const today = isSameDay(day, startOfToday());
           return (
             <DayDropZone
               key={day.toISOString()}
@@ -472,7 +476,7 @@ export default function Agenda() {
         <div className="grid grid-cols-7">
           {allDays.map((day) => {
             const dayEvents = getEventsForDay(day);
-            const today = isSameDay(day, new Date());
+            const today = isSameDay(day, startOfToday());
             const inMonth = isSameMonth(day, currentDate);
             return (
               <DayDropZone

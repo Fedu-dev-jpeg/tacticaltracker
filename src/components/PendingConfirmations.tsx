@@ -31,12 +31,9 @@ const MAP_OPTIONS = [
   "Mirage",
   "Inferno",
   "Nuke",
-  "Anubis",
   "Ancient",
-  "Dust2",
-  "Vertigo",
-  "Overpass",
-  "Train",
+  "Anubis",
+  "Cache",
 ];
 
 const ROLE_OPTIONS = [
