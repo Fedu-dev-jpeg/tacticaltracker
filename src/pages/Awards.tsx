@@ -216,7 +216,8 @@ export default function Awards() {
   const selectedDateObj = parseDateKey(selectedDate);
   const selectedWeekDays = Array.from({ length: 7 }, (_, index) =>
     addDays(startOfWeek(selectedDateObj, { weekStartsOn: 1 }), index),
-  );
+  ).filter((day) => day.getDay() !== 6);
+  const isSaturdaySelected = selectedDateObj.getDay() === 6;
 
   const savePlayer = async (player: TeamMember) => {
     const draft = drafts[player.id] ?? { arrival_time: "", late_level: 0, notes: "" };
