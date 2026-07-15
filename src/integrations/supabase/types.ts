@@ -187,6 +187,7 @@ export type Database = {
           score_them: number
           score_us: number
           starting_side: string
+          tournament_id: string | null
           tr_finalizacion: string
           tr_pistol: string
           tr_second_round: string
@@ -211,6 +212,7 @@ export type Database = {
           score_them?: number
           score_us?: number
           starting_side?: string
+          tournament_id?: string | null
           tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
@@ -235,6 +237,7 @@ export type Database = {
           score_them?: number
           score_us?: number
           starting_side?: string
+          tournament_id?: string | null
           tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
@@ -242,7 +245,15 @@ export type Database = {
           type?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       player_descriptions: {
         Row: {

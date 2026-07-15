@@ -23,6 +23,8 @@ export interface Match {
   notes: string;
   recorded_by?: string;
   demo_data?: unknown | null;
+  tournamentId?: string | null;
+  tournamentName?: string | null;
 }
 
 export const MAPS: MapName[] = ["Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Cache"];

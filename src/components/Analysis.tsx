@@ -1,18 +1,42 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Match, MAPS, MATCH_TYPES, MatchType } from "@/types/match";
 import { getWinRate, getPistolRate, getConversionRate, isWin } from "@/hooks/useMatches";
-import { Target, Shield, Sword, Filter } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
+import { Activity, CheckCircle2, Crosshair, Filter, LineChart as LineChartIcon, Target, TrendingUp } from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface AnalysisProps {
   matches: Match[];
 }
 
 export default function Analysis({ matches }: AnalysisProps) {
-  const [typeFilter, setTypeFilter] = useState<MatchType | "Todos">("Todos");
+  const [selectedTypes, setSelectedTypes] = useState<Record<MatchType, boolean>>({
+    Treino: true,
+    Oficial: true,
+    Scrim: true,
+  });
 
-  const filtered = typeFilter === "Todos" ? matches : matches.filter((m) => m.type === typeFilter);
+  const activeTypes = MATCH_TYPES.filter((type) => selectedTypes[type]);
+  const filtered = useMemo(
+    () => matches.filter((match) => selectedTypes[match.type]),
+    [matches, selectedTypes],
+  );
 
   if (matches.length === 0) {
     return (
@@ -26,35 +50,52 @@ export default function Analysis({ matches }: AnalysisProps) {
 
   const mapStats = MAPS.map((map) => {
     const mm = filtered.filter((m) => m.map === map);
-    return { name: map, count: mm.length, winRate: getWinRate(mm) };
-  });
-
-  const ctPistol = getPistolRate(filtered, "CT");
-  const trPistol = getPistolRate(filtered, "TR");
-  const ctConv = getConversionRate(filtered, "CT");
-  const trConv = getConversionRate(filtered, "TR");
-
-  const bestMap = [...mapStats].filter((m) => m.count > 0).sort((a, b) => b.winRate - a.winRate)[0];
-  const worstMap = [...mapStats].filter((m) => m.count > 0).sort((a, b) => a.winRate - b.winRate)[0];
-  const strongSide = ctPistol >= trPistol ? "CT" : "TR";
-  const weakSide = ctPistol < trPistol ? "CT" : "TR";
-
-  const ctTrData = MAPS.map((map) => {
-    const mm = filtered.filter((m) => m.map === map);
-    if (mm.length === 0) return { name: map, ctPistol: 0, trPistol: 0, ctConv: 0, trConv: 0 };
+    const wins = mm.filter(isWin).length;
     return {
       name: map,
+      count: mm.length,
+      wins,
+      losses: mm.length - wins,
+      winRate: getWinRate(mm),
       ctPistol: getPistolRate(mm, "CT"),
       trPistol: getPistolRate(mm, "TR"),
       ctConv: getConversionRate(mm, "CT"),
       trConv: getConversionRate(mm, "TR"),
     };
-  }).filter((d) => filtered.some((m) => m.map === d.name));
+  });
+
+  const wins = filtered.filter(isWin).length;
+  const losses = filtered.length - wins;
+  const winRate = getWinRate(filtered);
+  const ctPistol = getPistolRate(filtered, "CT");
+  const trPistol = getPistolRate(filtered, "TR");
+  const ctConv = getConversionRate(filtered, "CT");
+  const trConv = getConversionRate(filtered, "TR");
+  const avgDiff = filtered.length
+    ? Math.round((filtered.reduce((sum, match) => sum + (match.scoreUs - match.scoreThem), 0) / filtered.length) * 10) / 10
+    : 0;
+
+  const bestMap = [...mapStats].filter((m) => m.count > 0).sort((a, b) => b.winRate - a.winRate)[0];
+  const worstMap = [...mapStats].filter((m) => m.count > 0).sort((a, b) => a.winRate - b.winRate)[0];
 
   const overallData = [
     { metric: "Pistol", CT: ctPistol, TR: trPistol },
     { metric: "Conversión 2nd", CT: ctConv, TR: trConv },
   ];
+
+  const trendData = [...filtered]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(-12)
+    .map((match, index) => ({
+      idx: index + 1,
+      date: new Date(match.date).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
+      diff: match.scoreUs - match.scoreThem,
+      us: match.scoreUs,
+      them: match.scoreThem,
+      win: isWin(match) ? 1 : 0,
+      type: match.type,
+      map: match.map,
+    }));
 
   const recommendations: string[] = [];
   if (ctPistol < 50) recommendations.push("Practicar pistol setups CT");
@@ -66,141 +107,199 @@ export default function Analysis({ matches }: AnalysisProps) {
     if (m.count === 0) recommendations.push(`Sin partidos en ${m.name} — priorizar`);
     if (m.winRate < 40 && m.count > 0) recommendations.push(`Foco urgente en ${m.name} (${m.winRate}% WR)`);
   });
-  ctTrData.forEach((d) => {
+  mapStats.filter((d) => d.count > 0).forEach((d) => {
     if (d.ctPistol < 40) recommendations.push(`CT Pistol muy bajo en ${d.name} (${d.ctPistol}%)`);
     if (d.trPistol < 40) recommendations.push(`TR Pistol muy bajo en ${d.name} (${d.trPistol}%)`);
   });
 
-  const COLORS = { ct: "#1F4E79", tr: "#0088FF", success: "#70AD47", danger: "#e74c3c" };
+  const COLORS = { ct: "#1F4E79", tr: "#0088FF", success: "#70AD47", danger: "#e74c3c", accent: "#00B7FF" };
+  const chartTheme = {
+    backgroundColor: "hsl(220 18% 12%)",
+    border: "1px solid hsl(220 16% 18%)",
+    borderRadius: "8px",
+    color: "hsl(210 20% 92%)",
+  };
+
+  const toggleType = (type: MatchType) => {
+    setSelectedTypes((current) => {
+      const enabledCount = Object.values(current).filter(Boolean).length;
+      if (current[type] && enabledCount === 1) return current;
+      return { ...current, [type]: !current[type] };
+    });
+  };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
-      {/* Type Filter */}
-      <div className="bg-card rounded-lg border border-border p-4 card-glow">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Filtrar por tipo:</span>
-          {(["Todos", ...MATCH_TYPES] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTypeFilter(t as MatchType | "Todos")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                typeFilter === t
-                  ? "gradient-accent text-accent-foreground shadow-md"
-                  : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-              )}
-            >
-              {t} {t !== "Todos" && `(${matches.filter((m) => m.type === t).length})`}
-            </button>
-          ))}
+    <div className="space-y-5 animate-slide-up">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-heading font-bold tracking-wide">Stats Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Lectura horizontal de rendimiento, mapas, lados y fuentes de datos.</p>
         </div>
-        {typeFilter !== "Todos" && (
-          <p className="text-xs text-muted-foreground mt-2">
-            Mostrando {filtered.length} de {matches.length} partidos
-          </p>
-        )}
+        <Card className="border-border bg-card/70">
+          <CardContent className="p-3 flex items-center gap-4">
+            <Filter className="h-4 w-4 text-accent" />
+            {MATCH_TYPES.map((type) => (
+              <label key={type} className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                <Checkbox checked={selectedTypes[type]} onCheckedChange={() => toggleType(type)} />
+                {type}
+                <span className="text-muted-foreground">({matches.filter((m) => m.type === type).length})</span>
+              </label>
+            ))}
+          </CardContent>
+        </Card>
       </div>
 
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
-          <p className="text-lg font-heading">Sin partidos de tipo "{typeFilter}"</p>
+          <p className="text-lg font-heading">Sin partidos para las fuentes seleccionadas</p>
         </div>
       ) : (
         <>
-          {/* Strengths */}
-          <div className="bg-card rounded-lg border border-success/30 p-6 card-glow">
-            <h3 className="text-lg font-heading font-bold flex items-center gap-2 text-success mb-4">🎯 PUNTOS FUERTES</h3>
-            <ul className="space-y-2 text-sm">
-              {bestMap && <li>✅ Mapa más fuerte: <strong>{bestMap.name}</strong> ({bestMap.winRate}% WR)</li>}
-              <li>✅ Lado más fuerte: <strong>{strongSide}</strong> (Pistol {Math.max(ctPistol, trPistol)}%)</li>
-              <li>✅ Mejor pistol: <strong>{ctPistol >= trPistol ? "CT" : "TR"}</strong> ({Math.max(ctPistol, trPistol)}%)</li>
-            </ul>
+          <div className="grid gap-4 lg:grid-cols-5">
+            <MetricCard label="Partidas" value={filtered.length} detail={`${wins}W / ${losses}L`} icon={Activity} />
+            <MetricCard label="Win rate" value={`${winRate}%`} detail={activeTypes.join(" + ")} icon={TrendingUp} tone={winRate >= 50 ? "success" : "danger"} />
+            <MetricCard label="Diff promedio" value={avgDiff > 0 ? `+${avgDiff}` : avgDiff} detail="rounds por partida" icon={Crosshair} tone={avgDiff >= 0 ? "success" : "danger"} />
+            <MetricCard label="Mejor mapa" value={bestMap?.name ?? "-"} detail={bestMap ? `${bestMap.winRate}% WR` : "sin datos"} icon={Target} />
+            <MetricCard label="Mapa foco" value={worstMap?.name ?? "-"} detail={worstMap ? `${worstMap.winRate}% WR` : "sin datos"} icon={LineChartIcon} tone="danger" />
           </div>
 
-          {/* Weaknesses */}
-          <div className="bg-card rounded-lg border border-destructive/30 p-6 card-glow">
-            <h3 className="text-lg font-heading font-bold flex items-center gap-2 text-destructive mb-4">⚠️ ÁREAS A MEJORAR</h3>
-            <ul className="space-y-2 text-sm">
-              {worstMap && <li>❌ Mapa a mejorar: <strong>{worstMap.name}</strong> ({worstMap.winRate}% WR)</li>}
-              <li>❌ Lado más débil: <strong>{weakSide}</strong> (Pistol {Math.min(ctPistol, trPistol)}%)</li>
-              {ctConv < 60 && <li>🔴 Conversión 2nd round CT baja: {ctConv}%</li>}
-              {trConv < 60 && <li>🔴 Conversión 2nd round TR baja: {trConv}%</li>}
-              {ctPistol < 40 && <li>🔴 Pistol CT muy bajo: {ctPistol}%</li>}
-              {trPistol < 40 && <li>🔴 Pistol TR muy bajo: {trPistol}%</li>}
-            </ul>
+          <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+            <Card className="card-glow">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Tendencia ultimas 12 partidas</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[310px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="diffGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS.accent} stopOpacity={0.45} />
+                        <stop offset="95%" stopColor={COLORS.accent} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="hsl(220 16% 18%)" strokeDasharray="3 3" />
+                    <XAxis dataKey="date" stroke="hsl(215 15% 55%)" fontSize={12} />
+                    <YAxis stroke="hsl(215 15% 55%)" fontSize={12} />
+                    <Tooltip contentStyle={chartTheme} />
+                    <Area type="monotone" dataKey="diff" name="Diff rounds" stroke={COLORS.accent} fill="url(#diffGradient)" strokeWidth={2} />
+                    <Line type="monotone" dataKey="win" name="Win" stroke={COLORS.success} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="card-glow">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">CT / TR global</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[310px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={overallData}>
+                    <CartesianGrid stroke="hsl(220 16% 18%)" strokeDasharray="3 3" />
+                    <XAxis dataKey="metric" stroke="hsl(215 15% 55%)" fontSize={12} />
+                    <YAxis domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
+                    <Tooltip contentStyle={chartTheme} />
+                    <Legend />
+                    <Bar dataKey="CT" fill={COLORS.ct} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="TR" fill={COLORS.tr} radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="CT" stroke={COLORS.ct} strokeWidth={2} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* CT vs TR Performance Chart */}
-          <div className="bg-card rounded-lg border border-border p-6 card-glow">
-            <h3 className="text-lg font-heading font-bold mb-4 flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              <Sword className="h-5 w-5 text-accent" />
-              Rendimiento CT vs TR
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={overallData}>
-                  <XAxis dataKey="metric" stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Legend />
-                  <Bar dataKey="CT" fill={COLORS.ct} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="TR" fill={COLORS.tr} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <Card className="card-glow">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Mapa por mapa</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[360px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mapStats} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid stroke="hsl(220 16% 18%)" strokeDasharray="3 3" />
+                    <XAxis type="number" domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
+                    <YAxis type="category" dataKey="name" stroke="hsl(215 15% 55%)" fontSize={12} width={75} />
+                    <Tooltip contentStyle={chartTheme} />
+                    <Legend />
+                    <Bar dataKey="winRate" name="Win rate" radius={[0, 4, 4, 0]}>
+                      {mapStats.map((entry) => (
+                        <Cell key={entry.name} fill={entry.winRate >= 55 ? COLORS.success : entry.winRate >= 40 ? COLORS.accent : COLORS.danger} />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="count" name="Volumen" fill="hsl(220 12% 38%)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
 
-          {/* CT vs TR by Map */}
-          <div className="bg-card rounded-lg border border-border p-6 card-glow">
-            <h3 className="text-lg font-heading font-bold mb-4">Pistol por Lado & Mapa</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ctTrData}>
-                  <XAxis dataKey="name" stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Legend />
-                  <Bar dataKey="ctPistol" name="CT Pistol" fill={COLORS.ct} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="trPistol" name="TR Pistol" fill={COLORS.tr} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Conversion by Map */}
-          <div className="bg-card rounded-lg border border-border p-6 card-glow">
-            <h3 className="text-lg font-heading font-bold mb-4">Conversión 2nd Round por Mapa</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ctTrData}>
-                  <XAxis dataKey="name" stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <YAxis domain={[0, 100]} stroke="hsl(215 15% 55%)" fontSize={12} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(220 18% 12%)", border: "1px solid hsl(220 16% 18%)", borderRadius: "8px", color: "hsl(210 20% 92%)" }} />
-                  <Legend />
-                  <Bar dataKey="ctConv" name="CT Conversión" fill={COLORS.ct} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="trConv" name="TR Conversión" fill={COLORS.tr} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Recommendations */}
-          <div className="bg-card rounded-lg border border-accent/30 p-6 card-glow">
-            <h3 className="text-lg font-heading font-bold flex items-center gap-2 text-accent mb-4">📋 RECOMENDACIONES PARA PRÓXIMO TREINO</h3>
-            {recommendations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">¡Todo se ve bien! Mantener el ritmo de práctica.</p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {recommendations.map((r, i) => (
-                  <li key={i}>→ {r}</li>
-                ))}
-              </ul>
-            )}
+            <Card className="card-glow border-accent/25">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-accent" />
+                  Lectura para el proximo treino
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <MiniRead label="CT pistol" value={`${ctPistol}%`} good={ctPistol >= 50} />
+                  <MiniRead label="TR pistol" value={`${trPistol}%`} good={trPistol >= 50} />
+                  <MiniRead label="CT conversion" value={`${ctConv}%`} good={ctConv >= 60} />
+                  <MiniRead label="TR conversion" value={`${trConv}%`} good={trConv >= 60} />
+                </div>
+                {recommendations.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Todo se ve estable. Mantener el ritmo y sumar volumen por mapa.</p>
+                ) : (
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    {recommendations.slice(0, 8).map((r, i) => (
+                      <li key={i} className="rounded-md border border-border bg-card/60 px-3 py-2">
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone = "accent",
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+  icon: typeof Activity;
+  tone?: "accent" | "success" | "danger";
+}) {
+  const toneClass = tone === "success" ? "text-success" : tone === "danger" ? "text-destructive" : "text-accent";
+  return (
+    <Card className="card-glow">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+          <Icon className={cn("h-4 w-4", toneClass)} />
+        </div>
+        <div className={cn("mt-2 text-2xl font-heading font-bold", toneClass)}>{value}</div>
+        <div className="mt-1 text-xs text-muted-foreground truncate">{detail}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniRead({ label, value, good }: { label: string; value: string; good: boolean }) {
+  return (
+    <div className="rounded-md border border-border bg-card/70 p-3">
+      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+      <div className={cn("mt-1 text-xl font-heading font-bold", good ? "text-success" : "text-destructive")}>{value}</div>
     </div>
   );
 }

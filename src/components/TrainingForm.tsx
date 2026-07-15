@@ -12,11 +12,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType, Side, WinLoss } from "@/types/match";
 import { toast } from "sonner";
 import DemoUploader from "@/components/DemoUploader";
+import { useTournaments } from "@/hooks/useTournaments";
 
 interface TrainingFormProps {
   onSubmit: (match: Omit<Match, "id">) => void;
   initialData?: Match;
   initialDate?: string;
+  initialType?: MatchType;
 }
 
 function WinLossToggle({ value, onChange, label }: { value: WinLoss; onChange: (v: WinLoss) => void; label: string }) {
@@ -49,11 +51,13 @@ function WinLossToggle({ value, onChange, label }: { value: WinLoss; onChange: (
   );
 }
 
-export default function TrainingForm({ onSubmit, initialData, initialDate }: TrainingFormProps) {
+export default function TrainingForm({ onSubmit, initialData, initialDate, initialType }: TrainingFormProps) {
+  const { tournaments } = useTournaments();
   const [date, setDate] = useState<Date>(
     initialData ? new Date(initialData.date) : initialDate ? new Date(`${initialDate}T12:00:00`) : new Date(),
   );
-  const [type, setType] = useState<MatchType>(initialData?.type ?? "Treino");
+  const [type, setType] = useState<MatchType>(initialData?.type ?? initialType ?? "Treino");
+  const [tournamentId, setTournamentId] = useState(initialData?.tournamentId ?? "");
   const [map, setMap] = useState<MapName>(initialData?.map ?? "Nuke");
   const [rival, setRival] = useState(initialData?.rival ?? "");
   const [scoreUs, setScoreUs] = useState(initialData?.scoreUs?.toString() ?? "");
@@ -73,7 +77,21 @@ export default function TrainingForm({ onSubmit, initialData, initialDate }: Tra
     if (!initialData && initialDate) {
       setDate(new Date(`${initialDate}T12:00:00`));
     }
-  }, [initialData, initialDate]);
+    if (!initialData && initialType) {
+      setType(initialType);
+    }
+  }, [initialData, initialDate, initialType]);
+
+  useEffect(() => {
+    if (type !== "Oficial") {
+      setTournamentId("");
+      return;
+    }
+    if (tournamentId) return;
+    const selectedDateKey = date.toISOString().slice(0, 10);
+    const sameDayTournament = tournaments.find((tournament) => tournament.start_date.slice(0, 10) === selectedDateKey);
+    if (sameDayTournament) setTournamentId(sameDayTournament.id);
+  }, [date, tournamentId, tournaments, type]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +116,7 @@ export default function TrainingForm({ onSubmit, initialData, initialDate }: Tra
       trFinalizacion,
       startingSide,
       notes,
+      tournamentId: type === "Oficial" ? tournamentId || null : null,
     });
     toast.success("¡Treino registrado exitosamente!");
     // Reset
@@ -167,6 +186,28 @@ export default function TrainingForm({ onSubmit, initialData, initialDate }: Tra
             </Select>
           </div>
         </div>
+
+        {type === "Oficial" && (
+          <div className="rounded-lg border border-accent/25 bg-accent/5 p-4">
+            <Label className="text-xs">Torneo asociado</Label>
+            <Select value={tournamentId || "none"} onValueChange={(v) => setTournamentId(v === "none" ? "" : v)}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Seleccionar torneo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin torneo / oficial suelto</SelectItem>
+                {tournaments.map((tournament) => (
+                  <SelectItem key={tournament.id} value={tournament.id}>
+                    {tournament.name} · {format(new Date(tournament.start_date), "dd/MM/yyyy")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Si el torneo estaba agendado para esta fecha, se selecciona automáticamente.
+            </p>
+          </div>
+        )}
 
         {/* Row 2: Rival, Score */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
