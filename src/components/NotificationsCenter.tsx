@@ -12,6 +12,7 @@ import { useAgendaEvents } from "@/hooks/useAgendaEvents";
 import { useTournaments } from "@/hooks/useTournaments";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Match } from "@/types/match";
 import { useEffect, useState } from "react";
 
