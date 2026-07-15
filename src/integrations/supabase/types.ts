@@ -56,50 +56,6 @@ export type Database = {
         }
         Relationships: []
       }
-      attendance_records: {
-        Row: {
-          arrival_time: string | null
-          attendance_date: string
-          created_at: string
-          created_by: string | null
-          id: string
-          late_level: number
-          notes: string | null
-          team_member_id: string
-          updated_at: string
-        }
-        Insert: {
-          arrival_time?: string | null
-          attendance_date: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          late_level?: number
-          notes?: string | null
-          team_member_id: string
-          updated_at?: string
-        }
-        Update: {
-          arrival_time?: string | null
-          attendance_date?: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          late_level?: number
-          notes?: string | null
-          team_member_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "attendance_records_team_member_id_fkey"
-            columns: ["team_member_id"]
-            isOneToOne: false
-            referencedRelation: "team_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       audit_log: {
         Row: {
           action: string
@@ -187,7 +143,6 @@ export type Database = {
           score_them: number
           score_us: number
           starting_side: string
-          tournament_id: string | null
           tr_finalizacion: string
           tr_pistol: string
           tr_second_round: string
@@ -212,7 +167,6 @@ export type Database = {
           score_them?: number
           score_us?: number
           starting_side?: string
-          tournament_id?: string | null
           tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
@@ -237,7 +191,6 @@ export type Database = {
           score_them?: number
           score_us?: number
           starting_side?: string
-          tournament_id?: string | null
           tr_finalizacion?: string
           tr_pistol?: string
           tr_second_round?: string
@@ -245,15 +198,7 @@ export type Database = {
           type?: string
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "matches_tournament_id_fkey"
-            columns: ["tournament_id"]
-            isOneToOne: false
-            referencedRelation: "tournaments"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       player_descriptions: {
         Row: {
@@ -452,30 +397,6 @@ export type Database = {
         }
         Relationships: []
       }
-      team_settings: {
-        Row: {
-          created_at: string
-          id: string
-          key: string
-          updated_at: string
-          value: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          key: string
-          updated_at?: string
-          value: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          key?: string
-          updated_at?: string
-          value?: string
-        }
-        Relationships: []
-      }
       team_objectives: {
         Row: {
           completed: boolean
@@ -612,14 +533,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      current_user_is_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
-      current_user_role: {
-        Args: Record<PropertyKey, never>
-        Returns: Database["public"]["Enums"]["app_role"]
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
