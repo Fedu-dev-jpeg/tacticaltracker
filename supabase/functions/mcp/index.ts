@@ -212,7 +212,7 @@ var create_agenda_event_default = defineTool5({
 });
 
 // src/lib/mcp/index.ts
-var projectRef = "pltlrmyzqiitsxggxven";
+var projectRef = "yzpjwaqrlhkiiuneonmb";
 var mcp_default = defineMcp({
   name: "tacticaltracker-mcp",
   title: "TacticalTracker (Tactical Chaos)",
