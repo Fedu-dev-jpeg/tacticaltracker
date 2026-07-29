@@ -18,6 +18,8 @@ import {
   Trash2,
   Users2,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { MAPS } from "@/types/match";
@@ -1315,31 +1317,101 @@ function DocFrame({
   url,
   orientation = "portrait",
   className,
+  defaultZoom,
 }: {
   title: string;
   url: string;
   orientation?: "portrait" | "landscape";
   className?: string;
+  defaultZoom?: number;
 }) {
   const landscape = orientation === "landscape";
+  const initialZoom = defaultZoom ?? (landscape ? 0.7 : 1);
+  const [zoom, setZoom] = useState(initialZoom);
+
+  useEffect(() => {
+    setZoom(defaultZoom ?? (landscape ? 0.7 : 1));
+  }, [url, landscape, defaultZoom]);
+
+  const zoomOut = () => setZoom((z) => clampZoom(z - ZOOM_STEP));
+  const zoomIn = () => setZoom((z) => clampZoom(z + ZOOM_STEP));
+  const resetZoom = () => setZoom(initialZoom);
+
   return (
-    <div className={cn("flex w-full items-center justify-center", className)}>
-      <div
-        className={cn(
-          "relative max-w-full overflow-hidden rounded-sm border border-border/70 bg-white shadow-[0_22px_60px_rgba(0,0,0,0.38)]",
-          landscape ? "h-full w-full" : "h-full",
-        )}
-        style={landscape ? undefined : { aspectRatio: "210 / 297" }}
-      >
-        <iframe
-          src={toEmbedUrl(url)}
-          title={title}
-          className="absolute inset-0 h-full w-full border-0 bg-white"
-          allow="fullscreen"
-        />
+    <div className={cn("flex w-full min-h-0 flex-col gap-2", className)}>
+      <div className="flex items-center justify-center gap-1.5 shrink-0">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={zoomOut}
+          disabled={zoom <= ZOOM_MIN + 0.001}
+          title="Alejar"
+          aria-label="Alejar"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 min-w-[4.5rem] px-2 font-mono text-xs"
+          onClick={resetZoom}
+          title="Restablecer zoom"
+        >
+          {Math.round(zoom * 100)}%
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX - 0.001}
+          title="Acercar"
+          aria-label="Acercar"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className={cn("min-h-0 flex-1 flex", landscape ? "w-full" : "justify-center")}>
+        <div
+          className={cn(
+            "relative h-full overflow-auto rounded-sm border border-border/70 bg-white shadow-[0_22px_60px_rgba(0,0,0,0.38)]",
+            landscape ? "w-full" : "max-w-full",
+          )}
+          style={landscape ? undefined : { aspectRatio: "210 / 297" }}
+        >
+          <div
+            style={{
+              width: `${100 / zoom}%`,
+              height: `${100 / zoom}%`,
+              transform: `scale(${zoom})`,
+              transformOrigin: "top left",
+            }}
+          >
+            <iframe
+              src={toEmbedUrl(url)}
+              title={title}
+              className="block h-full w-full border-0 bg-white"
+              style={{ height: "100%", minHeight: landscape ? 480 : 640 }}
+              allow="fullscreen"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 1.8;
+const ZOOM_STEP = 0.1;
+
+function clampZoom(value: number) {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value * 10) / 10));
 }
 
 function ContentPreviewDialog({
@@ -1380,12 +1452,12 @@ function ContentPreviewDialog({
             </Button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-5">
+        <div className="flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-5 flex flex-col">
           <DocFrame
             title={item.title}
             url={item.url}
             orientation={orientation}
-            className={landscape ? "h-[min(88vh,900px)]" : "h-[min(92vh,1200px)] mx-auto"}
+            className={landscape ? "h-[min(88vh,900px)] min-h-0" : "h-[min(92vh,1200px)] mx-auto min-h-0"}
           />
         </div>
       </DialogContent>
