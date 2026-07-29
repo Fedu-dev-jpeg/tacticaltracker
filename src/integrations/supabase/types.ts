@@ -133,6 +133,48 @@ export type Database = {
         }
         Relationships: []
       }
+      content_items: {
+        Row: {
+          category: string
+          content_type: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          map: string | null
+          status: string
+          title: string
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          category: string
+          content_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          map?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          category?: string
+          content_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          map?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           created_at: string

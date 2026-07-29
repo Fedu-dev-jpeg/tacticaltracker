@@ -14,6 +14,7 @@ import HistoryView from "@/components/HistoryView";
 import Agenda from "@/components/Agenda";
 import Playbook from "@/components/Playbook";
 import MapView from "@/components/MapView";
+import Contenidos from "@/pages/Contenidos";
 import Torneos from "./pages/Torneos";
 import Awards from "./pages/Awards";
 import Equipo from "./pages/Equipo";
@@ -70,6 +71,7 @@ function Routed({ matchState }: { matchState: MatchState }) {
       <Route path="/torneos" element={<Torneos />} />
       <Route path="/agenda" element={<Agenda />} />
       <Route path="/playbook" element={<Playbook />} />
+      <Route path="/contenidos" element={<Contenidos />} />
       <Route path="/awards" element={<Awards />} />
       <Route path="/mapas" element={<MapView matches={matches} />} />
       <Route path="/equipo" element={<Equipo />} />
