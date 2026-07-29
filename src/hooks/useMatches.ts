@@ -141,7 +141,11 @@ function normalizeMatchType(value: unknown): Match["type"] {
 }
 
 function normalizeMapName(value: unknown): Match["map"] {
-  const raw = String(value ?? "").trim().toLowerCase().replace(/^de_/, "");
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^de_/, "")
+    .replace(/[\s_-]+/g, "");
   const aliases: Record<string, Match["map"]> = {
     mirage: "Mirage",
     inferno: "Inferno",
@@ -149,6 +153,8 @@ function normalizeMapName(value: unknown): Match["map"] {
     ancient: "Ancient",
     anubis: "Anubis",
     cache: "Cache",
+    dust2: "Dust2",
+    dus2: "Dust2",
   };
   return aliases[raw] ?? "Nuke";
 }

@@ -26,7 +26,11 @@ export interface PlayerProfileData {
 }
 
 function normalizeMapName(value: string | null | undefined) {
-  const raw = String(value ?? "").trim().toLowerCase().replace(/^de_/, "");
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^de_/, "")
+    .replace(/[\s_-]+/g, "");
   const aliases: Record<string, string> = {
     mirage: "Mirage",
     inferno: "Inferno",
@@ -34,6 +38,8 @@ function normalizeMapName(value: string | null | undefined) {
     ancient: "Ancient",
     anubis: "Anubis",
     cache: "Cache",
+    dust2: "Dust2",
+    dus2: "Dust2",
   };
   return aliases[raw] ?? (value || "Sin mapa");
 }

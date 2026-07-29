@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VALID_MAPS = ["Nuke", "Ancient", "Anubis", "Inferno", "Mirage", "Dust2", "Vertigo", "Overpass", "Train"];
+const VALID_MAPS = ["Nuke", "Ancient", "Anubis", "Inferno", "Mirage", "Dust2", "Cache", "Vertigo", "Overpass", "Train"];
 const VALID_TYPES = [
   "Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Setup",
   "Dominio", "Retake", "Postplant", "Finalización", "Calls de base", "Sorpresa",
