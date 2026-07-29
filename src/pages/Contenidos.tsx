@@ -9,15 +9,18 @@ import {
   ChevronUp,
   ExternalLink,
   Eye,
+  FileText,
   GraduationCap,
   Link as LinkIcon,
   Maximize2,
+  MessageSquare,
   Paperclip,
   Pencil,
   Plus,
   Trash2,
   Users2,
   X,
+  Youtube,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -65,6 +68,14 @@ type ContentResponse = {
   response_text: string;
   attachment_url: string | null;
   completed: boolean;
+};
+
+type ContentComment = {
+  id: string;
+  content_item_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
 };
 
 type FormState = {
@@ -117,6 +128,21 @@ const STATUS_LABEL: Record<ContentItem["status"], string> = {
   archived: "Archivado",
 };
 
+const SOURCE_FORMATS = [
+  { value: "link", label: "Google Doc / Link" },
+  { value: "sheet", label: "Excel / Google Sheets" },
+  { value: "pdf", label: "PDF" },
+  { value: "youtube", label: "Video de YouTube" },
+] as const;
+
+const MEDIA_LABEL: Record<string, string> = {
+  link: "Doc/Link",
+  doc: "Doc",
+  sheet: "Sheets",
+  pdf: "PDF",
+  youtube: "YouTube",
+};
+
 export default function Contenidos() {
   const { user } = useAuth();
   const { isAdmin, isCoach } = useUserRole();
@@ -124,6 +150,7 @@ export default function Contenidos() {
   const canManage = isAdmin || isCoach;
   const [items, setItems] = useState<ContentItem[]>([]);
   const [responses, setResponses] = useState<ContentResponse[]>([]);
+  const [comments, setComments] = useState<ContentComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ContentItem | null>(null);
@@ -149,13 +176,15 @@ export default function Contenidos() {
       setItems((data as ContentItem[]) ?? []);
       const ids = ((data as ContentItem[]) ?? []).map((item) => item.id);
       if (ids.length > 0) {
-        const { data: responseRows } = await supabase
-          .from("content_responses")
-          .select("*")
-          .in("content_item_id", ids);
+        const [{ data: responseRows }, { data: commentRows }] = await Promise.all([
+          supabase.from("content_responses").select("*").in("content_item_id", ids),
+          supabase.from("content_comments").select("*").in("content_item_id", ids).order("created_at", { ascending: true }),
+        ]);
         setResponses((responseRows as ContentResponse[]) ?? []);
+        setComments((commentRows as ContentComment[]) ?? []);
       } else {
         setResponses([]);
+        setComments([]);
       }
     }
     setLoading(false);
@@ -323,6 +352,34 @@ export default function Contenidos() {
     }
   };
 
+  const saveComment = async (item: ContentItem, body: string) => {
+    if (!user) return;
+    const trimmed = body.trim();
+    if (!trimmed) {
+      toast.error("Escribí un comentario");
+      return;
+    }
+    const { error } = await supabase.from("content_comments").insert({
+      content_item_id: item.id,
+      user_id: user.id,
+      body: trimmed,
+    });
+    if (error) toast.error("No se pudo guardar el comentario", { description: error.message });
+    else {
+      toast.success("Comentario publicado");
+      fetchItems();
+    }
+  };
+
+  const deleteComment = async (comment: ContentComment) => {
+    const { error } = await supabase.from("content_comments").delete().eq("id", comment.id);
+    if (error) toast.error("No se pudo borrar el comentario", { description: error.message });
+    else {
+      toast.success("Comentario eliminado");
+      fetchItems();
+    }
+  };
+
   const responsesByItem = useMemo(() => {
     const map = new Map<string, ContentResponse[]>();
     for (const response of responses) {
@@ -332,6 +389,16 @@ export default function Contenidos() {
     }
     return map;
   }, [responses]);
+
+  const commentsByItem = useMemo(() => {
+    const map = new Map<string, ContentComment[]>();
+    for (const comment of comments) {
+      const arr = map.get(comment.content_item_id) ?? [];
+      arr.push(comment);
+      map.set(comment.content_item_id, arr);
+    }
+    return map;
+  }, [comments]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -498,13 +565,18 @@ export default function Contenidos() {
                   </div>
                 )}
               </CardHeader>
-              <CardContent className="px-3 pb-3 pt-0">
+              <CardContent className="px-3 pb-3 pt-0 space-y-3">
                 {selectedPlaybook?.url ? (
-                  <DocFrame
-                    title={selectedPlaybook.title}
-                    url={selectedPlaybook.url}
+                  <MediaViewer
+                    item={selectedPlaybook}
                     orientation="portrait"
                     className="h-[min(72vh,820px)]"
+                    comments={commentsByItem.get(selectedPlaybook.id) ?? []}
+                    members={members}
+                    currentUserId={user?.id ?? null}
+                    canManage={canManage}
+                    onSaveComment={saveComment}
+                    onDeleteComment={deleteComment}
                   />
                 ) : (
                   <div className="flex h-[min(52vh,520px)] items-center justify-center rounded-md border border-dashed border-border bg-card/40 px-6 text-center">
@@ -513,7 +585,7 @@ export default function Contenidos() {
                       <p className="text-sm text-muted-foreground">
                         {loading
                           ? "Cargando playbook..."
-                          : "Elegí o creá una guía con link de Google Docs para verla acá."}
+                          : "Elegí o creá una guía con Doc, PDF o YouTube para verla acá."}
                       </p>
                     </div>
                   </div>
@@ -527,7 +599,13 @@ export default function Contenidos() {
             onOpenChange={setPlaybookFullscreen}
             item={selectedPlaybook}
             orientation="portrait"
-            subtitle="Vista ampliada · hoja A4 legible"
+            subtitle="Vista ampliada"
+            comments={selectedPlaybook ? commentsByItem.get(selectedPlaybook.id) ?? [] : []}
+            members={members}
+            currentUserId={user?.id ?? null}
+            canManage={canManage}
+            onSaveComment={saveComment}
+            onDeleteComment={deleteComment}
           />
         </div>
       )}
@@ -601,8 +679,11 @@ export default function Contenidos() {
                     onDelete={remove}
                     members={members}
                     responsesByItem={responsesByItem}
+                    commentsByItem={commentsByItem}
                     currentUserId={user?.id ?? null}
                     onRespond={saveResponse}
+                    onSaveComment={saveComment}
+                    onDeleteComment={deleteComment}
                   />
                 </CardContent>
               </Card>
@@ -731,18 +812,23 @@ export default function Contenidos() {
                     <p className="text-xs text-muted-foreground px-1">{selectedRoutine.description}</p>
                   )}
                   {selectedRoutine?.url ? (
-                    <DocFrame
-                      title={selectedRoutine.title}
-                      url={selectedRoutine.url}
+                    <MediaViewer
+                      item={selectedRoutine}
                       orientation="landscape"
                       className="h-[min(58vh,640px)]"
+                      comments={commentsByItem.get(selectedRoutine.id) ?? []}
+                      members={members}
+                      currentUserId={user?.id ?? null}
+                      canManage={canManage}
+                      onSaveComment={saveComment}
+                      onDeleteComment={deleteComment}
                     />
                   ) : (
                     <div className="flex h-[min(40vh,360px)] items-center justify-center rounded-md border border-dashed border-border bg-card/40 px-6 text-center">
                       <div>
                         <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
                         <p className="text-sm text-muted-foreground">
-                          {loading ? "Cargando rutina..." : "Elegí o creá una rutina con link de Sheets/Excel para verla acá."}
+                          {loading ? "Cargando rutina..." : "Elegí o creá una rutina con Sheets, PDF o YouTube para verla acá."}
                         </p>
                       </div>
                     </div>
@@ -769,7 +855,13 @@ export default function Contenidos() {
             onOpenChange={setRoutineFullscreen}
             item={selectedRoutine}
             orientation="landscape"
-            subtitle="Vista ampliada horizontal · Excel / Sheets"
+            subtitle="Vista ampliada horizontal"
+            comments={selectedRoutine ? commentsByItem.get(selectedRoutine.id) ?? [] : []}
+            members={members}
+            currentUserId={user?.id ?? null}
+            canManage={canManage}
+            onSaveComment={saveComment}
+            onDeleteComment={deleteComment}
           />
         </div>
       )}
@@ -787,8 +879,11 @@ function ContentList({
   onDelete,
   members,
   responsesByItem,
+  commentsByItem,
   currentUserId,
   onRespond,
+  onSaveComment,
+  onDeleteComment,
 }: {
   items: ContentItem[];
   loading: boolean;
@@ -797,8 +892,11 @@ function ContentList({
   onDelete: (item: ContentItem) => void;
   members?: Array<{ user_id: string; player_name: string }>;
   responsesByItem?: Map<string, ContentResponse[]>;
+  commentsByItem?: Map<string, ContentComment[]>;
   currentUserId?: string | null;
   onRespond?: (item: ContentItem, responseText: string, attachmentUrl: string) => void;
+  onSaveComment?: (item: ContentItem, body: string) => void;
+  onDeleteComment?: (comment: ContentComment) => void;
 }) {
   if (loading) return <p className="text-sm text-muted-foreground py-4">Cargando...</p>;
   if (items.length === 0) return <p className="text-sm text-muted-foreground py-4">Sin contenidos todavía.</p>;
@@ -813,8 +911,11 @@ function ContentList({
           onDelete={onDelete}
           members={members ?? []}
           responses={responsesByItem?.get(item.id) ?? []}
+          comments={commentsByItem?.get(item.id) ?? []}
           currentUserId={currentUserId ?? null}
           onRespond={onRespond}
+          onSaveComment={onSaveComment}
+          onDeleteComment={onDeleteComment}
         />
       ))}
     </div>
@@ -828,8 +929,11 @@ function ContentCard({
   onDelete,
   members,
   responses,
+  comments,
   currentUserId,
   onRespond,
+  onSaveComment,
+  onDeleteComment,
 }: {
   item: ContentItem;
   canManage: boolean;
@@ -837,8 +941,11 @@ function ContentCard({
   onDelete: (item: ContentItem) => void;
   members: Array<{ user_id: string; player_name: string }>;
   responses: ContentResponse[];
+  comments: ContentComment[];
   currentUserId: string | null;
   onRespond?: (item: ContentItem, responseText: string, attachmentUrl: string) => void;
+  onSaveComment?: (item: ContentItem, body: string) => void;
+  onDeleteComment?: (comment: ContentComment) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [responsesOpen, setResponsesOpen] = useState(false);
@@ -851,6 +958,7 @@ function ContentCard({
     .join(", ");
   const myResponse = responses.find((r) => r.user_id === currentUserId);
   const assignedToMe = !!currentUserId && (item.assigned_user_ids.length === 0 || item.assigned_user_ids.includes(currentUserId));
+  const mediaKind = resolveMediaKind(item);
   const orientation = prefersLandscape(item) ? "landscape" : "portrait";
   const completedCount = responses.filter((r) => r.completed).length;
 
@@ -861,6 +969,10 @@ function ContentCard({
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-medium">{item.title}</h3>
             <Badge variant="outline" className="text-[10px]">{STATUS_LABEL[item.status]}</Badge>
+            <Badge variant="outline" className="text-[10px] gap-1">
+              {mediaKind === "youtube" ? <Youtube className="h-3 w-3" /> : mediaKind === "pdf" ? <FileText className="h-3 w-3" /> : null}
+              {MEDIA_LABEL[mediaKind] ?? mediaKind}
+            </Badge>
             {item.map && <Badge className="text-[10px] bg-accent/15 text-accent border-accent/30">{item.map}</Badge>}
             {item.requires_response && <Badge variant="outline" className="text-[10px]"><CheckCircle2 className="h-3 w-3 mr-1" /> Respuesta</Badge>}
             {item.requires_file && <Badge variant="outline" className="text-[10px]"><Paperclip className="h-3 w-3 mr-1" /> Archivo</Badge>}
@@ -897,8 +1009,31 @@ function ContentCard({
         onOpenChange={setPreviewOpen}
         item={item}
         orientation={orientation}
-        subtitle={orientation === "landscape" ? "Vista horizontal · Excel / Sheets" : "Vista ampliada · hoja A4"}
+        subtitle={mediaKind === "youtube" ? "Video + comentarios" : mediaKind === "pdf" ? "Vista PDF" : orientation === "landscape" ? "Vista horizontal" : "Vista ampliada"}
+        comments={comments}
+        members={members}
+        currentUserId={currentUserId}
+        canManage={canManage}
+        onSaveComment={onSaveComment}
+        onDeleteComment={onDeleteComment}
       />
+
+      {item.url && (mediaKind === "youtube" || mediaKind === "pdf") && (
+        <div className="mt-3 space-y-3">
+          <MediaViewer
+            item={item}
+            orientation={mediaKind === "youtube" ? "landscape" : orientation}
+            className={mediaKind === "youtube" ? "h-[min(42vh,420px)]" : "h-[min(56vh,640px)]"}
+            comments={comments}
+            members={members}
+            currentUserId={currentUserId}
+            canManage={canManage}
+            onSaveComment={onSaveComment}
+            onDeleteComment={onDeleteComment}
+            showComments={mediaKind === "youtube"}
+          />
+        </div>
+      )}
 
       {(item.requires_response || item.requires_file) && assignedToMe && (
         <div className="mt-3 rounded-md border border-accent/25 bg-accent/5 p-3 space-y-2">
@@ -1168,8 +1303,49 @@ function ContentDialog({
             <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ej: Ancient defaults / Retake B / Rutina semanal" />
           </div>
           <div>
-            <Label className="text-xs">Link hiperlinkeado</Label>
-            <Input value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} placeholder="https://docs.google.com/..." />
+            <Label className="text-xs">Tipo de archivo / media</Label>
+            <Select
+              value={form.source_format}
+              onValueChange={(v) => setForm((f) => ({ ...f, source_format: v }))}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SOURCE_FORMATS.map((format) => (
+                  <SelectItem key={format.value} value={format.value}>{format.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">
+              {form.source_format === "youtube"
+                ? "Link de YouTube"
+                : form.source_format === "pdf"
+                  ? "Link del PDF"
+                  : form.source_format === "sheet"
+                    ? "Link de Sheets / Excel"
+                    : "Link hiperlinkeado"}
+            </Label>
+            <Input
+              value={form.url}
+              onChange={(e) => {
+                const nextUrl = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  url: nextUrl,
+                  source_format: detectSourceFormat(nextUrl, f.source_format),
+                }));
+              }}
+              placeholder={
+                form.source_format === "youtube"
+                  ? "https://www.youtube.com/watch?v=... o https://youtu.be/..."
+                  : form.source_format === "pdf"
+                    ? "https://.../archivo.pdf o Drive"
+                    : form.source_format === "sheet"
+                      ? "https://docs.google.com/spreadsheets/..."
+                      : "https://docs.google.com/document/..."
+              }
+            />
           </div>
           {form.category === "class" && (
             <div>
@@ -1183,27 +1359,14 @@ function ContentDialog({
             </div>
           )}
           {form.category === "routine" && (
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Grupo de rutina</Label>
-                <Select value={form.routine_group} onValueChange={(v) => setForm((f) => ({ ...f, routine_group: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ROUTINE_GROUPS.map((group) => <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Formato</Label>
-                <Select value={form.source_format} onValueChange={(v) => setForm((f) => ({ ...f, source_format: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sheet">Excel / Google Sheets</SelectItem>
-                    <SelectItem value="doc">Google Doc</SelectItem>
-                    <SelectItem value="link">Link externo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label className="text-xs">Grupo de rutina</Label>
+              <Select value={form.routine_group} onValueChange={(v) => setForm((f) => ({ ...f, routine_group: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROUTINE_GROUPS.map((group) => <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           )}
           <div className="rounded-md border border-border p-3 space-y-3">
@@ -1318,12 +1481,14 @@ function DocFrame({
   orientation = "portrait",
   className,
   defaultZoom,
+  forcePdf = false,
 }: {
   title: string;
   url: string;
   orientation?: "portrait" | "landscape";
   className?: string;
   defaultZoom?: number;
+  forcePdf?: boolean;
 }) {
   const landscape = orientation === "landscape";
   const initialZoom = defaultZoom ?? (landscape ? 0.75 : 1);
@@ -1407,7 +1572,10 @@ function DocFrame({
           style={landscape ? undefined : { aspectRatio: "210 / 297" }}
         >
           <iframe
-            src={toEmbedUrl(url, { preferReadableSheet: landscape || prefersSpreadsheetUrl(url) })}
+            src={toEmbedUrl(url, {
+              preferReadableSheet: landscape || prefersSpreadsheetUrl(url),
+              forcePdf,
+            })}
             title={title}
             className="block bg-white"
             style={frameStyle}
@@ -1450,15 +1618,27 @@ function ContentPreviewDialog({
   item,
   orientation = "portrait",
   subtitle,
+  comments = [],
+  members = [],
+  currentUserId = null,
+  canManage = false,
+  onSaveComment,
+  onDeleteComment,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   item: ContentItem | null;
   orientation?: "portrait" | "landscape";
   subtitle?: string;
+  comments?: ContentComment[];
+  members?: Array<{ user_id: string; player_name: string }>;
+  currentUserId?: string | null;
+  canManage?: boolean;
+  onSaveComment?: (item: ContentItem, body: string) => void;
+  onDeleteComment?: (comment: ContentComment) => void;
 }) {
   if (!item?.url) return null;
-  const landscape = orientation === "landscape";
+  const kind = resolveMediaKind(item);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1467,7 +1647,7 @@ function ContentPreviewDialog({
           <div className="min-w-0">
             <DialogTitle className="text-base truncate">{item.title}</DialogTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              {subtitle ?? (landscape ? "Vista horizontal" : "Vista ampliada · hoja A4")}
+              {subtitle ?? (kind === "youtube" ? "Video" : kind === "pdf" ? "PDF" : "Vista ampliada")}
               {item.map ? ` · ${item.map}` : ""}
             </p>
           </div>
@@ -1482,12 +1662,18 @@ function ContentPreviewDialog({
             </Button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-5 flex flex-col">
-          <DocFrame
-            title={item.title}
-            url={item.url}
+        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-5">
+          <MediaViewer
+            item={item}
             orientation={orientation}
-            className={landscape ? "h-[min(88vh,900px)] min-h-0" : "h-[min(92vh,1200px)] mx-auto min-h-0"}
+            className={kind === "youtube" ? "min-h-[70vh]" : orientation === "landscape" ? "h-[min(88vh,900px)] min-h-0" : "h-[min(92vh,1200px)] mx-auto min-h-0"}
+            comments={comments}
+            members={members}
+            currentUserId={currentUserId}
+            canManage={canManage}
+            onSaveComment={onSaveComment}
+            onDeleteComment={onDeleteComment}
+            showComments={kind === "youtube"}
           />
         </div>
       </DialogContent>
@@ -1495,11 +1681,206 @@ function ContentPreviewDialog({
   );
 }
 
+function MediaViewer({
+  item,
+  orientation = "portrait",
+  className,
+  comments = [],
+  members = [],
+  currentUserId = null,
+  canManage = false,
+  onSaveComment,
+  onDeleteComment,
+  showComments,
+}: {
+  item: ContentItem;
+  orientation?: "portrait" | "landscape";
+  className?: string;
+  comments?: ContentComment[];
+  members?: Array<{ user_id: string; player_name: string }>;
+  currentUserId?: string | null;
+  canManage?: boolean;
+  onSaveComment?: (item: ContentItem, body: string) => void;
+  onDeleteComment?: (comment: ContentComment) => void;
+  showComments?: boolean;
+}) {
+  if (!item.url) return null;
+  const kind = resolveMediaKind(item);
+  const includeComments = showComments ?? kind === "youtube";
+
+  if (kind === "youtube") {
+    const videoId = extractYoutubeId(item.url);
+    return (
+      <div className={cn("space-y-3 w-full", className)}>
+        <div className="relative w-full overflow-hidden rounded-md border border-border bg-black aspect-video shadow-[0_22px_60px_rgba(0,0,0,0.38)]">
+          {videoId ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${videoId}?rel=0`}
+              title={item.title}
+              className="absolute inset-0 h-full w-full border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground bg-card">
+              No se pudo leer el link de YouTube
+            </div>
+          )}
+        </div>
+        {includeComments && onSaveComment && onDeleteComment && (
+          <YouTubeCommentsPanel
+            item={item}
+            comments={comments}
+            members={members}
+            currentUserId={currentUserId}
+            canManage={canManage}
+            onSaveComment={onSaveComment}
+            onDeleteComment={onDeleteComment}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (kind === "pdf") {
+    return (
+      <DocFrame
+        title={item.title}
+        url={item.url}
+        orientation={orientation === "landscape" ? "landscape" : "portrait"}
+        className={className}
+        defaultZoom={orientation === "landscape" ? 0.85 : 1}
+        forcePdf
+      />
+    );
+  }
+
+  return (
+    <DocFrame
+      title={item.title}
+      url={item.url}
+      orientation={orientation}
+      className={className}
+    />
+  );
+}
+
+function YouTubeCommentsPanel({
+  item,
+  comments,
+  members,
+  currentUserId,
+  canManage,
+  onSaveComment,
+  onDeleteComment,
+}: {
+  item: ContentItem;
+  comments: ContentComment[];
+  members: Array<{ user_id: string; player_name: string }>;
+  currentUserId: string | null;
+  canManage: boolean;
+  onSaveComment: (item: ContentItem, body: string) => void;
+  onDeleteComment: (comment: ContentComment) => void;
+}) {
+  const [body, setBody] = useState("");
+
+  return (
+    <Card className="card-glow">
+      <CardHeader className="py-3 px-4">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <MessageSquare className="h-4 w-4 text-accent" />
+          Comentarios del video
+          <Badge variant="outline" className="text-[10px]">{comments.length}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-3">
+        <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+          {comments.length === 0 && (
+            <p className="text-xs text-muted-foreground">Todavía no hay comentarios. Dejá el primero.</p>
+          )}
+          {comments.map((comment) => {
+            const author = members.find((m) => m.user_id === comment.user_id)?.player_name ?? "Jugador";
+            const canDelete = canManage || comment.user_id === currentUserId;
+            return (
+              <div key={comment.id} className="rounded-md border border-border bg-card/60 p-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium">{author}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {new Date(comment.created_at).toLocaleString("es-AR")}
+                    </div>
+                  </div>
+                  {canDelete && (
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onDeleteComment(comment)}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+                <p className="text-sm mt-1.5 whitespace-pre-wrap">{comment.body}</p>
+              </div>
+            );
+          })}
+        </div>
+        {currentUserId ? (
+          <div className="space-y-2">
+            <Textarea
+              rows={2}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Escribí un comentario sobre el video..."
+            />
+            <Button
+              size="sm"
+              onClick={() => {
+                onSaveComment(item, body);
+                setBody("");
+              }}
+            >
+              Publicar comentario
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Iniciá sesión para comentar.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function prefersLandscape(item: ContentItem) {
-  if (item.category === "routine") return true;
-  if (item.source_format === "sheet") return true;
-  const url = item.url ?? "";
-  return /spreadsheets|\.xlsx?($|\?)|excel/i.test(url);
+  const kind = resolveMediaKind(item);
+  if (kind === "youtube" || kind === "sheet") return true;
+  if (item.category === "routine" && kind !== "pdf") return true;
+  return false;
+}
+
+function resolveMediaKind(item: ContentItem): "youtube" | "pdf" | "sheet" | "link" {
+  const format = (item.source_format || "").toLowerCase();
+  if (format === "youtube" || format === "pdf" || format === "sheet") return format;
+  if (format === "doc") return "link";
+  return detectSourceFormat(item.url ?? "", "link") as "youtube" | "pdf" | "sheet" | "link";
+}
+
+function detectSourceFormat(url: string, fallback = "link") {
+  const value = url.trim();
+  if (!value) return fallback;
+  if (extractYoutubeId(value)) return "youtube";
+  if (/\.pdf($|\?)/i.test(value) || /drive\.google\.com\/file\//i.test(value)) return "pdf";
+  if (/spreadsheets|\.xlsx?($|\?)/i.test(value)) return "sheet";
+  if (/docs\.google\.com\/document/i.test(value)) return "link";
+  return fallback;
+}
+
+function extractYoutubeId(url: string): string | null {
+  const normalized = normalizeUrl(url) ?? url;
+  const patterns = [
+    /(?:youtube\.com\/watch\?(?:.*&)?v=|youtube\.com\/embed\/|youtube\.com\/shorts\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
 }
 
 function normalizeUrl(value: string) {
@@ -1508,13 +1889,17 @@ function normalizeUrl(value: string) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-function toEmbedUrl(url: string, opts?: { preferReadableSheet?: boolean }) {
+function toEmbedUrl(url: string, opts?: { preferReadableSheet?: boolean; forcePdf?: boolean }) {
   const normalized = normalizeUrl(url) ?? url;
+  if (opts?.forcePdf || /\.pdf($|\?)/i.test(normalized) || /drive\.google\.com\/file\//i.test(normalized)) {
+    const drive = normalized.match(/drive\.google\.com\/file\/d\/([^/]+)/i)?.[1];
+    if (drive) return `https://drive.google.com/file/d/${drive}/preview`;
+    return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(normalized)}`;
+  }
   const doc = normalized.match(/docs\.google\.com\/document\/d\/([^/]+)/i)?.[1];
   if (doc) return `https://docs.google.com/document/d/${doc}/preview`;
   const sheet = normalized.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/i)?.[1];
   if (sheet) {
-    // htmlview renderiza como HTML: el zoom del browser mantiene el texto legible
     if (opts?.preferReadableSheet) {
       return `https://docs.google.com/spreadsheets/d/${sheet}/htmlview?usp=sharing`;
     }
