@@ -34,6 +34,7 @@ const MAP_OPTIONS = [
   "Ancient",
   "Anubis",
   "Cache",
+  "Dust2",
 ];
 
 const ROLE_OPTIONS = [
