@@ -9,11 +9,13 @@ import {
   Eye,
   GraduationCap,
   Link as LinkIcon,
+  Maximize2,
   Paperclip,
   Pencil,
   Plus,
   Trash2,
   Users2,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { MAPS } from "@/types/match";
@@ -123,6 +125,9 @@ export default function Contenidos() {
   const [editing, setEditing] = useState<ContentItem | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [activeSection, setActiveSection] = useState<"playbooks" | "classes" | "routines">("playbooks");
+  const [selectedPlaybookMap, setSelectedPlaybookMap] = useState<string>(MAPS[0]);
+  const [selectedPlaybookId, setSelectedPlaybookId] = useState<string | null>(null);
+  const [playbookFullscreen, setPlaybookFullscreen] = useState(false);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -158,6 +163,22 @@ export default function Contenidos() {
     class: items.filter((item) => item.category === "class"),
     routine: items.filter((item) => item.category === "routine"),
   }), [items]);
+
+  const playbooksForMap = useMemo(
+    () => byCategory.playbook.filter((item) => item.map === selectedPlaybookMap),
+    [byCategory.playbook, selectedPlaybookMap],
+  );
+
+  const selectedPlaybook = useMemo(() => {
+    if (playbooksForMap.length === 0) return null;
+    return playbooksForMap.find((item) => item.id === selectedPlaybookId) ?? playbooksForMap[0];
+  }, [playbooksForMap, selectedPlaybookId]);
+
+  useEffect(() => {
+    if (!playbooksForMap.some((item) => item.id === selectedPlaybookId)) {
+      setSelectedPlaybookId(playbooksForMap[0]?.id ?? null);
+    }
+  }, [playbooksForMap, selectedPlaybookId]);
 
   const mapStats = useMemo(() => MAPS.map((map) => {
     const mapItems = items.filter((item) => item.map === map);
@@ -322,38 +343,167 @@ export default function Contenidos() {
       </div>
 
       {activeSection === "playbooks" && (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {MAPS.map((map) => {
-              const mapItems = byCategory.playbook.filter((item) => item.map === map);
+              const count = byCategory.playbook.filter((item) => item.map === map).length;
+              const active = selectedPlaybookMap === map;
               return (
-                <Card key={map} className="card-glow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Guía playbook {map}</CardTitle>
-                      {canManage && (
-                        <Button variant="ghost" size="sm" onClick={() => openNew("playbook", map)}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ContentList
-                      items={mapItems}
-                      loading={loading}
-                      canManage={canManage}
-                      onEdit={openEdit}
-                      onDelete={remove}
-                      members={members}
-                      responsesByItem={responsesByItem}
-                      currentUserId={user?.id ?? null}
-                      onRespond={saveResponse}
-                    />
-                  </CardContent>
-                </Card>
+                <button
+                  key={map}
+                  type="button"
+                  onClick={() => setSelectedPlaybookMap(map)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-2 text-left transition",
+                    active
+                      ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                      : "border-border bg-card/70 hover:border-accent/40",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-heading text-sm font-semibold truncate">{map}</span>
+                    <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0">{count}</Badge>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Guía playbook</div>
+                </button>
               );
             })}
           </div>
+
+          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+            <Card className="card-glow border-border/80">
+              <CardHeader className="py-3 px-3 space-y-0">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm">Docs · {selectedPlaybookMap}</CardTitle>
+                  {canManage && (
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openNew("playbook", selectedPlaybookMap)}>
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="px-3 pb-3 pt-0 space-y-1.5">
+                {loading && <p className="text-xs text-muted-foreground py-3">Cargando...</p>}
+                {!loading && playbooksForMap.length === 0 && (
+                  <p className="text-xs text-muted-foreground py-3">Sin guías todavía.</p>
+                )}
+                {playbooksForMap.map((item) => {
+                  const active = selectedPlaybook?.id === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        "rounded-md border px-2.5 py-2 transition",
+                        active ? "border-accent bg-accent/10" : "border-border bg-card/60",
+                      )}
+                    >
+                      <button type="button" className="w-full text-left" onClick={() => setSelectedPlaybookId(item.id)}>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-medium truncate">{item.title}</span>
+                          <Badge variant="outline" className="text-[9px] h-4 px-1">{STATUS_LABEL[item.status]}</Badge>
+                        </div>
+                        {item.description && (
+                          <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
+                        )}
+                      </button>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {item.url && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[11px] px-2"
+                              onClick={() => {
+                                setSelectedPlaybookId(item.id);
+                                setPlaybookFullscreen(true);
+                              }}
+                            >
+                              <Eye className="h-3 w-3 mr-1" /> Previsualizar
+                            </Button>
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
+                            >
+                              <ExternalLink className="h-3 w-3" /> Abrir
+                            </a>
+                          </>
+                        )}
+                        {canManage && (
+                          <div className="ml-auto flex gap-0.5">
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => openEdit(item)}>
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => remove(item)}>
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <Card className="card-glow border-accent/20 overflow-hidden">
+              <CardHeader className="py-3 px-4 flex-row items-center justify-between space-y-0 gap-2">
+                <div className="min-w-0">
+                  <CardTitle className="text-sm truncate">
+                    {selectedPlaybook ? selectedPlaybook.title : `Playbook ${selectedPlaybookMap}`}
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Vista del documento dentro de Playbooks · tamaño hoja A4
+                  </p>
+                </div>
+                {selectedPlaybook?.url && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setPlaybookFullscreen(true)}
+                    >
+                      <Maximize2 className="h-3.5 w-3.5 mr-1.5" /> Pantalla completa
+                    </Button>
+                    <a href={selectedPlaybook.url} target="_blank" rel="noreferrer">
+                      <Button variant="ghost" size="sm" className="h-8">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                    </a>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className="px-3 pb-3 pt-0">
+                {selectedPlaybook?.url ? (
+                  <A4DocFrame
+                    title={selectedPlaybook.title}
+                    url={selectedPlaybook.url}
+                    className="h-[min(72vh,820px)]"
+                  />
+                ) : (
+                  <div className="flex h-[min(52vh,520px)] items-center justify-center rounded-md border border-dashed border-border bg-card/40 px-6 text-center">
+                    <div>
+                      <BookOpen className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">
+                        {loading
+                          ? "Cargando playbook..."
+                          : "Elegí o creá una guía con link de Google Docs para verla acá."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <PlaybookFullscreenDialog
+            open={playbookFullscreen}
+            onOpenChange={setPlaybookFullscreen}
+            item={selectedPlaybook}
+          />
+        </div>
       )}
 
       {activeSection === "playbooks" && (
@@ -566,8 +716,8 @@ function ContentCard({
           <div className="flex flex-wrap gap-2 mt-2">
             {item.url && (
               <>
-                <Button variant="outline" size="sm" onClick={() => setPreviewOpen((v) => !v)} className="h-7 text-xs">
-                  <Eye className="h-3 w-3 mr-1" /> {previewOpen ? "Ocultar" : "Previsualizar"}
+                <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)} className="h-7 text-xs">
+                  <Eye className="h-3 w-3 mr-1" /> Previsualizar
                 </Button>
                 <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
                   <LinkIcon className="h-3 w-3" /> Abrir link <ExternalLink className="h-3 w-3" />
@@ -585,9 +735,16 @@ function ContentCard({
       </div>
 
       {previewOpen && item.url && (
-        <div className="mt-3 overflow-hidden rounded-md border border-border bg-background">
-          <iframe src={toEmbedUrl(item.url)} title={item.title} className="h-[520px] w-full bg-white" />
-        </div>
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+          <DialogContent className="fixed inset-3 sm:inset-4 left-auto top-auto translate-x-0 translate-y-0 w-auto max-w-none h-auto max-h-none flex flex-col gap-0 p-0 overflow-hidden sm:rounded-lg">
+            <DialogHeader className="px-4 py-3 border-b border-border shrink-0 pr-12">
+              <DialogTitle className="text-base truncate">{item.title}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 min-h-0 bg-muted/40 p-3 sm:p-5 overflow-auto">
+              <A4DocFrame title={item.title} url={item.url} className="h-[min(88vh,1100px)] mx-auto" />
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {(item.requires_response || item.requires_file) && assignedToMe && (
@@ -821,6 +978,73 @@ function SectionCard({
       <div className="font-heading font-bold">{title}</div>
       <div className="text-xs text-muted-foreground mt-1">{desc}</div>
     </button>
+  );
+}
+
+function A4DocFrame({
+  title,
+  url,
+  className,
+}: {
+  title: string;
+  url: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex w-full items-center justify-center", className)}>
+      <div
+        className="relative h-full max-w-full overflow-hidden rounded-sm border border-border/70 bg-white shadow-[0_22px_60px_rgba(0,0,0,0.38)]"
+        style={{ aspectRatio: "210 / 297" }}
+      >
+        <iframe
+          src={toEmbedUrl(url)}
+          title={title}
+          className="absolute inset-0 h-full w-full border-0 bg-white"
+          allow="fullscreen"
+        />
+      </div>
+    </div>
+  );
+}
+
+function PlaybookFullscreenDialog({
+  open,
+  onOpenChange,
+  item,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: ContentItem | null;
+}) {
+  if (!item?.url) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="fixed inset-2 sm:inset-3 left-auto top-auto translate-x-0 translate-y-0 w-auto max-w-none h-auto max-h-none flex flex-col gap-0 p-0 overflow-hidden sm:rounded-lg border-border bg-background">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 pr-12 shrink-0">
+          <div className="min-w-0">
+            <DialogTitle className="text-base truncate">{item.title}</DialogTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Vista ampliada · hoja A4 legible
+              {item.map ? ` · ${item.map}` : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a href={item.url} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm" className="h-8">
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir en Google
+              </Button>
+            </a>
+            <Button variant="ghost" size="sm" className="h-8" onClick={() => onOpenChange(false)}>
+              <X className="h-3.5 w-3.5 mr-1.5" /> Cerrar
+            </Button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-6">
+          <A4DocFrame title={item.title} url={item.url} className="h-[min(92vh,1200px)] mx-auto" />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
