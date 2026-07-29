@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import {
   Activity,
@@ -1326,16 +1326,38 @@ function DocFrame({
   defaultZoom?: number;
 }) {
   const landscape = orientation === "landscape";
-  const initialZoom = defaultZoom ?? (landscape ? 0.7 : 1);
+  const initialZoom = defaultZoom ?? (landscape ? 0.75 : 1);
   const [zoom, setZoom] = useState(initialZoom);
+  const supportsCssZoom = useMemo(() => supportsBrowserCssZoom(), []);
 
   useEffect(() => {
-    setZoom(defaultZoom ?? (landscape ? 0.7 : 1));
+    setZoom(defaultZoom ?? (landscape ? 0.75 : 1));
   }, [url, landscape, defaultZoom]);
 
   const zoomOut = () => setZoom((z) => clampZoom(z - ZOOM_STEP));
   const zoomIn = () => setZoom((z) => clampZoom(z + ZOOM_STEP));
   const resetZoom = () => setZoom(initialZoom);
+
+  // CSS zoom re-rasterizes text (nítido). transform:scale() se ve borroso.
+  // Con zoom: el iframe se agranda 1/zoom y el browser lo reduce con zoom nativo.
+  const frameStyle: CSSProperties = supportsCssZoom
+    ? {
+        width: `${Number((100 / zoom).toFixed(4))}%`,
+        height: `${Number((100 / zoom).toFixed(4))}%`,
+        minHeight: landscape ? 520 : 720,
+        zoom,
+        border: 0,
+      }
+    : {
+        width: `${Number((100 / zoom).toFixed(4))}%`,
+        height: `${Number((100 / zoom).toFixed(4))}%`,
+        minHeight: landscape ? 520 / zoom : 720 / zoom,
+        transform: `scale(${zoom})`,
+        transformOrigin: "top left",
+        border: 0,
+        backfaceVisibility: "hidden",
+        WebkitFontSmoothing: "antialiased",
+      };
 
   return (
     <div className={cn("flex w-full min-h-0 flex-col gap-2", className)}>
@@ -1384,34 +1406,42 @@ function DocFrame({
           )}
           style={landscape ? undefined : { aspectRatio: "210 / 297" }}
         >
-          <div
-            style={{
-              width: `${100 / zoom}%`,
-              height: `${100 / zoom}%`,
-              transform: `scale(${zoom})`,
-              transformOrigin: "top left",
-            }}
-          >
-            <iframe
-              src={toEmbedUrl(url)}
-              title={title}
-              className="block h-full w-full border-0 bg-white"
-              style={{ height: "100%", minHeight: landscape ? 480 : 640 }}
-              allow="fullscreen"
-            />
-          </div>
+          <iframe
+            src={toEmbedUrl(url, { preferReadableSheet: landscape || prefersSpreadsheetUrl(url) })}
+            title={title}
+            className="block bg-white"
+            style={frameStyle}
+            allow="fullscreen"
+          />
         </div>
       </div>
     </div>
   );
 }
 
-const ZOOM_MIN = 0.4;
-const ZOOM_MAX = 1.8;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 1.5;
 const ZOOM_STEP = 0.1;
 
 function clampZoom(value: number) {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value * 10) / 10));
+  // Pasos limpios (50/60/70…) para evitar escalas “sucias” que empastan el texto
+  const stepped = Math.round(value * 10) / 10;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, stepped));
+}
+
+function supportsBrowserCssZoom() {
+  try {
+    if (typeof CSS !== "undefined" && typeof CSS.supports === "function") {
+      return CSS.supports("zoom", "0.5");
+    }
+    return typeof document !== "undefined" && "zoom" in document.documentElement.style;
+  } catch {
+    return false;
+  }
+}
+
+function prefersSpreadsheetUrl(url: string) {
+  return /spreadsheets|\.xlsx?($|\?)|excel/i.test(url);
 }
 
 function ContentPreviewDialog({
@@ -1478,12 +1508,18 @@ function normalizeUrl(value: string) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-function toEmbedUrl(url: string) {
+function toEmbedUrl(url: string, opts?: { preferReadableSheet?: boolean }) {
   const normalized = normalizeUrl(url) ?? url;
   const doc = normalized.match(/docs\.google\.com\/document\/d\/([^/]+)/i)?.[1];
   if (doc) return `https://docs.google.com/document/d/${doc}/preview`;
   const sheet = normalized.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/i)?.[1];
-  if (sheet) return `https://docs.google.com/spreadsheets/d/${sheet}/preview`;
+  if (sheet) {
+    // htmlview renderiza como HTML: el zoom del browser mantiene el texto legible
+    if (opts?.preferReadableSheet) {
+      return `https://docs.google.com/spreadsheets/d/${sheet}/htmlview?usp=sharing`;
+    }
+    return `https://docs.google.com/spreadsheets/d/${sheet}/preview`;
+  }
   return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(normalized)}`;
 }
 
