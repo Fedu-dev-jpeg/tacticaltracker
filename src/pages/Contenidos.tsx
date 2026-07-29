@@ -5,6 +5,8 @@ import {
   BarChart3,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Eye,
   GraduationCap,
@@ -128,6 +130,9 @@ export default function Contenidos() {
   const [selectedPlaybookMap, setSelectedPlaybookMap] = useState<string>(MAPS[0]);
   const [selectedPlaybookId, setSelectedPlaybookId] = useState<string | null>(null);
   const [playbookFullscreen, setPlaybookFullscreen] = useState(false);
+  const [selectedRoutineGroup, setSelectedRoutineGroup] = useState<string>(ROUTINE_GROUPS[0].value);
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null);
+  const [routineFullscreen, setRoutineFullscreen] = useState(false);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -180,6 +185,22 @@ export default function Contenidos() {
     }
   }, [playbooksForMap, selectedPlaybookId]);
 
+  const routinesForGroup = useMemo(
+    () => byCategory.routine.filter((item) => (item.routine_group ?? "general") === selectedRoutineGroup),
+    [byCategory.routine, selectedRoutineGroup],
+  );
+
+  const selectedRoutine = useMemo(() => {
+    if (routinesForGroup.length === 0) return null;
+    return routinesForGroup.find((item) => item.id === selectedRoutineId) ?? routinesForGroup[0];
+  }, [routinesForGroup, selectedRoutineId]);
+
+  useEffect(() => {
+    if (!routinesForGroup.some((item) => item.id === selectedRoutineId)) {
+      setSelectedRoutineId(routinesForGroup[0]?.id ?? null);
+    }
+  }, [routinesForGroup, selectedRoutineId]);
+
   const mapStats = useMemo(() => MAPS.map((map) => {
     const mapItems = items.filter((item) => item.map === map);
     return {
@@ -202,7 +223,7 @@ export default function Contenidos() {
       content_type: category === "class" ? "tacticas" : category === "routine" ? "rutina" : "guia-playbook",
       source_format: category === "routine" ? "sheet" : "link",
       requires_response: category !== "playbook",
-      routine_group: category === "routine" ? "rifle" : "general",
+      routine_group: category === "routine" ? selectedRoutineGroup : "general",
     });
     setOpen(true);
   };
@@ -477,9 +498,10 @@ export default function Contenidos() {
               </CardHeader>
               <CardContent className="px-3 pb-3 pt-0">
                 {selectedPlaybook?.url ? (
-                  <A4DocFrame
+                  <DocFrame
                     title={selectedPlaybook.title}
                     url={selectedPlaybook.url}
+                    orientation="portrait"
                     className="h-[min(72vh,820px)]"
                   />
                 ) : (
@@ -498,10 +520,12 @@ export default function Contenidos() {
             </Card>
           </div>
 
-          <PlaybookFullscreenDialog
+          <ContentPreviewDialog
             open={playbookFullscreen}
             onOpenChange={setPlaybookFullscreen}
             item={selectedPlaybook}
+            orientation="portrait"
+            subtitle="Vista ampliada · hoja A4 legible"
           />
         </div>
       )}
@@ -585,38 +609,167 @@ export default function Contenidos() {
       )}
 
       {activeSection === "routines" && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {ROUTINE_GROUPS.map((group) => (
-          <Card className="card-glow">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-accent" />
-                      {group.label}
-                </CardTitle>
-                {canManage && (
-                  <Button onClick={() => openNew("routine")} size="sm">
-                    <Plus className="h-4 w-4 mr-2" /> Nueva rutina
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-                  <ContentList
-                    items={byCategory.routine.filter((item) => (item.routine_group ?? "general") === group.value)}
-                    loading={loading}
-                    canManage={canManage}
-                    onEdit={openEdit}
-                    onDelete={remove}
-                    members={members}
-                    responsesByItem={responsesByItem}
-                    currentUserId={user?.id ?? null}
-                    onRespond={saveResponse}
-                  />
-            </CardContent>
-          </Card>
-            ))}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {ROUTINE_GROUPS.map((group) => {
+              const count = byCategory.routine.filter((item) => (item.routine_group ?? "general") === group.value).length;
+              const active = selectedRoutineGroup === group.value;
+              return (
+                <button
+                  key={group.value}
+                  type="button"
+                  onClick={() => setSelectedRoutineGroup(group.value)}
+                  className={cn(
+                    "rounded-md border px-3 py-2.5 text-left transition",
+                    active
+                      ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                      : "border-border bg-card/70 hover:border-accent/40",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-heading text-sm font-semibold">{group.label}</span>
+                    <Badge variant="outline" className="text-[10px] h-5 px-1.5">{count}</Badge>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+
+          <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+            <Card className="card-glow border-border/80">
+              <CardHeader className="py-3 px-3 space-y-0">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm">
+                    {ROUTINE_GROUPS.find((g) => g.value === selectedRoutineGroup)?.label ?? "Rutinas"}
+                  </CardTitle>
+                  {canManage && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7"
+                      onClick={() => openNew("routine")}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Nueva
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="px-3 pb-3 pt-0 space-y-1.5">
+                {loading && <p className="text-xs text-muted-foreground py-3">Cargando...</p>}
+                {!loading && routinesForGroup.length === 0 && (
+                  <p className="text-xs text-muted-foreground py-3">Sin rutinas todavía.</p>
+                )}
+                {routinesForGroup.map((item) => {
+                  const active = selectedRoutine?.id === item.id;
+                  const itemResponses = responsesByItem.get(item.id) ?? [];
+                  const completed = itemResponses.filter((r) => r.completed).length;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedRoutineId(item.id)}
+                      className={cn(
+                        "w-full rounded-md border px-2.5 py-2 text-left transition",
+                        active ? "border-accent bg-accent/10" : "border-border bg-card/60 hover:border-accent/35",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium truncate">{item.title}</span>
+                        <Badge variant="outline" className="text-[9px] h-4 px-1">{STATUS_LABEL[item.status]}</Badge>
+                      </div>
+                      {(item.requires_response || item.requires_file) && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Respuestas {completed}/{Math.max(itemResponses.length, item.assigned_user_ids.length)}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4 min-w-0">
+              <Card className="card-glow border-accent/20 overflow-hidden">
+                <CardHeader className="py-3 px-4 flex-row items-center justify-between space-y-0 gap-2">
+                  <div className="min-w-0">
+                    <CardTitle className="text-sm truncate">
+                      {selectedRoutine ? selectedRoutine.title : "Vista de rutina"}
+                    </CardTitle>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Preview horizontal de Excel / Sheets · legible en pantalla ancha
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {selectedRoutine?.url && (
+                      <>
+                        <Button variant="outline" size="sm" className="h-8" onClick={() => setRoutineFullscreen(true)}>
+                          <Maximize2 className="h-3.5 w-3.5 mr-1.5" /> Ampliar
+                        </Button>
+                        <a href={selectedRoutine.url} target="_blank" rel="noreferrer">
+                          <Button variant="ghost" size="sm" className="h-8">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Button>
+                        </a>
+                      </>
+                    )}
+                    {canManage && selectedRoutine && (
+                      <>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(selectedRoutine)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => remove(selectedRoutine)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 pt-0 space-y-3">
+                  {selectedRoutine?.description && (
+                    <p className="text-xs text-muted-foreground px-1">{selectedRoutine.description}</p>
+                  )}
+                  {selectedRoutine?.url ? (
+                    <DocFrame
+                      title={selectedRoutine.title}
+                      url={selectedRoutine.url}
+                      orientation="landscape"
+                      className="h-[min(58vh,640px)]"
+                    />
+                  ) : (
+                    <div className="flex h-[min(40vh,360px)] items-center justify-center rounded-md border border-dashed border-border bg-card/40 px-6 text-center">
+                      <div>
+                        <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">
+                          {loading ? "Cargando rutina..." : "Elegí o creá una rutina con link de Sheets/Excel para verla acá."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {selectedRoutine && (
+                <RoutineDetailsPanel
+                  item={selectedRoutine}
+                  members={members}
+                  responses={responsesByItem.get(selectedRoutine.id) ?? []}
+                  currentUserId={user?.id ?? null}
+                  canManage={canManage}
+                  onRespond={saveResponse}
+                  onExpandPreview={() => setRoutineFullscreen(true)}
+                />
+              )}
+            </div>
+          </div>
+
+          <ContentPreviewDialog
+            open={routineFullscreen}
+            onOpenChange={setRoutineFullscreen}
+            item={selectedRoutine}
+            orientation="landscape"
+            subtitle="Vista ampliada horizontal · Excel / Sheets"
+          />
+        </div>
       )}
 
       <ContentDialog open={open} onOpenChange={setOpen} form={form} setForm={setForm} editing={editing} onSave={save} members={members} />
@@ -686,6 +839,7 @@ function ContentCard({
   onRespond?: (item: ContentItem, responseText: string, attachmentUrl: string) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [responsesOpen, setResponsesOpen] = useState(false);
   const [responseText, setResponseText] = useState(responses.find((r) => r.user_id === currentUserId)?.response_text ?? "");
   const [attachmentUrl, setAttachmentUrl] = useState(responses.find((r) => r.user_id === currentUserId)?.attachment_url ?? "");
   const questions = questionsFromJson(item.questions);
@@ -695,6 +849,8 @@ function ContentCard({
     .join(", ");
   const myResponse = responses.find((r) => r.user_id === currentUserId);
   const assignedToMe = !!currentUserId && (item.assigned_user_ids.length === 0 || item.assigned_user_ids.includes(currentUserId));
+  const orientation = prefersLandscape(item) ? "landscape" : "portrait";
+  const completedCount = responses.filter((r) => r.completed).length;
 
   return (
     <div className="rounded-md border border-border bg-card/70 p-3">
@@ -734,18 +890,13 @@ function ContentCard({
         )}
       </div>
 
-      {previewOpen && item.url && (
-        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent className="fixed inset-3 sm:inset-4 left-auto top-auto translate-x-0 translate-y-0 w-auto max-w-none h-auto max-h-none flex flex-col gap-0 p-0 overflow-hidden sm:rounded-lg">
-            <DialogHeader className="px-4 py-3 border-b border-border shrink-0 pr-12">
-              <DialogTitle className="text-base truncate">{item.title}</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 min-h-0 bg-muted/40 p-3 sm:p-5 overflow-auto">
-              <A4DocFrame title={item.title} url={item.url} className="h-[min(88vh,1100px)] mx-auto" />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      <ContentPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        item={item}
+        orientation={orientation}
+        subtitle={orientation === "landscape" ? "Vista horizontal · Excel / Sheets" : "Vista ampliada · hoja A4"}
+      />
 
       {(item.requires_response || item.requires_file) && assignedToMe && (
         <div className="mt-3 rounded-md border border-accent/25 bg-accent/5 p-3 space-y-2">
@@ -765,11 +916,189 @@ function ContentCard({
         </div>
       )}
 
-      {canManage && responses.length > 0 && (
-        <div className="mt-3 text-xs text-muted-foreground">
-          Respuestas: {responses.filter((r) => r.completed).length}/{responses.length}
+      {canManage && (item.requires_response || item.requires_file || responses.length > 0) && (
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setResponsesOpen((v) => !v)}
+          >
+            {responsesOpen ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+            Respuestas {completedCount}/{Math.max(responses.length, item.assigned_user_ids.length)}
+          </Button>
+          {responsesOpen && (
+            <ResponsesReviewList
+              item={item}
+              members={members}
+              responses={responses}
+              className="mt-2"
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RoutineDetailsPanel({
+  item,
+  members,
+  responses,
+  currentUserId,
+  canManage,
+  onRespond,
+  onExpandPreview,
+}: {
+  item: ContentItem;
+  members: Array<{ user_id: string; player_name: string; is_coach?: boolean }>;
+  responses: ContentResponse[];
+  currentUserId: string | null;
+  canManage: boolean;
+  onRespond: (item: ContentItem, responseText: string, attachmentUrl: string) => void;
+  onExpandPreview: () => void;
+}) {
+  const [responseText, setResponseText] = useState(responses.find((r) => r.user_id === currentUserId)?.response_text ?? "");
+  const [attachmentUrl, setAttachmentUrl] = useState(responses.find((r) => r.user_id === currentUserId)?.attachment_url ?? "");
+  const questions = questionsFromJson(item.questions);
+  const myResponse = responses.find((r) => r.user_id === currentUserId);
+  const assignedToMe = !!currentUserId && (item.assigned_user_ids.length === 0 || item.assigned_user_ids.includes(currentUserId));
+  const assignedNames = item.assigned_user_ids
+    .map((id) => members.find((member) => member.user_id === id)?.player_name)
+    .filter(Boolean)
+    .join(", ");
+
+  useEffect(() => {
+    setResponseText(responses.find((r) => r.user_id === currentUserId)?.response_text ?? "");
+    setAttachmentUrl(responses.find((r) => r.user_id === currentUserId)?.attachment_url ?? "");
+  }, [item.id, currentUserId, responses]);
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card className="card-glow">
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm">Detalle y entrega</CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 space-y-3">
+          {assignedNames && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Users2 className="h-3.5 w-3.5" /> Asignado a: {assignedNames}
+            </p>
+          )}
+          {item.url && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={onExpandPreview}>
+                <Maximize2 className="h-3.5 w-3.5 mr-1.5" /> Ver completa
+              </Button>
+              <a href={item.url} target="_blank" rel="noreferrer">
+                <Button variant="ghost" size="sm" className="h-8">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir Sheets
+                </Button>
+              </a>
+            </div>
+          )}
+
+          {(item.requires_response || item.requires_file) && assignedToMe ? (
+            <div className="rounded-md border border-accent/25 bg-accent/5 p-3 space-y-2">
+              <div className="text-xs font-heading text-accent">
+                Tu respuesta {myResponse?.completed && <span className="text-success">· completada</span>}
+              </div>
+              {questions.length > 0 && (
+                <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-1">
+                  {questions.map((q) => <li key={q}>{q}</li>)}
+                </ul>
+              )}
+              {item.requires_response && (
+                <Textarea value={responseText} onChange={(e) => setResponseText(e.target.value)} placeholder="Respondé acá..." rows={3} />
+              )}
+              {item.requires_file && (
+                <Input value={attachmentUrl} onChange={(e) => setAttachmentUrl(e.target.value)} placeholder="Link al archivo / drive / evidencia..." />
+              )}
+              <Button size="sm" onClick={() => onRespond(item, responseText, attachmentUrl)}>Enviar respuesta</Button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {item.requires_response || item.requires_file
+                ? "Esta rutina está asignada a otros jugadores."
+                : "Esta rutina no pide respuesta."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {canManage && (
+        <Card className="card-glow">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Users2 className="h-4 w-4 text-accent" />
+              Respuestas del equipo
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <ResponsesReviewList item={item} members={members} responses={responses} />
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ResponsesReviewList({
+  item,
+  members,
+  responses,
+  className,
+}: {
+  item: ContentItem;
+  members: Array<{ user_id: string; player_name: string }>;
+  responses: ContentResponse[];
+  className?: string;
+}) {
+  const assignedIds = item.assigned_user_ids.length > 0
+    ? item.assigned_user_ids
+    : responses.map((r) => r.user_id);
+  const uniqueIds = Array.from(new Set(assignedIds));
+
+  if (uniqueIds.length === 0) {
+    return <p className={cn("text-xs text-muted-foreground", className)}>Todavía no hay asignados ni respuestas.</p>;
+  }
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      {uniqueIds.map((userId) => {
+        const member = members.find((m) => m.user_id === userId);
+        const response = responses.find((r) => r.user_id === userId);
+        const name = member?.player_name ?? "Jugador";
+        return (
+          <div key={userId} className="rounded-md border border-border bg-card/60 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{name}</span>
+              <Badge variant="outline" className={cn("text-[10px]", response?.completed ? "border-success/40 text-success" : "")}>
+                {response?.completed ? "Completada" : "Pendiente"}
+              </Badge>
+            </div>
+            {response?.response_text ? (
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap">{response.response_text}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Sin texto de respuesta</p>
+            )}
+            {response?.attachment_url ? (
+              <a
+                href={response.attachment_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+                Abrir adjunto / evidencia
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : item.requires_file ? (
+              <p className="text-[11px] text-muted-foreground">Sin archivo adjunto</p>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -981,20 +1310,26 @@ function SectionCard({
   );
 }
 
-function A4DocFrame({
+function DocFrame({
   title,
   url,
+  orientation = "portrait",
   className,
 }: {
   title: string;
   url: string;
+  orientation?: "portrait" | "landscape";
   className?: string;
 }) {
+  const landscape = orientation === "landscape";
   return (
     <div className={cn("flex w-full items-center justify-center", className)}>
       <div
-        className="relative h-full max-w-full overflow-hidden rounded-sm border border-border/70 bg-white shadow-[0_22px_60px_rgba(0,0,0,0.38)]"
-        style={{ aspectRatio: "210 / 297" }}
+        className={cn(
+          "relative max-w-full overflow-hidden rounded-sm border border-border/70 bg-white shadow-[0_22px_60px_rgba(0,0,0,0.38)]",
+          landscape ? "h-full w-full" : "h-full",
+        )}
+        style={landscape ? undefined : { aspectRatio: "210 / 297" }}
       >
         <iframe
           src={toEmbedUrl(url)}
@@ -1007,16 +1342,21 @@ function A4DocFrame({
   );
 }
 
-function PlaybookFullscreenDialog({
+function ContentPreviewDialog({
   open,
   onOpenChange,
   item,
+  orientation = "portrait",
+  subtitle,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   item: ContentItem | null;
+  orientation?: "portrait" | "landscape";
+  subtitle?: string;
 }) {
   if (!item?.url) return null;
+  const landscape = orientation === "landscape";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1025,14 +1365,14 @@ function PlaybookFullscreenDialog({
           <div className="min-w-0">
             <DialogTitle className="text-base truncate">{item.title}</DialogTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Vista ampliada · hoja A4 legible
+              {subtitle ?? (landscape ? "Vista horizontal" : "Vista ampliada · hoja A4")}
               {item.map ? ` · ${item.map}` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <a href={item.url} target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="h-8">
-                <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir en Google
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir original
               </Button>
             </a>
             <Button variant="ghost" size="sm" className="h-8" onClick={() => onOpenChange(false)}>
@@ -1040,12 +1380,24 @@ function PlaybookFullscreenDialog({
             </Button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-6">
-          <A4DocFrame title={item.title} url={item.url} className="h-[min(92vh,1200px)] mx-auto" />
+        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,hsl(var(--muted)/0.55),hsl(var(--background)))] p-3 sm:p-5">
+          <DocFrame
+            title={item.title}
+            url={item.url}
+            orientation={orientation}
+            className={landscape ? "h-[min(88vh,900px)]" : "h-[min(92vh,1200px)] mx-auto"}
+          />
         </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+function prefersLandscape(item: ContentItem) {
+  if (item.category === "routine") return true;
+  if (item.source_format === "sheet") return true;
+  const url = item.url ?? "";
+  return /spreadsheets|\.xlsx?($|\?)|excel/i.test(url);
 }
 
 function normalizeUrl(value: string) {
