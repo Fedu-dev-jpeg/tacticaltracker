@@ -24,6 +24,7 @@ import {
   UserCheck,
   Users,
   ShieldCheck,
+  Library,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,6 +43,7 @@ const NAV = [
   { to: "/torneos", label: "Torneos", icon: Trophy },
   { to: "/agenda", label: "Agenda", icon: CalendarDays },
   { to: "/playbook", label: "Playbook", icon: BookOpen },
+  { to: "/contenidos", label: "Contenidos", icon: Library },
   { to: "/awards", label: "Presencialidad", icon: UserCheck, staffOnly: true },
   { to: "/mapas", label: "Mapas", icon: Map },
 ];
