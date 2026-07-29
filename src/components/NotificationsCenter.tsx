@@ -20,7 +20,7 @@ type AttendanceRecordLite = {
   attendance_date: string;
 };
 
-type NotifKind = "tournament" | "training" | "attendance";
+type NotifKind = "tournament" | "training" | "attendance" | "content";
 
 type ToolNotification = {
   id: string;
@@ -38,6 +38,7 @@ const KIND_META: Record<NotifKind | "all", { label: string; icon: typeof Trophy 
   tournament: { label: "Torneos", icon: Trophy },
   training: { label: "Demos", icon: ClipboardList },
   attendance: { label: "Presencialidad", icon: UserCheck },
+  content: { label: "Tareas", icon: CheckCheck },
 };
 
 function toDateKey(value: string | Date) {
@@ -62,6 +63,8 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
   const { data: agendaEvents = [] } = useAgendaEvents();
   const { tournaments } = useTournaments();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecordLite[]>([]);
+  const [contentTasks, setContentTasks] = useState<Array<{ id: string; title: string; category: string }>>([]);
+  const [contentResponses, setContentResponses] = useState<Array<{ content_item_id: string; completed: boolean }>>([]);
   const canManageStaffTools = isAdmin || isCoach;
   const dismissKey = user ? `notif:dismissed:${user.id}` : "notif:dismissed:anon";
   const [dismissed, setDismissed] = useLocalStorage<string[]>(dismissKey, []);
@@ -86,6 +89,35 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
       cancelled = true;
     };
   }, [canManageStaffTools]);
+
+  useEffect(() => {
+    if (!user) {
+      setContentTasks([]);
+      setContentResponses([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const [{ data: tasks }, { data: responses }] = await Promise.all([
+        supabase
+          .from("content_items")
+          .select("id,title,category,assigned_user_ids")
+          .eq("requires_response", true),
+        supabase
+          .from("content_responses")
+          .select("content_item_id,completed")
+          .eq("user_id", user.id),
+      ]);
+      if (!cancelled) {
+        setContentTasks(((tasks as Array<{ id: string; title: string; category: string; assigned_user_ids?: string[] }> | null) ?? [])
+          .filter((task) => !task.assigned_user_ids?.length || task.assigned_user_ids.includes(user.id)));
+        setContentResponses((responses as Array<{ content_item_id: string; completed: boolean }> | null) ?? []);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const allNotifications = useMemo(() => {
     const matchDates = new Set(matches.map((match) => toDateKey(match.date)));
@@ -148,8 +180,24 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
       }
     }
 
+    const completedContent = new Set(contentResponses.filter((r) => r.completed).map((r) => r.content_item_id));
+    for (const task of contentTasks) {
+      if (!completedContent.has(task.id)) {
+        items.push({
+          id: `content-${task.id}`,
+          kind: "content",
+          title: "Tarea de contenido pendiente",
+          description: `${task.title} requiere tu respuesta.`,
+          date: toDateKey(new Date()),
+          route: "/contenidos",
+          icon: CheckCheck,
+          severity: "info",
+        });
+      }
+    }
+
     return items.sort((a, b) => b.date.localeCompare(a.date));
-  }, [agendaEvents, attendanceRecords, canManageStaffTools, matches, tournaments]);
+  }, [agendaEvents, attendanceRecords, canManageStaffTools, contentResponses, contentTasks, matches, tournaments]);
 
   const dismissedSet = useMemo(() => new Set(dismissed), [dismissed]);
   const activeNotifications = useMemo(
@@ -180,7 +228,7 @@ export default function NotificationsCenter({ matches }: { matches: Match[] }) {
   const countByKind = (kind: NotifKind) =>
     activeNotifications.filter((item) => item.kind === kind).length;
 
-  const filters: (NotifKind | "all")[] = ["all", "tournament", "training", "attendance"];
+  const filters: (NotifKind | "all")[] = ["all", "tournament", "training", "attendance", "content"];
 
   return (
     <Popover>
