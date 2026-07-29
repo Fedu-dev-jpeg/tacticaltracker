@@ -135,6 +135,7 @@ export type Database = {
       }
       content_items: {
         Row: {
+          assigned_user_ids: string[]
           category: string
           content_type: string | null
           created_at: string
@@ -142,12 +143,18 @@ export type Database = {
           description: string
           id: string
           map: string | null
+          questions: Json
+          requires_file: boolean
+          requires_response: boolean
+          routine_group: string | null
+          source_format: string
           status: string
           title: string
           updated_at: string
           url: string | null
         }
         Insert: {
+          assigned_user_ids?: string[]
           category: string
           content_type?: string | null
           created_at?: string
@@ -155,12 +162,18 @@ export type Database = {
           description?: string
           id?: string
           map?: string | null
+          questions?: Json
+          requires_file?: boolean
+          requires_response?: boolean
+          routine_group?: string | null
+          source_format?: string
           status?: string
           title: string
           updated_at?: string
           url?: string | null
         }
         Update: {
+          assigned_user_ids?: string[]
           category?: string
           content_type?: string | null
           created_at?: string
@@ -168,12 +181,61 @@ export type Database = {
           description?: string
           id?: string
           map?: string | null
+          questions?: Json
+          requires_file?: boolean
+          requires_response?: boolean
+          routine_group?: string | null
+          source_format?: string
           status?: string
           title?: string
           updated_at?: string
           url?: string | null
         }
         Relationships: []
+      }
+      content_responses: {
+        Row: {
+          answers: Json
+          attachment_url: string | null
+          completed: boolean
+          content_item_id: string
+          created_at: string
+          id: string
+          response_text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json
+          attachment_url?: string | null
+          completed?: boolean
+          content_item_id: string
+          created_at?: string
+          id?: string
+          response_text?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          attachment_url?: string | null
+          completed?: boolean
+          content_item_id?: string
+          created_at?: string
+          id?: string
+          response_text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_responses_content_item_id_fkey"
+            columns: ["content_item_id"]
+            isOneToOne: false
+            referencedRelation: "content_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       integrations: {
         Row: {

@@ -4,16 +4,22 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  CheckCircle2,
   ExternalLink,
+  Eye,
   GraduationCap,
   Link as LinkIcon,
+  Paperclip,
   Pencil,
   Plus,
   Trash2,
+  Users2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { MAPS, MapName } from "@/types/match";
+import { MAPS } from "@/types/match";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,21 +29,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import type { Json } from "@/integrations/supabase/types";
 
 type ContentCategory = "playbook" | "class" | "routine";
 
 type ContentItem = {
   id: string;
   category: ContentCategory;
+  assigned_user_ids: string[];
   map: string | null;
   title: string;
   url: string | null;
   description: string;
   content_type: string | null;
+  questions: Json;
+  requires_file: boolean;
+  requires_response: boolean;
+  routine_group: string | null;
+  source_format: string;
   status: "draft" | "ready" | "archived";
   created_at: string;
+};
+
+type ContentResponse = {
+  id: string;
+  content_item_id: string;
+  user_id: string;
+  response_text: string;
+  attachment_url: string | null;
+  completed: boolean;
 };
 
 type FormState = {
@@ -47,6 +68,12 @@ type FormState = {
   url: string;
   description: string;
   content_type: string;
+  assigned_user_ids: string[];
+  questionsText: string;
+  requires_file: boolean;
+  requires_response: boolean;
+  routine_group: string;
+  source_format: string;
   status: "draft" | "ready" | "archived";
 };
 
@@ -57,6 +84,12 @@ const EMPTY_FORM: FormState = {
   url: "",
   description: "",
   content_type: "guia-playbook",
+  assigned_user_ids: [],
+  questionsText: "",
+  requires_file: false,
+  requires_response: false,
+  routine_group: "general",
+  source_format: "link",
   status: "draft",
 };
 
@@ -66,6 +99,13 @@ const CLASS_TYPES = [
   { value: "nuevo-contenido", label: "Nuevos contenidos" },
 ];
 
+const ROUTINE_GROUPS = [
+  { value: "rifle", label: "Rutina Rifle" },
+  { value: "peos", label: "Rutina Peos" },
+  { value: "ray", label: "Rutina Ray" },
+  { value: "general", label: "Rutina demás jugadores" },
+];
+
 const STATUS_LABEL: Record<ContentItem["status"], string> = {
   draft: "Draft",
   ready: "Ready",
@@ -73,13 +113,17 @@ const STATUS_LABEL: Record<ContentItem["status"], string> = {
 };
 
 export default function Contenidos() {
+  const { user } = useAuth();
   const { isAdmin, isCoach } = useUserRole();
+  const { members } = useTeamMembers();
   const canManage = isAdmin || isCoach;
   const [items, setItems] = useState<ContentItem[]>([]);
+  const [responses, setResponses] = useState<ContentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ContentItem | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [activeSection, setActiveSection] = useState<"playbooks" | "classes" | "routines">("playbooks");
 
   const fetchItems = async () => {
     setLoading(true);
@@ -92,6 +136,16 @@ export default function Contenidos() {
       setItems([]);
     } else {
       setItems((data as ContentItem[]) ?? []);
+      const ids = ((data as ContentItem[]) ?? []).map((item) => item.id);
+      if (ids.length > 0) {
+        const { data: responseRows } = await supabase
+          .from("content_responses")
+          .select("*")
+          .in("content_item_id", ids);
+        setResponses((responseRows as ContentResponse[]) ?? []);
+      } else {
+        setResponses([]);
+      }
     }
     setLoading(false);
   };
@@ -126,6 +180,9 @@ export default function Contenidos() {
       category,
       map: map ?? (category === "routine" ? "general" : "Nuke"),
       content_type: category === "class" ? "tacticas" : category === "routine" ? "rutina" : "guia-playbook",
+      source_format: category === "routine" ? "sheet" : "link",
+      requires_response: category !== "playbook",
+      routine_group: category === "routine" ? "rifle" : "general",
     });
     setOpen(true);
   };
@@ -139,6 +196,12 @@ export default function Contenidos() {
       url: item.url ?? "",
       description: item.description,
       content_type: item.content_type ?? "",
+      assigned_user_ids: item.assigned_user_ids ?? [],
+      questionsText: questionsToText(item.questions),
+      requires_file: item.requires_file,
+      requires_response: item.requires_response,
+      routine_group: item.routine_group ?? "general",
+      source_format: item.source_format ?? "link",
       status: item.status,
     });
     setOpen(true);
@@ -156,14 +219,24 @@ export default function Contenidos() {
       url: normalizeUrl(form.url),
       description: form.description.trim(),
       content_type: form.content_type || null,
+      assigned_user_ids: form.assigned_user_ids,
+      questions: textToQuestions(form.questionsText) as Json,
+      requires_file: form.requires_file,
+      requires_response: form.requires_response,
+      routine_group: form.routine_group || null,
+      source_format: form.source_format || "link",
       status: form.status,
     };
-    const { error } = editing
-      ? await supabase.from("content_items").update(payload).eq("id", editing.id)
-      : await supabase.from("content_items").insert(payload);
+    const result = editing
+      ? await supabase.from("content_items").update(payload).eq("id", editing.id).select("id").single()
+      : await supabase.from("content_items").insert(payload).select("id").single();
+    const { data, error } = result;
     if (error) {
       toast.error("No se pudo guardar", { description: error.message });
       return;
+    }
+    if ((form.requires_response || form.requires_file) && form.assigned_user_ids.length > 0 && data?.id) {
+      await ensureAssignedResponses(data.id, form.assigned_user_ids);
     }
     toast.success(editing ? "Contenido actualizado" : "Contenido agregado");
     setOpen(false);
@@ -179,6 +252,43 @@ export default function Contenidos() {
       fetchItems();
     }
   };
+
+  const ensureAssignedResponses = async (contentItemId: string, userIds: string[]) => {
+    const rows = userIds.map((userId) => ({
+      content_item_id: contentItemId,
+      user_id: userId,
+    }));
+    await supabase.from("content_responses").upsert(rows, { onConflict: "content_item_id,user_id" });
+  };
+
+  const saveResponse = async (item: ContentItem, responseText: string, attachmentUrl: string) => {
+    if (!user) return;
+    const { error } = await supabase.from("content_responses").upsert(
+      {
+        content_item_id: item.id,
+        user_id: user.id,
+        response_text: responseText.trim(),
+        attachment_url: normalizeUrl(attachmentUrl),
+        completed: true,
+      },
+      { onConflict: "content_item_id,user_id" },
+    );
+    if (error) toast.error("No se pudo guardar respuesta", { description: error.message });
+    else {
+      toast.success("Respuesta enviada");
+      fetchItems();
+    }
+  };
+
+  const responsesByItem = useMemo(() => {
+    const map = new Map<string, ContentResponse[]>();
+    for (const response of responses) {
+      const arr = map.get(response.content_item_id) ?? [];
+      arr.push(response);
+      map.set(response.content_item_id, arr);
+    }
+    return map;
+  }, [responses]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -206,6 +316,13 @@ export default function Contenidos() {
         )}
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <SectionCard active={activeSection === "playbooks"} icon={BookOpen} title="Playbooks" desc="Documentos Google embebidos por mapa" onClick={() => setActiveSection("playbooks")} />
+        <SectionCard active={activeSection === "classes"} icon={GraduationCap} title="Clases / Tareas" desc="Asignaciones con preguntas, respuesta y archivo" onClick={() => setActiveSection("classes")} />
+        <SectionCard active={activeSection === "routines"} icon={Activity} title="Rutinas" desc="Rutinas por grupo/persona con Sheets/Excel embebido" onClick={() => setActiveSection("routines")} />
+      </div>
+
+      {activeSection === "playbooks" && (
       <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <Card className="card-glow border-accent/20">
           <CardHeader>
@@ -246,15 +363,9 @@ export default function Contenidos() {
           </CardContent>
         </Card>
       </section>
+      )}
 
-      <Tabs defaultValue="playbooks" className="space-y-4">
-        <TabsList className="bg-card border border-border">
-          <TabsTrigger value="playbooks">Playbooks</TabsTrigger>
-          <TabsTrigger value="classes">Clases</TabsTrigger>
-          <TabsTrigger value="routines">Rutinas</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="playbooks">
+      {activeSection === "playbooks" && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {MAPS.map((map) => {
               const mapItems = byCategory.playbook.filter((item) => item.map === map);
@@ -277,9 +388,9 @@ export default function Contenidos() {
               );
             })}
           </div>
-        </TabsContent>
+      )}
 
-        <TabsContent value="classes">
+      {activeSection === "classes" && (
           <div className="grid gap-4 lg:grid-cols-3">
             {CLASS_TYPES.map((type) => (
               <Card key={type.value} className="card-glow">
@@ -303,20 +414,26 @@ export default function Contenidos() {
                     canManage={canManage}
                     onEdit={openEdit}
                     onDelete={remove}
+                    members={members}
+                    responsesByItem={responsesByItem}
+                    currentUserId={user?.id ?? null}
+                    onRespond={saveResponse}
                   />
                 </CardContent>
               </Card>
             ))}
           </div>
-        </TabsContent>
+      )}
 
-        <TabsContent value="routines">
+      {activeSection === "routines" && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {ROUTINE_GROUPS.map((group) => (
           <Card className="card-glow">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Activity className="h-4 w-4 text-accent" />
-                  Rutinas generadas
+                      {group.label}
                 </CardTitle>
                 {canManage && (
                   <Button onClick={() => openNew("routine")} size="sm">
@@ -326,13 +443,24 @@ export default function Contenidos() {
               </div>
             </CardHeader>
             <CardContent>
-              <ContentList items={byCategory.routine} loading={loading} canManage={canManage} onEdit={openEdit} onDelete={remove} />
+                  <ContentList
+                    items={byCategory.routine.filter((item) => (item.routine_group ?? "general") === group.value)}
+                    loading={loading}
+                    canManage={canManage}
+                    onEdit={openEdit}
+                    onDelete={remove}
+                    members={members}
+                    responsesByItem={responsesByItem}
+                    currentUserId={user?.id ?? null}
+                    onRespond={saveResponse}
+                  />
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+            ))}
+          </div>
+      )}
 
-      <ContentDialog open={open} onOpenChange={setOpen} form={form} setForm={setForm} editing={editing} onSave={save} />
+      <ContentDialog open={open} onOpenChange={setOpen} form={form} setForm={setForm} editing={editing} onSave={save} members={members} />
     </div>
   );
 }
@@ -343,42 +471,139 @@ function ContentList({
   canManage,
   onEdit,
   onDelete,
+  members,
+  responsesByItem,
+  currentUserId,
+  onRespond,
 }: {
   items: ContentItem[];
   loading: boolean;
   canManage: boolean;
   onEdit: (item: ContentItem) => void;
   onDelete: (item: ContentItem) => void;
+  members?: Array<{ user_id: string; player_name: string }>;
+  responsesByItem?: Map<string, ContentResponse[]>;
+  currentUserId?: string | null;
+  onRespond?: (item: ContentItem, responseText: string, attachmentUrl: string) => void;
 }) {
   if (loading) return <p className="text-sm text-muted-foreground py-4">Cargando...</p>;
   if (items.length === 0) return <p className="text-sm text-muted-foreground py-4">Sin contenidos todavía.</p>;
   return (
     <div className="space-y-2">
       {items.map((item) => (
-        <div key={item.id} className="rounded-md border border-border bg-card/70 p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-medium">{item.title}</h3>
-                <Badge variant="outline" className="text-[10px]">{STATUS_LABEL[item.status]}</Badge>
-                {item.map && <Badge className="text-[10px] bg-accent/15 text-accent border-accent/30">{item.map}</Badge>}
-              </div>
-              {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>}
-              {item.url && (
-                <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-2 text-xs text-accent hover:underline">
-                  <LinkIcon className="h-3 w-3" /> Abrir material <ExternalLink className="h-3 w-3" />
+        <ContentCard
+          key={item.id}
+          item={item}
+          canManage={canManage}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          members={members ?? []}
+          responses={responsesByItem?.get(item.id) ?? []}
+          currentUserId={currentUserId ?? null}
+          onRespond={onRespond}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ContentCard({
+  item,
+  canManage,
+  onEdit,
+  onDelete,
+  members,
+  responses,
+  currentUserId,
+  onRespond,
+}: {
+  item: ContentItem;
+  canManage: boolean;
+  onEdit: (item: ContentItem) => void;
+  onDelete: (item: ContentItem) => void;
+  members: Array<{ user_id: string; player_name: string }>;
+  responses: ContentResponse[];
+  currentUserId: string | null;
+  onRespond?: (item: ContentItem, responseText: string, attachmentUrl: string) => void;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [responseText, setResponseText] = useState(responses.find((r) => r.user_id === currentUserId)?.response_text ?? "");
+  const [attachmentUrl, setAttachmentUrl] = useState(responses.find((r) => r.user_id === currentUserId)?.attachment_url ?? "");
+  const questions = questionsFromJson(item.questions);
+  const assignedNames = item.assigned_user_ids
+    .map((id) => members.find((member) => member.user_id === id)?.player_name)
+    .filter(Boolean)
+    .join(", ");
+  const myResponse = responses.find((r) => r.user_id === currentUserId);
+  const assignedToMe = !!currentUserId && (item.assigned_user_ids.length === 0 || item.assigned_user_ids.includes(currentUserId));
+
+  return (
+    <div className="rounded-md border border-border bg-card/70 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-medium">{item.title}</h3>
+            <Badge variant="outline" className="text-[10px]">{STATUS_LABEL[item.status]}</Badge>
+            {item.map && <Badge className="text-[10px] bg-accent/15 text-accent border-accent/30">{item.map}</Badge>}
+            {item.requires_response && <Badge variant="outline" className="text-[10px]"><CheckCircle2 className="h-3 w-3 mr-1" /> Respuesta</Badge>}
+            {item.requires_file && <Badge variant="outline" className="text-[10px]"><Paperclip className="h-3 w-3 mr-1" /> Archivo</Badge>}
+          </div>
+          {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>}
+          {assignedNames && (
+            <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+              <Users2 className="h-3 w-3" /> Asignado a: {assignedNames}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2 mt-2">
+            {item.url && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setPreviewOpen((v) => !v)} className="h-7 text-xs">
+                  <Eye className="h-3 w-3 mr-1" /> {previewOpen ? "Ocultar" : "Previsualizar"}
+                </Button>
+                <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+                  <LinkIcon className="h-3 w-3" /> Abrir link <ExternalLink className="h-3 w-3" />
                 </a>
-              )}
-            </div>
-            {canManage && (
-              <div className="flex gap-1 shrink-0">
-                <Button variant="ghost" size="sm" onClick={() => onEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(item)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-              </div>
+              </>
             )}
           </div>
         </div>
-      ))}
+        {canManage && (
+          <div className="flex gap-1 shrink-0">
+            <Button variant="ghost" size="sm" onClick={() => onEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="sm" onClick={() => onDelete(item)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+          </div>
+        )}
+      </div>
+
+      {previewOpen && item.url && (
+        <div className="mt-3 overflow-hidden rounded-md border border-border bg-background">
+          <iframe src={toEmbedUrl(item.url)} title={item.title} className="h-[520px] w-full bg-white" />
+        </div>
+      )}
+
+      {(item.requires_response || item.requires_file) && assignedToMe && (
+        <div className="mt-3 rounded-md border border-accent/25 bg-accent/5 p-3 space-y-2">
+          <div className="text-xs font-heading text-accent">Tu respuesta {myResponse?.completed && <span className="text-success">· completada</span>}</div>
+          {questions.length > 0 && (
+            <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-1">
+              {questions.map((q) => <li key={q}>{q}</li>)}
+            </ul>
+          )}
+          {item.requires_response && (
+            <Textarea value={responseText} onChange={(e) => setResponseText(e.target.value)} placeholder="Respondé acá..." rows={3} />
+          )}
+          {item.requires_file && (
+            <Input value={attachmentUrl} onChange={(e) => setAttachmentUrl(e.target.value)} placeholder="Link al archivo / drive / evidencia..." />
+          )}
+          <Button size="sm" onClick={() => onRespond?.(item, responseText, attachmentUrl)}>Enviar respuesta</Button>
+        </div>
+      )}
+
+      {canManage && responses.length > 0 && (
+        <div className="mt-3 text-xs text-muted-foreground">
+          Respuestas: {responses.filter((r) => r.completed).length}/{responses.length}
+        </div>
+      )}
     </div>
   );
 }
@@ -390,6 +615,7 @@ function ContentDialog({
   setForm,
   editing,
   onSave,
+  members,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -397,6 +623,7 @@ function ContentDialog({
   setForm: Dispatch<SetStateAction<FormState>>;
   editing: ContentItem | null;
   onSave: () => void;
+  members: Array<{ user_id: string; player_name: string; is_coach?: boolean }>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -458,6 +685,86 @@ function ContentDialog({
               </Select>
             </div>
           )}
+          {form.category === "routine" && (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Grupo de rutina</Label>
+                <Select value={form.routine_group} onValueChange={(v) => setForm((f) => ({ ...f, routine_group: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ROUTINE_GROUPS.map((group) => <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Formato</Label>
+                <Select value={form.source_format} onValueChange={(v) => setForm((f) => ({ ...f, source_format: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sheet">Excel / Google Sheets</SelectItem>
+                    <SelectItem value="doc">Google Doc</SelectItem>
+                    <SelectItem value="link">Link externo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          {(form.category === "class" || form.category === "routine") && (
+            <div className="rounded-md border border-border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Asignar a jugadores</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setForm((f) => ({ ...f, assigned_user_ids: members.filter((m) => !m.is_coach).map((m) => m.user_id) }))}
+                >
+                  Todos los jugadores
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {members.filter((member) => !member.is_coach).map((member) => {
+                  const checked = form.assigned_user_ids.includes(member.user_id);
+                  return (
+                    <label key={member.user_id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            assigned_user_ids: e.target.checked
+                              ? [...f.assigned_user_ids, member.user_id]
+                              : f.assigned_user_ids.filter((id) => id !== member.user_id),
+                          }))
+                        }
+                      />
+                      {member.player_name}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.requires_response} onChange={(e) => setForm((f) => ({ ...f, requires_response: e.target.checked }))} />
+                  Requiere respuesta
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.requires_file} onChange={(e) => setForm((f) => ({ ...f, requires_file: e.target.checked }))} />
+                  Requiere adjuntar archivo/link
+                </label>
+              </div>
+              <div>
+                <Label className="text-xs">Preguntas / consigna (una por línea)</Label>
+                <Textarea
+                  rows={3}
+                  value={form.questionsText}
+                  onChange={(e) => setForm((f) => ({ ...f, questionsText: e.target.value }))}
+                  placeholder="¿Qué corregirías del retake?\nSubí link de tu POV o demo corregida..."
+                />
+              </div>
+            </div>
+          )}
           <div>
             <Label className="text-xs">Descripción / notas</Label>
             <Textarea rows={4} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Qué contiene, foco, correcciones, timestamps o próximos pasos..." />
@@ -481,8 +788,61 @@ function Summary({ label, value }: { label: string; value: number }) {
   );
 }
 
+function SectionCard({
+  active,
+  icon: Icon,
+  title,
+  desc,
+  onClick,
+}: {
+  active: boolean;
+  icon: typeof BookOpen;
+  title: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-lg border p-4 text-left transition card-glow",
+        active ? "border-accent bg-accent/10" : "border-border bg-card hover:border-accent/35",
+      )}
+    >
+      <Icon className={cn("h-5 w-5 mb-3", active ? "text-accent" : "text-muted-foreground")} />
+      <div className="font-heading font-bold">{title}</div>
+      <div className="text-xs text-muted-foreground mt-1">{desc}</div>
+    </button>
+  );
+}
+
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function toEmbedUrl(url: string) {
+  const normalized = normalizeUrl(url) ?? url;
+  const doc = normalized.match(/docs\.google\.com\/document\/d\/([^/]+)/i)?.[1];
+  if (doc) return `https://docs.google.com/document/d/${doc}/preview`;
+  const sheet = normalized.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/i)?.[1];
+  if (sheet) return `https://docs.google.com/spreadsheets/d/${sheet}/preview`;
+  return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(normalized)}`;
+}
+
+function textToQuestions(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function questionsToText(value: Json) {
+  return Array.isArray(value) ? value.map(String).join("\n") : "";
+}
+
+function questionsFromJson(value: Json) {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
