@@ -101,7 +101,6 @@ const CLASS_TYPES = [
 
 const ROUTINE_GROUPS = [
   { value: "rifle", label: "Rutina Rifle" },
-  { value: "peos", label: "Rutina Peos" },
   { value: "ray", label: "Rutina Ray" },
   { value: "general", label: "Rutina demás jugadores" },
 ];
@@ -323,49 +322,6 @@ export default function Contenidos() {
       </div>
 
       {activeSection === "playbooks" && (
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card className="card-glow border-accent/20">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-accent" />
-              Stats de contenido por mapa
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {mapStats.map((stat) => (
-              <div key={stat.map} className="rounded-md border border-border bg-card/70 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-heading font-bold">{stat.map}</span>
-                  <span className="text-xs text-muted-foreground">{stat.total} contenidos</span>
-                </div>
-                <Progress value={(stat.total / maxMapItems) * 100} className="h-2" />
-                <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                  <Badge variant="outline" className="text-[10px]">PB {stat.playbooks}</Badge>
-                  <Badge variant="outline" className="text-[10px]">Clases {stat.classes}</Badge>
-                  <Badge variant="outline" className="text-[10px]">Rutinas {stat.routines}</Badge>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="card-glow">
-          <CardContent className="p-5">
-            <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">Resumen biblioteca</div>
-            <div className="grid grid-cols-3 gap-3 mt-4">
-              <Summary label="Playbooks" value={byCategory.playbook.length} />
-              <Summary label="Clases" value={byCategory.class.length} />
-              <Summary label="Rutinas" value={byCategory.routine.length} />
-            </div>
-            <div className="mt-5 rounded-md border border-accent/25 bg-accent/5 p-3 text-sm text-muted-foreground">
-              Organizá el material por mapa, dejá links externos y usá clases para correcciones de demos, retakes o nuevos contenidos.
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-      )}
-
-      {activeSection === "playbooks" && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {MAPS.map((map) => {
               const mapItems = byCategory.playbook.filter((item) => item.map === map);
@@ -382,12 +338,65 @@ export default function Contenidos() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <ContentList items={mapItems} loading={loading} canManage={canManage} onEdit={openEdit} onDelete={remove} />
+                    <ContentList
+                      items={mapItems}
+                      loading={loading}
+                      canManage={canManage}
+                      onEdit={openEdit}
+                      onDelete={remove}
+                      members={members}
+                      responsesByItem={responsesByItem}
+                      currentUserId={user?.id ?? null}
+                      onRespond={saveResponse}
+                    />
                   </CardContent>
                 </Card>
               );
             })}
           </div>
+      )}
+
+      {activeSection === "playbooks" && (
+        <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <Card className="card-glow border-accent/20">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-accent" />
+                Stats de contenido por mapa
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {mapStats.map((stat) => (
+                <div key={stat.map} className="rounded-md border border-border bg-card/70 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-heading font-bold">{stat.map}</span>
+                    <span className="text-xs text-muted-foreground">{stat.total} contenidos</span>
+                  </div>
+                  <Progress value={(stat.total / maxMapItems) * 100} className="h-2" />
+                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                    <Badge variant="outline" className="text-[10px]">PB {stat.playbooks}</Badge>
+                    <Badge variant="outline" className="text-[10px]">Clases {stat.classes}</Badge>
+                    <Badge variant="outline" className="text-[10px]">Rutinas {stat.routines}</Badge>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="card-glow">
+            <CardContent className="p-5">
+              <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">Resumen biblioteca</div>
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                <Summary label="Playbooks" value={byCategory.playbook.length} />
+                <Summary label="Clases" value={byCategory.class.length} />
+                <Summary label="Rutinas" value={byCategory.routine.length} />
+              </div>
+              <div className="mt-5 rounded-md border border-accent/25 bg-accent/5 p-3 text-sm text-muted-foreground">
+                Organizá el material por mapa, dejá links externos y usá clases para correcciones de demos, retakes o nuevos contenidos.
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       )}
 
       {activeSection === "classes" && (
@@ -709,62 +718,60 @@ function ContentDialog({
               </div>
             </div>
           )}
-          {(form.category === "class" || form.category === "routine") && (
-            <div className="rounded-md border border-border p-3 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs">Asignar a jugadores</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setForm((f) => ({ ...f, assigned_user_ids: members.filter((m) => !m.is_coach).map((m) => m.user_id) }))}
-                >
-                  Todos los jugadores
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {members.filter((member) => !member.is_coach).map((member) => {
-                  const checked = form.assigned_user_ids.includes(member.user_id);
-                  return (
-                    <label key={member.user_id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            assigned_user_ids: e.target.checked
-                              ? [...f.assigned_user_ids, member.user_id]
-                              : f.assigned_user_ids.filter((id) => id !== member.user_id),
-                          }))
-                        }
-                      />
-                      {member.player_name}
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={form.requires_response} onChange={(e) => setForm((f) => ({ ...f, requires_response: e.target.checked }))} />
-                  Requiere respuesta
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={form.requires_file} onChange={(e) => setForm((f) => ({ ...f, requires_file: e.target.checked }))} />
-                  Requiere adjuntar archivo/link
-                </label>
-              </div>
-              <div>
-                <Label className="text-xs">Preguntas / consigna (una por línea)</Label>
-                <Textarea
-                  rows={3}
-                  value={form.questionsText}
-                  onChange={(e) => setForm((f) => ({ ...f, questionsText: e.target.value }))}
-                  placeholder="¿Qué corregirías del retake?\nSubí link de tu POV o demo corregida..."
-                />
-              </div>
+          <div className="rounded-md border border-border p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs">Asignar a jugadores</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setForm((f) => ({ ...f, assigned_user_ids: members.filter((m) => !m.is_coach).map((m) => m.user_id) }))}
+              >
+                Todos los jugadores
+              </Button>
             </div>
-          )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {members.filter((member) => !member.is_coach).map((member) => {
+                const checked = form.assigned_user_ids.includes(member.user_id);
+                return (
+                  <label key={member.user_id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          assigned_user_ids: e.target.checked
+                            ? [...f.assigned_user_ids, member.user_id]
+                            : f.assigned_user_ids.filter((id) => id !== member.user_id),
+                        }))
+                      }
+                    />
+                    {member.player_name}
+                  </label>
+                );
+              })}
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.requires_response} onChange={(e) => setForm((f) => ({ ...f, requires_response: e.target.checked }))} />
+                Requiere respuesta
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.requires_file} onChange={(e) => setForm((f) => ({ ...f, requires_file: e.target.checked }))} />
+                Requiere adjuntar archivo/link
+              </label>
+            </div>
+            <div>
+              <Label className="text-xs">Preguntas / consigna (una por línea)</Label>
+              <Textarea
+                rows={3}
+                value={form.questionsText}
+                onChange={(e) => setForm((f) => ({ ...f, questionsText: e.target.value }))}
+                placeholder="¿Qué corregirías del retake?\nSubí link de tu POV o demo corregida..."
+              />
+            </div>
+          </div>
           <div>
             <Label className="text-xs">Descripción / notas</Label>
             <Textarea rows={4} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Qué contiene, foco, correcciones, timestamps o próximos pasos..." />
