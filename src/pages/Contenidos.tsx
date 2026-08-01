@@ -112,7 +112,9 @@ const EMPTY_FORM: FormState = {
 
 const CLASS_TYPES = [
   { value: "tacticas", label: "Tácticas por mapa" },
-  { value: "demo-retake", label: "Correcciones demo / retake" },
+  { value: "clases", label: "Clases" },
+  { value: "demo-retake", label: "Correcciones demo" },
+  { value: "tactica-equipo", label: "Correcciones táctica por equipo" },
   { value: "nuevo-contenido", label: "Nuevos contenidos" },
 ];
 
@@ -162,6 +164,8 @@ export default function Contenidos() {
   const [selectedRoutineGroup, setSelectedRoutineGroup] = useState<string>(ROUTINE_GROUPS[0].value);
   const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null);
   const [routineFullscreen, setRoutineFullscreen] = useState(false);
+  const [classTypeFilter, setClassTypeFilter] = useState<string>("all");
+  const [classMapFilter, setClassMapFilter] = useState<string>("all");
 
   const fetchItems = async () => {
     setLoading(true);
@@ -242,6 +246,17 @@ export default function Contenidos() {
       routines: mapItems.filter((item) => item.category === "routine").length,
     };
   }), [items]);
+
+  const filteredClasses = useMemo(() => {
+    return byCategory.class.filter((item) => {
+      const typeOk = classTypeFilter === "all" || item.content_type === classTypeFilter;
+      const mapOk =
+        classMapFilter === "all"
+        || (classMapFilter === "general" && (!item.map || item.map === "general"))
+        || item.map === classMapFilter;
+      return typeOk && mapOk;
+    });
+  }, [byCategory.class, classTypeFilter, classMapFilter]);
 
   const maxMapItems = Math.max(1, ...mapStats.map((stat) => stat.total));
 
@@ -654,41 +669,143 @@ export default function Contenidos() {
       )}
 
       {activeSection === "classes" && (
-          <div className="grid gap-4 lg:grid-cols-3">
-            {CLASS_TYPES.map((type) => (
-              <Card key={type.value} className="card-glow">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <GraduationCap className="h-4 w-4 text-accent" />
-                      {type.label}
-                    </CardTitle>
-                    {canManage && (
-                      <Button variant="ghost" size="sm" onClick={() => openNew("class")}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ContentList
-                    items={byCategory.class.filter((item) => item.content_type === type.value)}
-                    loading={loading}
-                    canManage={canManage}
-                    onEdit={openEdit}
-                    onDelete={remove}
-                    members={members}
-                    responsesByItem={responsesByItem}
-                    commentsByItem={commentsByItem}
-                    currentUserId={user?.id ?? null}
-                    onRespond={saveResponse}
-                    onSaveComment={saveComment}
-                    onDeleteComment={deleteComment}
-                  />
-                </CardContent>
-              </Card>
-            ))}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
+              Filtrá por tipo y mapa
+            </div>
+            {canManage && (
+              <Button variant="outline" size="sm" onClick={() => openNew("class")}>
+                <Plus className="h-4 w-4 mr-1" /> Nueva clase
+              </Button>
+            )}
           </div>
+
+          <div className="space-y-2">
+            <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setClassTypeFilter("all")}
+                className={cn(
+                  "rounded-md border px-3 py-2 text-left text-sm transition",
+                  classTypeFilter === "all"
+                    ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                    : "border-border bg-card/70 hover:border-accent/40",
+                )}
+              >
+                <span className="font-heading font-semibold">Todas</span>
+                <Badge variant="outline" className="ml-2 text-[10px] h-5 px-1.5">{byCategory.class.length}</Badge>
+              </button>
+              {CLASS_TYPES.map((type) => {
+                const count = byCategory.class.filter((item) => item.content_type === type.value).length;
+                const active = classTypeFilter === type.value;
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setClassTypeFilter(type.value)}
+                    className={cn(
+                      "rounded-md border px-3 py-2 text-left text-sm transition",
+                      active
+                        ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                        : "border-border bg-card/70 hover:border-accent/40",
+                    )}
+                  >
+                    <span className="font-heading font-semibold">{type.label}</span>
+                    <Badge variant="outline" className="ml-2 text-[10px] h-5 px-1.5">{count}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">Mapa</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setClassMapFilter("all")}
+                className={cn(
+                  "rounded-md border px-3 py-2 text-sm transition",
+                  classMapFilter === "all"
+                    ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                    : "border-border bg-card/70 hover:border-accent/40",
+                )}
+              >
+                <span className="font-heading font-semibold">Todos</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setClassMapFilter("general")}
+                className={cn(
+                  "rounded-md border px-3 py-2 text-sm transition",
+                  classMapFilter === "general"
+                    ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                    : "border-border bg-card/70 hover:border-accent/40",
+                )}
+              >
+                <span className="font-heading font-semibold">General</span>
+              </button>
+              {MAPS.map((map) => {
+                const count = byCategory.class.filter((item) => {
+                  const typeOk = classTypeFilter === "all" || item.content_type === classTypeFilter;
+                  return typeOk && item.map === map;
+                }).length;
+                const active = classMapFilter === map;
+                return (
+                  <button
+                    key={map}
+                    type="button"
+                    onClick={() => setClassMapFilter(map)}
+                    className={cn(
+                      "rounded-md border px-3 py-2 text-sm transition",
+                      active
+                        ? "border-accent bg-accent/15 shadow-[0_0_0_1px_hsl(var(--accent)/0.35)]"
+                        : "border-border bg-card/70 hover:border-accent/40",
+                    )}
+                  >
+                    <span className="font-heading font-semibold">{map}</span>
+                    <Badge variant="outline" className="ml-2 text-[10px] h-5 px-1.5">{count}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Card className="card-glow">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-accent" />
+                {classTypeFilter === "all"
+                  ? "Todas las clases"
+                  : CLASS_TYPES.find((type) => type.value === classTypeFilter)?.label ?? "Clases"}
+                {classMapFilter !== "all" && (
+                  <Badge className="text-[10px] bg-accent/15 text-accent border-accent/30">
+                    {classMapFilter === "general" ? "General" : classMapFilter}
+                  </Badge>
+                )}
+                <Badge variant="outline" className="text-[10px] ml-auto">{filteredClasses.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ContentList
+                items={filteredClasses}
+                loading={loading}
+                canManage={canManage}
+                onEdit={openEdit}
+                onDelete={remove}
+                members={members}
+                responsesByItem={responsesByItem}
+                commentsByItem={commentsByItem}
+                currentUserId={user?.id ?? null}
+                onRespond={saveResponse}
+                onSaveComment={saveComment}
+                onDeleteComment={deleteComment}
+              />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {activeSection === "routines" && (
@@ -948,6 +1065,7 @@ function ContentCard({
   onDeleteComment?: (comment: ContentComment) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
   const [responsesOpen, setResponsesOpen] = useState(false);
   const [responseText, setResponseText] = useState(responses.find((r) => r.user_id === currentUserId)?.response_text ?? "");
   const [attachmentUrl, setAttachmentUrl] = useState(responses.find((r) => r.user_id === currentUserId)?.attachment_url ?? "");
@@ -961,6 +1079,8 @@ function ContentCard({
   const mediaKind = resolveMediaKind(item);
   const orientation = prefersLandscape(item) ? "landscape" : "portrait";
   const completedCount = responses.filter((r) => r.completed).length;
+  const hasInlineMedia = !!item.url && (mediaKind === "youtube" || mediaKind === "pdf");
+  const mediaTabLabel = mediaKind === "youtube" ? "Video" : mediaKind === "pdf" ? "PDF" : "Media";
 
   return (
     <div className="rounded-md border border-border bg-card/70 p-3">
@@ -974,6 +1094,11 @@ function ContentCard({
               {MEDIA_LABEL[mediaKind] ?? mediaKind}
             </Badge>
             {item.map && <Badge className="text-[10px] bg-accent/15 text-accent border-accent/30">{item.map}</Badge>}
+            {item.category === "class" && item.content_type && (
+              <Badge variant="outline" className="text-[10px]">
+                {CLASS_TYPES.find((type) => type.value === item.content_type)?.label ?? item.content_type}
+              </Badge>
+            )}
             {item.requires_response && <Badge variant="outline" className="text-[10px]"><CheckCircle2 className="h-3 w-3 mr-1" /> Respuesta</Badge>}
             {item.requires_file && <Badge variant="outline" className="text-[10px]"><Paperclip className="h-3 w-3 mr-1" /> Archivo</Badge>}
           </div>
@@ -984,10 +1109,24 @@ function ContentCard({
             </p>
           )}
           <div className="flex flex-wrap gap-2 mt-2">
+            {hasInlineMedia && (
+              <Button
+                variant={mediaOpen ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMediaOpen((v) => !v)}
+                className="h-7 text-xs"
+              >
+                {mediaOpen ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                {mediaOpen ? `Ocultar ${mediaTabLabel.toLowerCase()}` : `Ver ${mediaTabLabel.toLowerCase()}`}
+                {mediaKind === "youtube" && comments.length > 0 && (
+                  <Badge variant="outline" className="ml-1.5 text-[10px] h-4 px-1">{comments.length}</Badge>
+                )}
+              </Button>
+            )}
             {item.url && (
               <>
                 <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)} className="h-7 text-xs">
-                  <Eye className="h-3 w-3 mr-1" /> Previsualizar
+                  <Eye className="h-3 w-3 mr-1" /> Pantalla completa
                 </Button>
                 <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
                   <LinkIcon className="h-3 w-3" /> Abrir link <ExternalLink className="h-3 w-3" />
@@ -1018,8 +1157,18 @@ function ContentCard({
         onDeleteComment={onDeleteComment}
       />
 
-      {item.url && (mediaKind === "youtube" || mediaKind === "pdf") && (
-        <div className="mt-3 space-y-3">
+      {hasInlineMedia && mediaOpen && (
+        <div className="mt-3 space-y-3 rounded-md border border-border/80 bg-background/40 p-2.5">
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground flex items-center gap-1.5">
+              {mediaKind === "youtube" ? <Youtube className="h-3.5 w-3.5 text-accent" /> : <FileText className="h-3.5 w-3.5 text-accent" />}
+              {mediaTabLabel}
+              {mediaKind === "youtube" && " · comentarios"}
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setMediaOpen(false)}>
+              <ChevronUp className="h-3 w-3 mr-1" /> Colapsar
+            </Button>
+          </div>
           <MediaViewer
             item={item}
             orientation={mediaKind === "youtube" ? "landscape" : orientation}
