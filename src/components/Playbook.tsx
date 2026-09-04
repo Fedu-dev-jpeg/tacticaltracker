@@ -15,6 +15,7 @@ import PlaybookImportDialog from "@/components/PlaybookImportDialog";
 import MatchView from "@/components/MatchView";
 import SteamAvatar from "@/components/SteamAvatar";
 import { useTeamMembers, TeamMember } from "@/hooks/useTeamMembers";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
 
@@ -22,7 +23,7 @@ const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Boke: "",
   Kud: "",
   Koda: "",
-  Ray: "",
+  Tecow: "",
   Fedu: "IGL · Soporte",
 };
 
@@ -57,17 +58,24 @@ type StrategyRow = {
   book?: string | null;
 };
 
+type Codeword = {
+  id: string;
+  word: string;
+  description: string;
+  sort_order: number;
+};
+
 const STRAT_TYPE_ORDER = ["Pistol", "Anti-Eco", "Forzado", "Default", "Exec", "Setup", "Dominio", "Retake", "Postplant", "Finalización", "Calls de base", "Sorpresa"];
 const STRAT_TYPES = [...STRAT_TYPE_ORDER];
 
-const CODEWORDS = [
-  { word: "Contacto", desc: "Buscar contacto con el enemigo para obtener info y abrir el round" },
-  { word: "Pop", desc: "Flash pop coordinada para entrar a un site o tomar control de zona" },
-  { word: "Hero", desc: "Jugada individual agresiva — un jugador busca hacer una play de impacto" },
-  { word: "Sólidos", desc: "Jugar posiciones default seguras, no peekear innecesariamente, ganar por economía" },
-  { word: "Pausa / Freeze", desc: "Frenar la ejecución, esperar info, no commitear hasta nuevo call" },
-  { word: "Marotei", desc: "Rotación rápida al otro site, fakeando presencia en el actual" },
-  { word: "Deathmatch", desc: "Round suelto sin estructura — cada uno busca su duelo, usado en ecos o últimas rondas" },
+const DEFAULT_CODEWORDS: Array<Omit<Codeword, "id">> = [
+  { word: "Contacto", description: "Buscar contacto con el enemigo para obtener info y abrir el round", sort_order: 10 },
+  { word: "Pop", description: "Flash pop coordinada para entrar a un site o tomar control de zona", sort_order: 20 },
+  { word: "Hero", description: "Jugada individual agresiva — un jugador busca hacer una play de impacto", sort_order: 30 },
+  { word: "Sólidos", description: "Jugar posiciones default seguras, no peekear innecesariamente, ganar por economía", sort_order: 40 },
+  { word: "Pausa / Freeze", description: "Frenar la ejecución, esperar info, no commitear hasta nuevo call", sort_order: 50 },
+  { word: "Marotei", description: "Rotación rápida al otro site, fakeando presencia en el actual", sort_order: 60 },
+  { word: "Deathmatch", description: "Round suelto sin estructura — cada uno busca su duelo, usado en ecos o últimas rondas", sort_order: 70 },
 ];
 
 function getDefaultStrategies(): Strategy[] {
@@ -111,6 +119,10 @@ export default function Playbook() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gameplanMap, setGameplanMap] = useState<MapName | "all">("all");
   const [showCodewords, setShowCodewords] = useState(false);
+  const [codewords, setCodewords] = useState<Codeword[]>([]);
+  const [editingCodewordId, setEditingCodewordId] = useState<string | null>(null);
+  const [codewordDraft, setCodewordDraft] = useState({ word: "", description: "" });
+  const [addingCodeword, setAddingCodeword] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [playerDescriptions, setPlayerDescriptions] = useState<Record<string, string>>({ ...DEFAULT_PLAYER_DESCRIPTIONS });
@@ -119,6 +131,8 @@ export default function Playbook() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showMatchView, setShowMatchView] = useState(false);
   const { members: teamMembers } = useTeamMembers();
+  const { isAdmin, isCoach } = useUserRole();
+  const canManageCodewords = isAdmin || isCoach;
   const memberByName = useMemo(() => {
     const map: Record<string, TeamMember> = {};
     teamMembers.filter((m) => !m.is_coach).forEach((m) => {
@@ -149,10 +163,98 @@ export default function Playbook() {
     }
   }, []);
 
+  const fetchCodewords = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("codewords")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("word", { ascending: true });
+    if (error) {
+      console.error("Error loading codewords:", error);
+      setCodewords(DEFAULT_CODEWORDS.map((cw, idx) => ({ ...cw, id: `local-${idx}` })));
+      return;
+    }
+    if (!data || data.length === 0) {
+      setCodewords([]);
+      return;
+    }
+    setCodewords(data.map((row) => ({
+      id: row.id,
+      word: row.word,
+      description: row.description,
+      sort_order: row.sort_order,
+    })));
+  }, []);
+
   useEffect(() => {
     fetchStrategies();
     fetchPlayerDescriptions();
-  }, [fetchStrategies, fetchPlayerDescriptions]);
+    fetchCodewords();
+  }, [fetchStrategies, fetchPlayerDescriptions, fetchCodewords]);
+
+  const startAddCodeword = () => {
+    setAddingCodeword(true);
+    setEditingCodewordId(null);
+    setCodewordDraft({ word: "", description: "" });
+    setShowCodewords(true);
+  };
+
+  const startEditCodeword = (cw: Codeword) => {
+    setAddingCodeword(false);
+    setEditingCodewordId(cw.id);
+    setCodewordDraft({ word: cw.word, description: cw.description });
+    setShowCodewords(true);
+  };
+
+  const cancelCodewordEdit = () => {
+    setAddingCodeword(false);
+    setEditingCodewordId(null);
+    setCodewordDraft({ word: "", description: "" });
+  };
+
+  const saveCodeword = async () => {
+    const word = codewordDraft.word.trim();
+    const description = codewordDraft.description.trim();
+    if (!word) {
+      toast.error("La codeword necesita un nombre");
+      return;
+    }
+    if (editingCodewordId) {
+      const { error } = await supabase
+        .from("codewords")
+        .update({ word, description })
+        .eq("id", editingCodewordId);
+      if (error) {
+        toast.error("No se pudo actualizar la codeword", { description: error.message });
+        return;
+      }
+      toast.success("Codeword actualizada");
+    } else {
+      const nextOrder = (codewords.reduce((max, cw) => Math.max(max, cw.sort_order), 0) || 0) + 10;
+      const { error } = await supabase
+        .from("codewords")
+        .insert({ word, description, sort_order: nextOrder });
+      if (error) {
+        toast.error("No se pudo crear la codeword", { description: error.message });
+        return;
+      }
+      toast.success("Codeword creada");
+    }
+    cancelCodewordEdit();
+    fetchCodewords();
+  };
+
+  const deleteCodeword = async (cw: Codeword) => {
+    if (!confirm(`¿Borrar la codeword "${cw.word}"?`)) return;
+    const { error } = await supabase.from("codewords").delete().eq("id", cw.id);
+    if (error) {
+      toast.error("No se pudo borrar la codeword", { description: error.message });
+      return;
+    }
+    if (editingCodewordId === cw.id) cancelCodewordEdit();
+    toast.success("Codeword eliminada");
+    fetchCodewords();
+  };
 
   const ensureProtocol = (url: string) => {
     if (!url) return url;
@@ -279,17 +381,72 @@ export default function Playbook() {
         <button onClick={() => setShowCodewords(!showCodewords)} className="w-full flex items-center gap-2 p-3 hover:bg-secondary/30 transition-colors text-left">
           <MessageSquare className="h-4 w-4 text-accent" />
           <span className="font-heading font-bold text-sm flex-1">Codewords / Callouts</span>
-          <span className="text-[10px] text-muted-foreground mr-2">{CODEWORDS.length} calls</span>
+          <span className="text-[10px] text-muted-foreground mr-2">{codewords.length} calls</span>
           {showCodewords ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </button>
         {showCodewords && (
-          <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 border-t border-border pt-3">
-            {CODEWORDS.map((cw) => (
-              <div key={cw.word} className="flex items-start gap-2 bg-secondary/40 rounded-md p-2">
-                <span className="text-xs font-heading font-bold text-accent bg-accent/10 px-2 py-0.5 rounded shrink-0">{cw.word}</span>
-                <span className="text-[11px] text-muted-foreground leading-tight">{cw.desc}</span>
+          <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
+            {canManageCodewords && (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">Agregá, editá o borrá calls del equipo.</p>
+                {!addingCodeword && !editingCodewordId && (
+                  <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={startAddCodeword}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Nueva
+                  </Button>
+                )}
               </div>
-            ))}
+            )}
+
+            {(addingCodeword || editingCodewordId) && canManageCodewords && (
+              <div className="rounded-md border border-accent/30 bg-accent/5 p-3 space-y-2">
+                <div className="grid gap-2 sm:grid-cols-[160px_1fr]">
+                  <Input
+                    value={codewordDraft.word}
+                    onChange={(e) => setCodewordDraft((prev) => ({ ...prev, word: e.target.value }))}
+                    placeholder="Codeword"
+                    className="h-8 text-sm font-heading font-bold"
+                  />
+                  <Input
+                    value={codewordDraft.description}
+                    onChange={(e) => setCodewordDraft((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Significado / cuándo usarla"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" className="h-7 text-xs" onClick={saveCodeword}>
+                    <Check className="h-3.5 w-3.5 mr-1" /> Guardar
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelCodewordEdit}>
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {codewords.length === 0 && (
+                <p className="text-xs text-muted-foreground col-span-full py-2">Todavía no hay codewords.</p>
+              )}
+              {codewords.map((cw) => (
+                <div key={cw.id} className="flex items-start gap-2 bg-secondary/40 rounded-md p-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <span className="inline-flex text-xs font-heading font-bold text-accent bg-accent/10 px-2 py-0.5 rounded">{cw.word}</span>
+                    <p className="text-[11px] text-muted-foreground leading-tight">{cw.description}</p>
+                  </div>
+                  {canManageCodewords && (
+                    <div className="flex shrink-0 gap-0.5">
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditCodeword(cw)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => deleteCodeword(cw)}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

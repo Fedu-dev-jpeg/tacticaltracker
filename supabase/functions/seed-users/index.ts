@@ -30,7 +30,7 @@ const ROSTER_META: RosterEntry[] = [
   { handle: "boke", role: "player", is_coach: false, role_in_team: "Rifler" },
   { handle: "kud", role: "player", is_coach: false, role_in_team: "Rifler" },
   { handle: "koda", role: "player", is_coach: false, role_in_team: "AWPer" },
-  { handle: "ray", role: "player", is_coach: false, role_in_team: "Rifler" },
+  { handle: "tecow", role: "player", is_coach: false, role_in_team: "Rifler" },
   { handle: "pakito", role: "coach", is_coach: true, role_in_team: "Head Coach" },
   { handle: "ema", role: "coach", is_coach: true, role_in_team: "Assistant Coach" },
 ];

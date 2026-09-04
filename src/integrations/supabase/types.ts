@@ -272,6 +272,33 @@ export type Database = {
           },
         ]
       }
+      codewords: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          sort_order: number
+          updated_at: string
+          word: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          id?: string
+          sort_order?: number
+          updated_at?: string
+          word: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          sort_order?: number
+          updated_at?: string
+          word?: string
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           created_at: string

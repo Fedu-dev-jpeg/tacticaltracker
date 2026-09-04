@@ -32,7 +32,7 @@ Roles:
 - Fedu: IGL, lanza flash desde apps
 - Kud: entry por rampa
 - Koda: molly heaven
-- Ray: humo CT
+- Tecow: humo CT
 - Boke: lurk B para hold rotación
 Notas: Timing 0:30. Si escuchan drop en apps, cambian a B.
 Link: https://youtu.be/xyz
@@ -174,7 +174,7 @@ export default function PlaybookImportDialog({
             <ul className="text-[11px] text-muted-foreground list-disc pl-4 space-y-0.5">
               <li>Cada estrategia empieza con <code className="text-accent">== TIPO :: NOMBRE</code></li>
               <li>Campos: <code>Lado:</code>, <code>Descripción:</code>, <code>Roles:</code>, <code>Notas:</code>, <code>Link:</code></li>
-              <li>Roles en formato <code>- Jugador: rol</code> (Fedu, Kud, Koda, Ray, Boke)</li>
+              <li>Roles en formato <code>- Jugador: rol</code> (Fedu, Kud, Koda, Tecow, Boke)</li>
               <li>Separá cada estrategia con una línea de <code>---</code></li>
               <li>Tipos válidos: Pistol, Anti-Eco, Forzado, Default, Exec, Setup, Dominio, Retake, Postplant, Finalización, Calls de base, Sorpresa</li>
             </ul>
