@@ -23,6 +23,7 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import OAuthConsent from "./pages/OAuthConsent";
 import { useMatches } from "@/hooks/useMatches";
+import { useStatsEra } from "@/hooks/useStatsEra";
 import { useNavigate } from "react-router-dom";
 import type { Match } from "@/types/match";
 
@@ -37,13 +38,25 @@ type MatchState = {
   exportData: () => string;
 };
 
-function Routed({ matchState }: { matchState: MatchState }) {
+function Routed({
+  matchState,
+  statsMatches,
+  statsFromDate,
+  setStatsFromDate,
+  eraLabel,
+}: {
+  matchState: MatchState;
+  statsMatches: Match[];
+  statsFromDate: string | null;
+  setStatsFromDate: (next: string | null) => Promise<void>;
+  eraLabel: string;
+}) {
   const { matches, addMatch, updateMatch, deleteMatch, importData, exportData } = matchState;
   const navigate = useNavigate();
 
   return (
     <Routes>
-      <Route path="/" element={<Dashboard matches={matches} />} />
+      <Route path="/" element={<Dashboard matches={statsMatches} statsFromDate={statsFromDate} eraLabel={eraLabel} />} />
       <Route
         path="/registrar"
         element={
@@ -55,12 +68,14 @@ function Routed({ matchState }: { matchState: MatchState }) {
           />
         }
       />
-      <Route path="/stats" element={<Analysis matches={matches} />} />
+      <Route path="/stats" element={<Analysis matches={statsMatches} statsFromDate={statsFromDate} eraLabel={eraLabel} />} />
       <Route
         path="/historial"
         element={
           <HistoryView
             matches={matches}
+            statsFromDate={statsFromDate}
+            onStatsFromDateChange={setStatsFromDate}
             onDelete={deleteMatch}
             onUpdate={updateMatch}
             onExport={exportData}
@@ -73,8 +88,8 @@ function Routed({ matchState }: { matchState: MatchState }) {
       <Route path="/playbook" element={<Playbook />} />
       <Route path="/contenidos" element={<Contenidos />} />
       <Route path="/awards" element={<Awards />} />
-      <Route path="/mapas" element={<MapView matches={matches} />} />
-      <Route path="/equipo" element={<Equipo />} />
+      <Route path="/mapas" element={<MapView matches={statsMatches} />} />
+      <Route path="/equipo" element={<Equipo statsFromDate={statsFromDate} onStatsFromDateChange={setStatsFromDate} />} />
       <Route path="/auditoria" element={<Auditoria />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
@@ -84,6 +99,8 @@ function Routed({ matchState }: { matchState: MatchState }) {
 function AppContent() {
   const { user, loading } = useAuth();
   const matchState = useMatches();
+  const { statsFromDate, setStatsFromDate, filterFromDate, eraLabel } = useStatsEra();
+  const statsMatches = filterFromDate(matchState.matches);
 
   // Prefetch agenda events as soon as the user is authenticated so opening
   // /agenda later renders instantly from cache instead of triggering a fetch.
@@ -106,8 +123,14 @@ function AppContent() {
   if (!user) return <Login />;
 
   return (
-    <AppShell matches={matchState.matches}>
-      <Routed matchState={matchState} />
+    <AppShell matches={statsMatches}>
+      <Routed
+        matchState={matchState}
+        statsMatches={statsMatches}
+        statsFromDate={statsFromDate}
+        setStatsFromDate={setStatsFromDate}
+        eraLabel={eraLabel}
+      />
     </AppShell>
   );
 }

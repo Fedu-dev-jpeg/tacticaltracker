@@ -23,7 +23,7 @@ const DEFAULT_PLAYER_DESCRIPTIONS: Record<string, string> = {
   Boke: "",
   Kud: "",
   Koda: "",
-  Tecow: "",
+  Agl: "",
   Fedu: "IGL · Soporte",
 };
 

@@ -375,8 +375,9 @@ function normalizePlayerName(raw: string): string | null {
     fede: "Fedu",
     boke: "Boke",
     koda: "Koda",
-    ray: "Tecow",
-    tecow: "Tecow",
+    ray: "Agl",
+    tecow: "Agl",
+    agl: "Agl",
     kud: "Kud",
   };
   return aliases[n] ?? null;
