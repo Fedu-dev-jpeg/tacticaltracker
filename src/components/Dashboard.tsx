@@ -20,6 +20,8 @@ import { useNavigate } from "react-router-dom";
 
 interface DashboardProps {
   matches: Match[];
+  statsFromDate?: string | null;
+  eraLabel?: string;
 }
 
 interface TeamObjective {
@@ -59,7 +61,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: IconComponen
   );
 }
 
-export default function Dashboard({ matches }: DashboardProps) {
+export default function Dashboard({ matches, statsFromDate = null, eraLabel }: DashboardProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const playerName = user?.user_metadata?.player_name || user?.email?.split("@")[0] || "Jugador";
@@ -142,7 +144,7 @@ export default function Dashboard({ matches }: DashboardProps) {
   return (
     <div className="space-y-6 animate-slide-up">
       {/* Welcome */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Avatar className="h-11 w-11 border-2 border-accent/40">
           <AvatarImage src={avatarUrl ?? undefined} alt={playerName} />
           <AvatarFallback className="bg-accent/20 text-accent">
@@ -151,7 +153,11 @@ export default function Dashboard({ matches }: DashboardProps) {
         </Avatar>
         <div>
           <h2 className="text-xl font-heading font-bold">Qué onda, <span className="text-accent">{playerName}</span> 🔥</h2>
-          <p className="text-sm text-muted-foreground">Acá va el resumen del equipo</p>
+          <p className="text-sm text-muted-foreground">
+            Acá va el resumen del equipo
+            {eraLabel ? ` · ${eraLabel}` : ""}
+            {statsFromDate ? " (partidos previos quedan en Historial)" : ""}
+          </p>
       </div>
 
       {/* Countdown — solo si hay un torneo agendado */}

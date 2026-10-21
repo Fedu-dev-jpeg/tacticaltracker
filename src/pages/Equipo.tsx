@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useTeamMembers, TeamMember } from "@/hooks/useTeamMembers";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Navigate } from "react-router-dom";
-import { Users, Save, RefreshCw, Info, ShieldCheck, ImageIcon } from "lucide-react";
+import { Users, Save, RefreshCw, Info, ShieldCheck, ImageIcon, CalendarRange } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import TeamupConnect from "@/components/TeamupConnect";
@@ -15,11 +15,23 @@ import SteamAvatar from "@/components/SteamAvatar";
 
 const ROLES = ["Rifler", "AWPer", "IGL", "Support", "Lurker", "Entry", "Head Coach", "Assistant Coach"];
 
-export default function Equipo() {
+export default function Equipo({
+  statsFromDate = null,
+  onStatsFromDateChange,
+}: {
+  statsFromDate?: string | null;
+  onStatsFromDateChange?: (next: string | null) => Promise<void>;
+}) {
   const { members, loading, refetch, updateMember } = useTeamMembers();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const [seeding, setSeeding] = useState(false);
   const [syncingAvatars, setSyncingAvatars] = useState(false);
+  const [draftFromDate, setDraftFromDate] = useState(statsFromDate ?? "");
+  const [savingEra, setSavingEra] = useState(false);
+
+  useEffect(() => {
+    setDraftFromDate(statsFromDate ?? "");
+  }, [statsFromDate]);
 
   if (roleLoading) return <div className="p-6 text-muted-foreground">Cargando...</div>;
   if (!isAdmin) return <Navigate to="/" replace />;
@@ -90,6 +102,52 @@ export default function Equipo() {
       </Card>
 
       <TeamupConnect />
+
+      {onStatsFromDateChange && (
+        <Card className="card-glow">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarRange className="h-4 w-4 text-accent" />
+              Era de estadísticas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Dashboard, Stats y Mapas cuentan partidos desde esta fecha en adelante. El historial completo sigue disponible.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Stats desde</Label>
+                <Input
+                  type="date"
+                  className="h-9 w-[180px]"
+                  value={draftFromDate}
+                  onChange={(e) => setDraftFromDate(e.target.value)}
+                />
+              </div>
+              <Button
+                size="sm"
+                disabled={savingEra}
+                onClick={async () => {
+                  setSavingEra(true);
+                  try {
+                    await onStatsFromDateChange(draftFromDate.trim() || null);
+                    toast.success("Fecha de stats guardada");
+                  } catch (error) {
+                    toast.error("No se pudo guardar", {
+                      description: error instanceof Error ? error.message : undefined,
+                    });
+                  } finally {
+                    setSavingEra(false);
+                  }
+                }}
+              >
+                Guardar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <section>
         <h2 className="text-sm uppercase tracking-widest text-muted-foreground mb-3">Roster ({players.length})</h2>

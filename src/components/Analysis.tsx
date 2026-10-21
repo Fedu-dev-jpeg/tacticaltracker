@@ -23,9 +23,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 interface AnalysisProps {
   matches: Match[];
+  statsFromDate?: string | null;
+  eraLabel?: string;
 }
 
-export default function Analysis({ matches }: AnalysisProps) {
+export default function Analysis({ matches, statsFromDate = null, eraLabel }: AnalysisProps) {
   const [selectedTypes, setSelectedTypes] = useState<Record<MatchType, boolean>>({
     Treino: true,
     Oficial: true,
@@ -140,7 +142,11 @@ export default function Analysis({ matches }: AnalysisProps) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-heading font-bold tracking-wide">Stats Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Lectura horizontal de rendimiento, mapas, lados y fuentes de datos.</p>
+          <p className="text-sm text-muted-foreground">
+            Lectura horizontal de rendimiento, mapas, lados y fuentes de datos.
+            {eraLabel ? ` · ${eraLabel}` : ""}
+            {statsFromDate ? " · partidos anteriores quedan en Historial" : ""}
+          </p>
         </div>
         <Card className="border-border bg-card/70">
           <CardContent className="p-3 flex items-center gap-4">

@@ -30,8 +30,8 @@ const ROSTER_META: RosterEntry[] = [
   { handle: "boke", role: "player", is_coach: false, role_in_team: "Rifler" },
   { handle: "kud", role: "player", is_coach: false, role_in_team: "Rifler" },
   { handle: "koda", role: "player", is_coach: false, role_in_team: "AWPer" },
-  { handle: "tecow", role: "player", is_coach: false, role_in_team: "Rifler" },
-  { handle: "pakito", role: "coach", is_coach: true, role_in_team: "Head Coach" },
+  { handle: "agl", role: "player", is_coach: false, role_in_team: "Rifler" },
+  { handle: "niix", role: "coach", is_coach: true, role_in_team: "Head Coach" },
   { handle: "ema", role: "coach", is_coach: true, role_in_team: "Assistant Coach" },
 ];
 const ALLOWED_EMAILS = new Set(ROSTER_META.map((r) => `${r.handle}@${DOMAIN}`));

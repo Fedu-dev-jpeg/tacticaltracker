@@ -1,10 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Match, MAPS, MATCH_TYPES, MapName, MatchType } from "@/types/match";
 import { isWin } from "@/hooks/useMatches";
+import { useUserRole } from "@/hooks/useUserRole";
 import { format } from "date-fns";
-import { Download, Trash2, Search, Pencil, X, BarChart3 } from "lucide-react";
+import { Download, Trash2, Search, Pencil, X, BarChart3, CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -14,23 +16,44 @@ import MatchStatsDialog, { DemoData } from "@/components/MatchStatsDialog";
 
 interface HistoryProps {
   matches: Match[];
+  statsFromDate: string | null;
+  onStatsFromDateChange: (next: string | null) => Promise<void>;
   onDelete: (id: string) => void;
   onUpdate: (id: string, data: Partial<Match>) => void;
   onExport: () => string;
   onImport: (data: Match[]) => void;
 }
 
-export default function HistoryView({ matches, onDelete, onUpdate, onExport, onImport }: HistoryProps) {
+export default function HistoryView({
+  matches,
+  statsFromDate,
+  onStatsFromDateChange,
+  onDelete,
+  onUpdate,
+  onExport,
+  onImport,
+}: HistoryProps) {
+  const { isAdmin } = useUserRole();
   const [filterMap, setFilterMap] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterResult, setFilterResult] = useState<string>("all");
+  const [eraMode, setEraMode] = useState<"current" | "all">("current");
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<"date" | "map" | "score">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
+  const [draftFromDate, setDraftFromDate] = useState(statsFromDate ?? "");
+  const [savingEra, setSavingEra] = useState(false);
+
+  useEffect(() => {
+    setDraftFromDate(statsFromDate ?? "");
+  }, [statsFromDate]);
 
   const filtered = useMemo(() => {
     let result = [...matches];
+    if (eraMode === "current" && statsFromDate) {
+      result = result.filter((m) => m.date.slice(0, 10) >= statsFromDate);
+    }
     if (filterMap !== "all") result = result.filter((m) => m.map === filterMap);
     if (filterType !== "all") result = result.filter((m) => m.type === filterType);
     if (filterResult === "win") result = result.filter(isWin);
@@ -45,7 +68,21 @@ export default function HistoryView({ matches, onDelete, onUpdate, onExport, onI
       return sortDir === "desc" ? -cmp : cmp;
     });
     return result;
-  }, [matches, filterMap, filterType, filterResult, search, sortCol, sortDir]);
+  }, [matches, filterMap, filterType, filterResult, search, sortCol, sortDir, eraMode, statsFromDate]);
+
+  const saveEraDate = async () => {
+    setSavingEra(true);
+    try {
+      await onStatsFromDateChange(draftFromDate.trim() || null);
+      toast.success(draftFromDate.trim() ? "Fecha de stats actualizada" : "Filtro de fecha quitado");
+    } catch (error) {
+      toast.error("No se pudo guardar la fecha", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setSavingEra(false);
+    }
+  };
 
   const handleExportCSV = () => {
     const headers = ["Fecha", "Tipo", "Mapa", "Rival", "Score", "CT Pistol", "CT 2nd", "TR Pistol", "TR 2nd", "Lado Inicial", "Notas"];
@@ -126,6 +163,82 @@ export default function HistoryView({ matches, onDelete, onUpdate, onExport, onI
           )}
         </DialogContent>
       </Dialog>
+
+      <div className="rounded-lg border border-accent/25 bg-accent/5 p-3 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-heading font-semibold">
+              <CalendarRange className="h-4 w-4 text-accent" />
+              Historial / era de stats
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Dashboard, Stats y Mapas usan partidos desde la fecha de era. El historial puede mostrar la era actual o todo.
+              {statsFromDate
+                ? ` Era actual: ${format(new Date(`${statsFromDate}T12:00:00`), "dd/MM/yyyy")}.`
+                : " Sin fecha de corte (todo cuenta)."}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={eraMode === "current" ? "default" : "outline"}
+              className="h-8 text-xs"
+              onClick={() => setEraMode("current")}
+            >
+              Era actual
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={eraMode === "all" ? "default" : "outline"}
+              className="h-8 text-xs"
+              onClick={() => setEraMode("all")}
+            >
+              Todo el historial
+            </Button>
+          </div>
+        </div>
+        {isAdmin && (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Stats desde</Label>
+              <Input
+                type="date"
+                className="h-8 w-[170px]"
+                value={draftFromDate || statsFromDate || ""}
+                onChange={(e) => setDraftFromDate(e.target.value)}
+              />
+            </div>
+            <Button type="button" size="sm" className="h-8 text-xs" onClick={saveEraDate} disabled={savingEra}>
+              Guardar fecha
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 text-xs"
+              disabled={savingEra || (!statsFromDate && !draftFromDate)}
+              onClick={async () => {
+                setDraftFromDate("");
+                setSavingEra(true);
+                try {
+                  await onStatsFromDateChange(null);
+                  toast.success("Sin fecha de corte");
+                } catch (error) {
+                  toast.error("No se pudo quitar la fecha", {
+                    description: error instanceof Error ? error.message : undefined,
+                  });
+                } finally {
+                  setSavingEra(false);
+                }
+              }}
+            >
+              Quitar corte
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end">

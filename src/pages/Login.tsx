@@ -83,7 +83,7 @@ export default function Login() {
             <div className="space-y-2">
               <label className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">// USUARIO</label>
               <Input
-                placeholder="ej: Boke, kud, koda, ray, pakito, ema, fedu..."
+                placeholder="ej: boke, kud, koda, agl, niix, ema, fedu..."
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

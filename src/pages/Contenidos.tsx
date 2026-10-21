@@ -120,7 +120,7 @@ const CLASS_TYPES = [
 
 const ROUTINE_GROUPS = [
   { value: "rifle", label: "Rutina Rifle" },
-  { value: "ray", label: "Rutina Tecow" },
+  { value: "ray", label: "Rutina Agl" },
   { value: "general", label: "Rutina demás jugadores" },
 ];
 
